@@ -97,7 +97,7 @@ export const semanticSearch = async (query: string, limit: number = 5): Promise<
 
 export const createFile = async (path: string, content: string): Promise<ApiResponse<FileData>> => {
   try {
-    const response = await api.post<ApiResponse<FileData>>(`/files/${path}`, { content });
+    const response = await api.post<ApiResponse<FileData>>(`/files/create/${path}`, { content });
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error) && error.response) {
@@ -109,7 +109,10 @@ export const createFile = async (path: string, content: string): Promise<ApiResp
 
 export const getFile = async (path: string): Promise<ApiResponse<FileData>> => {
   try {
-    const response = await api.get<ApiResponse<FileData>>(`/files${path}`);
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const response = await api.get<ApiResponse<FileData>>('/files/read', {
+      params: { path: normalizedPath }
+    });
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error) && error.response) {
