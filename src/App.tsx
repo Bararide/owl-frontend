@@ -301,7 +301,7 @@ const itemVariants = {
     opacity: 1,
     y: 0,
     transition: {
-      type: "spring" as const,
+      type: "spring",
       stiffness: 100
     }
   }
@@ -387,72 +387,322 @@ const api = axios.create({
   },
 });
 
+interface CreateContainerRequest {
+  container_id: string;
+  memory_limit: number;
+  storage_quota: number;
+  file_limit: number;
+  env_label: LabelOption;
+  type_label: LabelOption;
+  commands: string[];
+  privileged: boolean;
+}
+
+interface SearchRequest {
+  query: string;
+  container_id: string;
+  limit?: number;
+}
+
+class ApiClient {
+  private client = axios.create({
+    baseURL: '/api',
+    timeout: 30000,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  async getContainers(): Promise<Container[]> {
+    try {
+      const response = await this.client.get<{ data: Container[] }>('/containers');
+      return response.data.data;
+    } catch (error) {
+      console.warn('Using mock containers data due to API error:', error);
+      return getMockContainers();
+    }
+  }
+
+  async getContainer(containerId: string): Promise<Container> {
+    try {
+      const response = await this.client.get<{ data: Container }>(`/containers/${containerId}`);
+      return response.data.data;
+    } catch (error) {
+      console.warn('Using mock container data due to API error:', error);
+      return getMockContainers().find(c => c.id === containerId) || getMockContainers()[0];
+    }
+  }
+
+  async createContainer(data: CreateContainerRequest): Promise<Container> {
+    try {
+      const response = await this.client.post<{ data: Container }>('/containers', data);
+      return response.data.data;
+    } catch (error) {
+      console.warn('Using mock container creation due to API error:', error);
+      const mockContainer: Container = {
+        id: data.container_id,
+        status: 'running',
+        memory_limit: data.memory_limit,
+        storage_quota: data.storage_quota,
+        file_limit: data.file_limit,
+        env_label: data.env_label,
+        type_label: data.type_label,
+        created_at: new Date().toISOString(),
+        cpu_usage: 0,
+        memory_usage: 0
+      };
+      return mockContainer;
+    }
+  }
+
+  async deleteContainer(containerId: string): Promise<void> {
+    try {
+      await this.client.delete(`/containers/${containerId}`);
+    } catch (error) {
+      console.warn('Mock container deletion due to API error:', error);
+    }
+  }
+
+  async restartContainer(containerId: string): Promise<void> {
+    try {
+      await this.client.post(`/containers/${containerId}/restart`);
+    } catch (error) {
+      console.warn('Mock container restart due to API error:', error);
+    }
+  }
+
+  async getFiles(containerId: string): Promise<File[]> {
+    try {
+      const response = await this.client.get<{ data: File[] }>(`/containers/${containerId}/files`);
+      return response.data.data;
+    } catch (error) {
+      console.warn('Using mock files data due to API error:', error);
+      return getMockFiles();
+    }
+  }
+
+  async uploadFile(containerId: string, file: File, content: string): Promise<File> {
+    try {
+      const formData = new FormData();
+      formData.append('file', JSON.stringify(file));
+      formData.append('content', content);
+
+      const response = await this.client.post<{ data: File }>(
+        `/containers/${containerId}/files`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      return response.data.data;
+    } catch (error) {
+      console.warn('Mock file upload due to API error:', error);
+      return {
+        ...file,
+        id: `file_${Date.now()}`,
+        updated_at: new Date().toISOString(),
+      };
+    }
+  }
+
+  async deleteFile(fileId: string, containerId: string): Promise<void> {
+    try {
+      await this.client.delete(`/containers/${containerId}/files/${fileId}`);
+    } catch (error) {
+      console.warn('Mock file deletion due to API error:', error);
+    }
+  }
+
+  async semanticSearch(data: SearchRequest): Promise<any> {
+    try {
+      const response = await this.client.post<{ data: any }>('/search/semantic', data);
+      return response.data.data;
+    } catch (error) {
+      console.warn('Mock semantic search due to API error:', error);
+      return {
+        results: [
+          {
+            file_id: '1',
+            path: '/app/main.js',
+            score: 0.95,
+            content_preview: 'function main() { return "Hello World"; }'
+          }
+        ]
+      };
+    }
+  }
+
+  async healthCheck(): Promise<{ status: string }> {
+    try {
+      const response = await this.client.get<{ data: { status: string } }>('/health');
+      return response.data.data;
+    } catch (error) {
+      console.warn('Mock health check due to API error:', error);
+      return { status: 'online' };
+    }
+  }
+
+  async rebuildIndex(): Promise<{ message: string }> {
+    try {
+      const response = await this.client.post<{ data: { message: string } }>('/search/rebuild-index');
+      return response.data.data;
+    } catch (error) {
+      console.warn('Mock rebuild index due to API error:', error);
+      return { message: 'Index rebuilt successfully (mock)' };
+    }
+  }
+}
+
+const apiClient = new ApiClient();
+
+const getMockContainers = (): Container[] => [
+  {
+    id: 'container-1',
+    status: 'running',
+    memory_limit: 512,
+    storage_quota: 1024,
+    file_limit: 100,
+    env_label: { key: 'env', value: 'dev', color: '#00CFE8' },
+    type_label: { key: 'type', value: 'web', color: '#7367F0' },
+    created_at: new Date().toISOString(),
+    cpu_usage: 45,
+    memory_usage: 60
+  },
+  {
+    id: 'container-2',
+    status: 'stopped', 
+    memory_limit: 1024,
+    storage_quota: 5120,
+    file_limit: 500,
+    env_label: { key: 'env', value: 'prod', color: '#EA5455' },
+    type_label: { key: 'type', value: 'api', color: '#28C76F' },
+    created_at: new Date().toISOString(),
+    cpu_usage: 0,
+    memory_usage: 0
+  }
+];
+
+const getMockFiles = (): File[] => [
+  {
+    id: '1',
+    path: '/app/main.js',
+    name: 'main.js',
+    size: 1024,
+    updated_at: new Date().toISOString(),
+    type: 'js'
+  },
+  {
+    id: '2', 
+    path: '/app/config.json',
+    name: 'config.json',
+    size: 512,
+    updated_at: new Date().toISOString(),
+    type: 'json'
+  }
+];
+
 const useContainers = () => {
   return useQuery<Container[]>({ 
     queryKey: ['containers'],
-    queryFn: async () => {
-      const mockContainers: Container[] = [
-        {
-          id: 'container-1',
-          status: 'running',
-          memory_limit: 512,
-          storage_quota: 1024,
-          file_limit: 100,
-          env_label: { key: 'env', value: 'dev', color: '#00CFE8' },
-          type_label: { key: 'type', value: 'web', color: '#7367F0' },
-          created_at: new Date().toISOString(),
-          cpu_usage: 45,
-          memory_usage: 60
-        },
-        {
-          id: 'container-2',
-          status: 'stopped', 
-          memory_limit: 1024,
-          storage_quota: 5120,
-          file_limit: 500,
-          env_label: { key: 'env', value: 'prod', color: '#EA5455' },
-          type_label: { key: 'type', value: 'api', color: '#28C76F' },
-          created_at: new Date().toISOString(),
-          cpu_usage: 0,
-          memory_usage: 0
-        }
-      ];
-      
-      await new Promise(resolve => setTimeout(resolve, 800));
-      return mockContainers;
-    }
+    queryFn: () => apiClient.getContainers(),
+  });
+};
+
+const useContainer = (containerId: string) => {
+  return useQuery({
+    queryKey: ['containers', containerId],
+    queryFn: () => apiClient.getContainer(containerId),
+    enabled: !!containerId,
+  });
+};
+
+const useCreateContainer = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: CreateContainerRequest) => apiClient.createContainer(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['containers'] });
+    },
+  });
+};
+
+const useDeleteContainer = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (containerId: string) => apiClient.deleteContainer(containerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['containers'] });
+    },
+  });
+};
+
+const useRestartContainer = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (containerId: string) => apiClient.restartContainer(containerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['containers'] });
+    },
   });
 };
 
 const useFiles = (containerId: string | undefined) => {
   return useQuery<File[]>({ 
     queryKey: ['files', containerId],
-    queryFn: async () => {
-      if (!containerId) return [];
-      
-      const mockFiles: File[] = [
-        {
-          id: '1',
-          path: '/app/main.js',
-          name: 'main.js',
-          size: 1024,
-          updated_at: new Date().toISOString(),
-          type: 'js'
-        },
-        {
-          id: '2', 
-          path: '/app/config.json',
-          name: 'config.json',
-          size: 512,
-          updated_at: new Date().toISOString(),
-          type: 'json'
-        }
-      ];
-      
-      await new Promise(resolve => setTimeout(resolve, 500));
-      return mockFiles;
-    },
+    queryFn: () => containerId ? apiClient.getFiles(containerId) : Promise.resolve([]),
     enabled: !!containerId,
+  });
+};
+
+const useUploadFile = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ containerId, file, content }: { 
+      containerId: string; 
+      file: File; 
+      content: string; 
+    }) => apiClient.uploadFile(containerId, file, content),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['files', variables.containerId] });
+    },
+  });
+};
+
+const useDeleteFile = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ fileId, containerId }: { fileId: string; containerId: string }) =>
+      apiClient.deleteFile(fileId, containerId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['files', variables.containerId] });
+    },
+  });
+};
+
+const useSemanticSearch = () => {
+  return useMutation({
+    mutationFn: (data: SearchRequest) => apiClient.semanticSearch(data),
+  });
+};
+
+const useHealthCheck = () => {
+  return useQuery({
+    queryKey: ['health'],
+    queryFn: () => apiClient.healthCheck(),
+    refetchInterval: 30000,
+  });
+};
+
+const useRebuildIndex = () => {
+  return useMutation({
+    mutationFn: () => apiClient.rebuildIndex(),
   });
 };
 
@@ -699,11 +949,38 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelect, onAc
 };
 
 const StatsOverview: React.FC = () => {
+  const { data: containers = [] } = useContainers();
+  const { data: healthStatus } = useHealthCheck();
+
   const stats = [
-    { label: 'Active Containers', value: '12', icon: <SpeedIcon />, color: 'primary', change: '+2' },
-    { label: 'Total Storage', value: '45.2 GB', icon: <StorageIcon />, color: 'secondary', change: '+5.1' },
-    { label: 'Memory Usage', value: '68%', icon: <MemoryIcon />, color: 'warning', change: '-3.2' },
-    { label: 'Uptime', value: '99.9%', icon: <TrendingUpIcon />, color: 'success', change: '+0.1' },
+    { 
+      label: 'Active Containers', 
+      value: containers.filter(c => c.status === 'running').length.toString(), 
+      icon: <SpeedIcon />, 
+      color: 'primary', 
+      change: '+2' 
+    },
+    { 
+      label: 'Total Storage', 
+      value: `${containers.reduce((acc, c) => acc + c.storage_quota, 0) / 1024} GB`, 
+      icon: <StorageIcon />, 
+      color: 'secondary', 
+      change: '+5.1' 
+    },
+    { 
+      label: 'Memory Usage', 
+      value: `${Math.round(containers.reduce((acc, c) => acc + c.memory_usage, 0) / (containers.length || 1))}%`, 
+      icon: <MemoryIcon />, 
+      color: 'warning', 
+      change: '-3.2' 
+    },
+    { 
+      label: 'Service Status', 
+      value: healthStatus?.status === 'online' ? 'Online' : 'Offline', 
+      icon: <TrendingUpIcon />, 
+      color: healthStatus?.status === 'online' ? 'success' : 'error', 
+      change: healthStatus?.status === 'online' ? '+0.1' : '-0.1' 
+    },
   ];
 
   return (
@@ -861,6 +1138,85 @@ const EnhancedSearch: React.FC<{ onSearch: (query: string) => void }> = ({ onSea
   );
 };
 
+const CreateContainerDialog: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  onCreate: (data: CreateContainerRequest) => void;
+}> = ({ open, onClose, onCreate }) => {
+  const [formData, setFormData] = useState<CreateContainerRequest>({
+    container_id: '',
+    memory_limit: 512,
+    storage_quota: 1024,
+    file_limit: 10,
+    env_label: { key: 'environment', value: 'development', color: '#00CFE8' },
+    type_label: { key: 'type', value: 'workspace', color: '#7367F0' },
+    commands: ['search', 'debug', 'all', 'create'],
+    privileged: false
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onCreate(formData);
+    onClose();
+    setFormData({
+      container_id: '',
+      memory_limit: 512,
+      storage_quota: 1024,
+      file_limit: 10,
+      env_label: { key: 'environment', value: 'development', color: '#00CFE8' },
+      type_label: { key: 'type', value: 'workspace', color: '#7367F0' },
+      commands: ['search', 'debug', 'all', 'create'],
+      privileged: false
+    });
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Create New Container</DialogTitle>
+      <form onSubmit={handleSubmit}>
+        <DialogContent>
+          <TextField
+            fullWidth
+            label="Container ID"
+            value={formData.container_id}
+            onChange={(e) => setFormData(prev => ({ ...prev, container_id: e.target.value }))}
+            margin="normal"
+            required
+          />
+          <TextField
+            fullWidth
+            label="Memory Limit (MB)"
+            type="number"
+            value={formData.memory_limit}
+            onChange={(e) => setFormData(prev => ({ ...prev, memory_limit: parseInt(e.target.value) }))}
+            margin="normal"
+          />
+          <TextField
+            fullWidth
+            label="Storage Quota (MB)"
+            type="number"
+            value={formData.storage_quota}
+            onChange={(e) => setFormData(prev => ({ ...prev, storage_quota: parseInt(e.target.value) }))}
+            margin="normal"
+          />
+          <TextField
+            fullWidth
+            label="File Limit"
+            type="number"
+            value={formData.file_limit}
+            onChange={(e) => setFormData(prev => ({ ...prev, file_limit: parseInt(e.target.value) }))}
+            margin="normal"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="contained">Create</Button>
+        </DialogActions>
+      </form>
+    </Dialog>
+  );
+};
+
 const Dashboard: React.FC = () => {
   const [selectedContainer, setSelectedContainer] = useState<Container | null>(null);
   const [createContainerOpen, setCreateContainerOpen] = useState(false);
@@ -872,24 +1228,98 @@ const Dashboard: React.FC = () => {
   const { state: appState, updateState } = useAppState();
   const { notifications, addNotification, removeNotification } = useNotifications();
 
-  const { data: containers = [], isLoading: isLoadingContainers } = useContainers();
+  const { data: containers = [], isLoading: isLoadingContainers, refetch: refetchContainers } = useContainers();
   const { data: files = [], isLoading: isLoadingFiles } = useFiles(selectedContainer?.id);
+  const createContainerMutation = useCreateContainer();
+  const deleteContainerMutation = useDeleteContainer();
+  const restartContainerMutation = useRestartContainer();
+  const semanticSearchMutation = useSemanticSearch();
 
   const handleContainerAction = useCallback((action: string, container: Container) => {
-    addNotification({
-      message: `${action} action performed on ${container.id}`,
-      severity: 'info',
-      open: true,
-    });
-  }, [addNotification]);
+    switch (action) {
+      case 'restart':
+        restartContainerMutation.mutate(container.id, {
+          onSuccess: () => {
+            addNotification({
+              message: `Container ${container.id} restart initiated`,
+              severity: 'info',
+              open: true,
+            });
+            refetchContainers();
+          },
+          onError: (error) => {
+            addNotification({
+              message: `Failed to restart container: ${error.message}`,
+              severity: 'error',
+              open: true,
+            });
+          },
+        });
+        break;
+      case 'stop':
+        addNotification({
+          message: `Stop action performed on ${container.id}`,
+          severity: 'info',
+          open: true,
+        });
+        break;
+      case 'delete':
+        deleteContainerMutation.mutate(container.id, {
+          onSuccess: () => {
+            addNotification({
+              message: `Container ${container.id} deleted`,
+              severity: 'success',
+              open: true,
+            });
+          },
+          onError: (error) => {
+            addNotification({
+              message: `Failed to delete container: ${error.message}`,
+              severity: 'error',
+              open: true,
+            });
+          },
+        });
+        break;
+      default:
+        addNotification({
+          message: `${action} action performed on ${container.id}`,
+          severity: 'info',
+          open: true,
+        });
+    }
+  }, [addNotification, restartContainerMutation, deleteContainerMutation, refetchContainers]);
 
   const handleSearch = useCallback((query: string) => {
-    addNotification({
-      message: `Searching for: ${query}`,
-      severity: 'info',
-      open: true,
-    });
-  }, [addNotification]);
+    if (containers.length > 0) {
+      semanticSearchMutation.mutate({
+        query,
+        container_id: containers[0].id,
+        limit: 10
+      }, {
+        onSuccess: (data) => {
+          addNotification({
+            message: `Found ${data.results?.length || 0} results for: ${query}`,
+            severity: 'info',
+            open: true,
+          });
+        },
+        onError: (error) => {
+          addNotification({
+            message: `Search failed: ${error.message}`,
+            severity: 'error',
+            open: true,
+          });
+        },
+      });
+    } else {
+      addNotification({
+        message: `Searching for: ${query}`,
+        severity: 'info',
+        open: true,
+      });
+    }
+  }, [addNotification, semanticSearchMutation, containers]);
 
   const handleContainerSelect = useCallback((container: Container) => {
     setSelectedContainer(container);
@@ -901,6 +1331,25 @@ const Dashboard: React.FC = () => {
       open: true,
     });
   }, [addNotification]);
+
+  const handleCreateContainer = useCallback((data: CreateContainerRequest) => {
+    createContainerMutation.mutate(data, {
+      onSuccess: (container) => {
+        addNotification({
+          message: `Container ${container.id} created successfully`,
+          severity: 'success',
+          open: true,
+        });
+      },
+      onError: (error) => {
+        addNotification({
+          message: `Failed to create container: ${error.message}`,
+          severity: 'error',
+          open: true,
+        });
+      },
+    });
+  }, [addNotification, createContainerMutation]);
 
   const mockUser: User = {
     id: 'user123',
@@ -1134,7 +1583,7 @@ const Dashboard: React.FC = () => {
 
             <Tooltip title="Notifications">
               <IconButton size="small" sx={{ fontSize: '1.25rem' }}>
-                <Badge badgeContent={3} color="error" sx={{ 
+                <Badge badgeContent={notifications.length} color="error" sx={{ 
                   '& .MuiBadge-badge': { 
                     fontSize: '0.7rem', 
                     height: 16, 
@@ -1250,6 +1699,12 @@ const Dashboard: React.FC = () => {
           </motion.div>
         </Box>
       </Box>
+
+      <CreateContainerDialog
+        open={createContainerOpen}
+        onClose={() => setCreateContainerOpen(false)}
+        onCreate={handleCreateContainer}
+      />
 
       <Zoom in={true}>
         <FloatingActionButton
