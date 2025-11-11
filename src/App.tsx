@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useQuery, useMutation, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useQuery, useMutation, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { createTheme, ThemeProvider, alpha } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -761,7 +761,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelect, onAc
   return (
     <Box sx={{ width: '100%', maxWidth: 320, minWidth: 280 }}>
       <motion.div
-        variants={itemVariants}
         whileHover={{ y: -4, transition: { type: "spring", stiffness: 400 } }}
         whileTap={{ scale: 0.98 }}
       >
