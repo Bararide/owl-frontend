@@ -41,6 +41,7 @@ import {
   Security as SecurityIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
+import { SearchResult } from './api/client';
 
 interface TariffOption {
   id: string;
@@ -380,7 +381,7 @@ const useNotifications = () => {
 };
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: '',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -405,153 +406,169 @@ interface SearchRequest {
 }
 
 class ApiClient {
+  private token: string | null = null;
   private client = axios.create({
-    baseURL: '/api',
+    baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
     timeout: 30000,
     headers: {
       'Content-Type': 'application/json',
     },
   });
 
-  async getContainers(): Promise<Container[]> {
-    try {
-      const response = await this.client.get<{ data: Container[] }>('/containers');
-      return response.data.data;
-    } catch (error) {
-      console.warn('Using mock containers data due to API error:', error);
-      return getMockContainers();
+  // Установить токен
+  setToken(token: string) {
+    this.token = token;
+  }
+
+  // Очистить токен
+  clearToken() {
+    this.token = null;
+  }
+
+  // Получить заголовки с авторизацией
+  private getAuthHeaders() {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
     }
+    
+    return headers;
+  }
+
+  // Containers endpoints
+  async getContainers(): Promise<Container[]> {
+    const response = await this.client.get<{ data: Container[] }>('/containers', {
+      headers: this.getAuthHeaders()
+    });
+    return response.data.data;
   }
 
   async getContainer(containerId: string): Promise<Container> {
-    try {
-      const response = await this.client.get<{ data: Container }>(`/containers/${containerId}`);
-      return response.data.data;
-    } catch (error) {
-      console.warn('Using mock container data due to API error:', error);
-      return getMockContainers().find(c => c.id === containerId) || getMockContainers()[0];
-    }
+    const response = await this.client.get<{ data: Container }>(`/containers/${containerId}`, {
+      headers: this.getAuthHeaders()
+    });
+    return response.data.data;
   }
 
   async createContainer(data: CreateContainerRequest): Promise<Container> {
-    try {
-      const response = await this.client.post<{ data: Container }>('/containers', data);
-      return response.data.data;
-    } catch (error) {
-      console.warn('Using mock container creation due to API error:', error);
-      const mockContainer: Container = {
-        id: data.container_id,
-        status: 'running',
-        memory_limit: data.memory_limit,
-        storage_quota: data.storage_quota,
-        file_limit: data.file_limit,
-        env_label: data.env_label,
-        type_label: data.type_label,
-        created_at: new Date().toISOString(),
-        cpu_usage: 0,
-        memory_usage: 0
-      };
-      return mockContainer;
-    }
+    const response = await this.client.post<{ data: Container }>('/containers', data, {
+      headers: this.getAuthHeaders()
+    });
+    return response.data.data;
   }
 
   async deleteContainer(containerId: string): Promise<void> {
-    try {
-      await this.client.delete(`/containers/${containerId}`);
-    } catch (error) {
-      console.warn('Mock container deletion due to API error:', error);
-    }
+    await this.client.delete(`/containers/${containerId}`, {
+      headers: this.getAuthHeaders()
+    });
   }
 
   async restartContainer(containerId: string): Promise<void> {
-    try {
-      await this.client.post(`/containers/${containerId}/restart`);
-    } catch (error) {
-      console.warn('Mock container restart due to API error:', error);
-    }
+    await this.client.post(`/containers/${containerId}/restart`, {}, {
+      headers: this.getAuthHeaders()
+    });
   }
 
+  async stopContainer(containerId: string): Promise<void> {
+    await this.client.post(`/containers/${containerId}/stop`, {}, {
+      headers: this.getAuthHeaders()
+    });
+  }
+
+  async getContainerStats(containerId: string): Promise<any> {
+    const response = await this.client.get(`/containers/${containerId}/stats`, {
+      headers: this.getAuthHeaders()
+    });
+    return response.data.data;
+  }
+
+  // Files endpoints
   async getFiles(containerId: string): Promise<File[]> {
-    try {
-      const response = await this.client.get<{ data: File[] }>(`/containers/${containerId}/files`);
-      return response.data.data;
-    } catch (error) {
-      console.warn('Using mock files data due to API error:', error);
-      return getMockFiles();
-    }
+    const response = await this.client.get<{ data: File[] }>(`/containers/${containerId}/files`, {
+      headers: this.getAuthHeaders()
+    });
+    return response.data.data;
+  }
+
+  async getFile(fileId: string, containerId: string): Promise<File> {
+    const response = await this.client.get<{ data: File }>(
+      `/containers/${containerId}/files/${fileId}`,
+      { headers: this.getAuthHeaders() }
+    );
+    return response.data.data;
   }
 
   async uploadFile(containerId: string, file: File, content: string): Promise<File> {
-    try {
-      const formData = new FormData();
-      formData.append('file', JSON.stringify(file));
-      formData.append('content', content);
+    const formData = new FormData();
+    formData.append('file', JSON.stringify(file));
+    formData.append('content', content);
 
-      const response = await this.client.post<{ data: File }>(
-        `/containers/${containerId}/files`,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
-      );
-      return response.data.data;
-    } catch (error) {
-      console.warn('Mock file upload due to API error:', error);
-      return {
-        ...file,
-        id: `file_${Date.now()}`,
-        updated_at: new Date().toISOString(),
-      };
-    }
+    const response = await this.client.post<{ data: File }>(
+      `/containers/${containerId}/files`,
+      formData,
+      {
+        headers: {
+          ...this.getAuthHeaders(),
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return response.data.data;
   }
 
   async deleteFile(fileId: string, containerId: string): Promise<void> {
-    try {
-      await this.client.delete(`/containers/${containerId}/files/${fileId}`);
-    } catch (error) {
-      console.warn('Mock file deletion due to API error:', error);
-    }
+    await this.client.delete(`/containers/${containerId}/files/${fileId}`, {
+      headers: this.getAuthHeaders()
+    });
   }
 
-  async semanticSearch(data: SearchRequest): Promise<any> {
-    try {
-      const response = await this.client.post<{ data: any }>('/search/semantic', data);
-      return response.data.data;
-    } catch (error) {
-      console.warn('Mock semantic search due to API error:', error);
-      return {
-        results: [
-          {
-            file_id: '1',
-            path: '/app/main.js',
-            score: 0.95,
-            content_preview: 'function main() { return "Hello World"; }'
-          }
-        ]
-      };
-    }
+  async downloadFile(fileId: string, containerId: string): Promise<Blob> {
+    const response = await this.client.get(`/containers/${containerId}/files/${fileId}/download`, {
+      responseType: 'blob',
+      headers: this.getAuthHeaders()
+    });
+    return response.data;
   }
 
+  async readFile(fileId: string, containerId: string): Promise<{ content: string }> {
+    const response = await this.client.get<{ data: { content: string } }>(
+      `/containers/${containerId}/files/${fileId}/content`,
+      { headers: this.getAuthHeaders() }
+    );
+    return response.data.data;
+  }
+
+  // Search endpoints
+  async semanticSearch(data: SearchRequest): Promise<SearchResult> {
+    const response = await this.client.post<{ data: SearchResult }>('/search/semantic', data, {
+      headers: this.getAuthHeaders()
+    });
+    return response.data.data;
+  }
+
+  // System endpoints
   async healthCheck(): Promise<{ status: string }> {
-    try {
-      const response = await this.client.get<{ data: { status: string } }>('/health');
-      return response.data.data;
-    } catch (error) {
-      console.warn('Mock health check due to API error:', error);
-      return { status: 'online' };
-    }
+    const response = await this.client.get<{ data: { status: string } }>('/health', {
+      headers: this.getAuthHeaders()
+    });
+    return response.data.data;
   }
 
   async rebuildIndex(): Promise<{ message: string }> {
-    try {
-      const response = await this.client.post<{ data: { message: string } }>('/search/rebuild-index');
-      return response.data.data;
-    } catch (error) {
-      console.warn('Mock rebuild index due to API error:', error);
-      return { message: 'Index rebuilt successfully (mock)' };
-    }
+    const response = await this.client.post<{ data: { message: string } }>('/search/rebuild-index', {}, {
+      headers: this.getAuthHeaders()
+    });
+    return response.data.data;
+  }
+
+  async getServiceStatus(): Promise<any> {
+    const response = await this.client.get('/system/status', {
+      headers: this.getAuthHeaders()
+    });
+    return response.data.data;
   }
 }
 
@@ -1753,6 +1770,23 @@ const App: React.FC = () => {
       },
     },
   });
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    
+    if (token) {
+      apiClient.setToken(token);
+      localStorage.setItem('auth_token', token);
+      
+      window.history.replaceState({}, '', window.location.pathname);
+    } else {
+      const storedToken = localStorage.getItem('auth_token');
+      if (storedToken) {
+        apiClient.setToken(storedToken);
+      }
+    }
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
