@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient, Container, File, CreateContainerRequest, SearchRequest } from '../api/client';
+import { apiClient, File, CreateContainerRequest, SearchRequest } from '../api/client';
 
 export const useContainers = () => {
   return useQuery({

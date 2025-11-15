@@ -1,26 +1,24 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import { useQuery, useMutation, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
 import { createTheme, ThemeProvider, alpha } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import {
   Box, Typography, TextField, Button,
-  AppBar, Toolbar, IconButton, Drawer, List, ListItem,
+  AppBar, Toolbar, IconButton, Drawer,
   ListItemIcon, ListItemText, Chip, Avatar, Divider,
   Snackbar, Alert, Dialog, DialogTitle, DialogContent,
-  DialogActions, CircularProgress, Backdrop, Tooltip,
-  Tabs, Tab, Card, CardContent, LinearProgress,
+  DialogActions, CircularProgress, Tooltip,
+  Card, CardContent, LinearProgress,
   AlertColor, ListItemButton, Fab, Zoom, Fade,
   InputAdornment, Menu,
-  MenuItem, Badge, Skeleton, Switch, FormControlLabel
+  MenuItem, Badge, Skeleton
 } from '@mui/material';
 import { 
   Add as AddIcon, 
   CloudUpload as CloudUploadIcon,
   Dashboard as DashboardIcon,
   Search as SearchIcon,
-  Menu as MenuIcon,
   Settings as SettingsIcon,
   Storage as StorageIcon,
   Memory as MemoryIcon,
@@ -34,53 +32,13 @@ import {
   ViewModule as ViewModuleIcon,
   ViewList as ViewListIcon,
   Notifications as NotificationsIcon,
-  Person as PersonIcon,
-  Logout as LogoutIcon,
   TrendingUp as TrendingUpIcon,
   Speed as SpeedIcon,
   Security as SecurityIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { SearchResult } from './api/client';
 
-interface TariffOption {
-  id: string;
-  name: string;
-  memoryLimit: number;
-  storageQuota: number;
-  fileLimit: number;
-  color: string;
-  popular?: boolean;
-}
-
-interface LabelOption {
-  key: string;
-  value: string;
-  color: string;
-}
-
-interface Container {
-  id: string;
-  status: 'running' | 'stopped' | 'error' | 'starting';
-  memory_limit: number;
-  storage_quota: number;
-  file_limit: number;
-  env_label: LabelOption;
-  type_label: LabelOption;
-  created_at: string;
-  cpu_usage: number;
-  memory_usage: number;
-}
-
-interface File {
-  id?: string;
-  path: string;
-  name?: string;
-  size: number;
-  updated_at: string;
-  content?: string;
-  type: string;
-}
+import { apiClient, Container, CreateContainerRequest, SearchRequest, File as ApiFile } from './api/client';
 
 interface User {
   id: string;
@@ -274,7 +232,7 @@ const FloatingActionButton = styled(Fab)(({ theme }) => ({
 const StatusIndicator = styled(Box, {
   shouldForwardProp: (prop) => prop !== 'status',
 })<{ status: Container['status'] }>(({ theme, status }) => {
-  const colors = {
+  const colors: Record<Container['status'], string> = {
     running: theme.palette.success.main,
     stopped: theme.palette.error.main,
     error: theme.palette.error.dark,
@@ -295,28 +253,6 @@ const AnimatedChip = styled(motion(Chip))(({ theme }) => ({
   transition: 'all 0.2s ease',
   cursor: 'pointer',
 }));
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      type: "spring",
-      stiffness: 100
-    }
-  }
-};
-
-const staggerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1
-    }
-  }
-};
 
 const pageVariants = {
   initial: { opacity: 0, y: 20, scale: 0.98 },
@@ -380,258 +316,10 @@ const useNotifications = () => {
   return { notifications, addNotification, removeNotification };
 };
 
-const api = axios.create({
-  baseURL: '',
-  timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-interface CreateContainerRequest {
-  container_id: string;
-  memory_limit: number;
-  storage_quota: number;
-  file_limit: number;
-  env_label: LabelOption;
-  type_label: LabelOption;
-  commands: string[];
-  privileged: boolean;
-}
-
-interface SearchRequest {
-  query: string;
-  container_id: string;
-  limit?: number;
-}
-
-class ApiClient {
-  private token: string | null = null;
-  private client = axios.create({
-    baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
-    timeout: 30000,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  // Установить токен
-  setToken(token: string) {
-    this.token = token;
-  }
-
-  // Очистить токен
-  clearToken() {
-    this.token = null;
-  }
-
-  // Получить заголовки с авторизацией
-  private getAuthHeaders() {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
-    
-    return headers;
-  }
-
-  // Containers endpoints
-  async getContainers(): Promise<Container[]> {
-    const response = await this.client.get<{ data: Container[] }>('/containers', {
-      headers: this.getAuthHeaders()
-    });
-    return response.data.data;
-  }
-
-  async getContainer(containerId: string): Promise<Container> {
-    const response = await this.client.get<{ data: Container }>(`/containers/${containerId}`, {
-      headers: this.getAuthHeaders()
-    });
-    return response.data.data;
-  }
-
-  async createContainer(data: CreateContainerRequest): Promise<Container> {
-    const response = await this.client.post<{ data: Container }>('/containers', data, {
-      headers: this.getAuthHeaders()
-    });
-    return response.data.data;
-  }
-
-  async deleteContainer(containerId: string): Promise<void> {
-    await this.client.delete(`/containers/${containerId}`, {
-      headers: this.getAuthHeaders()
-    });
-  }
-
-  async restartContainer(containerId: string): Promise<void> {
-    await this.client.post(`/containers/${containerId}/restart`, {}, {
-      headers: this.getAuthHeaders()
-    });
-  }
-
-  async stopContainer(containerId: string): Promise<void> {
-    await this.client.post(`/containers/${containerId}/stop`, {}, {
-      headers: this.getAuthHeaders()
-    });
-  }
-
-  async getContainerStats(containerId: string): Promise<any> {
-    const response = await this.client.get(`/containers/${containerId}/stats`, {
-      headers: this.getAuthHeaders()
-    });
-    return response.data.data;
-  }
-
-  // Files endpoints
-  async getFiles(containerId: string): Promise<File[]> {
-    const response = await this.client.get<{ data: File[] }>(`/containers/${containerId}/files`, {
-      headers: this.getAuthHeaders()
-    });
-    return response.data.data;
-  }
-
-  async getFile(fileId: string, containerId: string): Promise<File> {
-    const response = await this.client.get<{ data: File }>(
-      `/containers/${containerId}/files/${fileId}`,
-      { headers: this.getAuthHeaders() }
-    );
-    return response.data.data;
-  }
-
-  async uploadFile(containerId: string, file: File, content: string): Promise<File> {
-    const formData = new FormData();
-    formData.append('file', JSON.stringify(file));
-    formData.append('content', content);
-
-    const response = await this.client.post<{ data: File }>(
-      `/containers/${containerId}/files`,
-      formData,
-      {
-        headers: {
-          ...this.getAuthHeaders(),
-          'Content-Type': 'multipart/form-data',
-        },
-      }
-    );
-    return response.data.data;
-  }
-
-  async deleteFile(fileId: string, containerId: string): Promise<void> {
-    await this.client.delete(`/containers/${containerId}/files/${fileId}`, {
-      headers: this.getAuthHeaders()
-    });
-  }
-
-  async downloadFile(fileId: string, containerId: string): Promise<Blob> {
-    const response = await this.client.get(`/containers/${containerId}/files/${fileId}/download`, {
-      responseType: 'blob',
-      headers: this.getAuthHeaders()
-    });
-    return response.data;
-  }
-
-  async readFile(fileId: string, containerId: string): Promise<{ content: string }> {
-    const response = await this.client.get<{ data: { content: string } }>(
-      `/containers/${containerId}/files/${fileId}/content`,
-      { headers: this.getAuthHeaders() }
-    );
-    return response.data.data;
-  }
-
-  // Search endpoints
-  async semanticSearch(data: SearchRequest): Promise<SearchResult> {
-    const response = await this.client.post<{ data: SearchResult }>('/search/semantic', data, {
-      headers: this.getAuthHeaders()
-    });
-    return response.data.data;
-  }
-
-  // System endpoints
-  async healthCheck(): Promise<{ status: string }> {
-    const response = await this.client.get<{ data: { status: string } }>('/health', {
-      headers: this.getAuthHeaders()
-    });
-    return response.data.data;
-  }
-
-  async rebuildIndex(): Promise<{ message: string }> {
-    const response = await this.client.post<{ data: { message: string } }>('/search/rebuild-index', {}, {
-      headers: this.getAuthHeaders()
-    });
-    return response.data.data;
-  }
-
-  async getServiceStatus(): Promise<any> {
-    const response = await this.client.get('/system/status', {
-      headers: this.getAuthHeaders()
-    });
-    return response.data.data;
-  }
-}
-
-const apiClient = new ApiClient();
-
-const getMockContainers = (): Container[] => [
-  {
-    id: 'container-1',
-    status: 'running',
-    memory_limit: 512,
-    storage_quota: 1024,
-    file_limit: 100,
-    env_label: { key: 'env', value: 'dev', color: '#00CFE8' },
-    type_label: { key: 'type', value: 'web', color: '#7367F0' },
-    created_at: new Date().toISOString(),
-    cpu_usage: 45,
-    memory_usage: 60
-  },
-  {
-    id: 'container-2',
-    status: 'stopped', 
-    memory_limit: 1024,
-    storage_quota: 5120,
-    file_limit: 500,
-    env_label: { key: 'env', value: 'prod', color: '#EA5455' },
-    type_label: { key: 'type', value: 'api', color: '#28C76F' },
-    created_at: new Date().toISOString(),
-    cpu_usage: 0,
-    memory_usage: 0
-  }
-];
-
-const getMockFiles = (): File[] => [
-  {
-    id: '1',
-    path: '/app/main.js',
-    name: 'main.js',
-    size: 1024,
-    updated_at: new Date().toISOString(),
-    type: 'js'
-  },
-  {
-    id: '2', 
-    path: '/app/config.json',
-    name: 'config.json',
-    size: 512,
-    updated_at: new Date().toISOString(),
-    type: 'json'
-  }
-];
-
 const useContainers = () => {
-  return useQuery<Container[]>({ 
+  return useQuery({ 
     queryKey: ['containers'],
     queryFn: () => apiClient.getContainers(),
-  });
-};
-
-const useContainer = (containerId: string) => {
-  return useQuery({
-    queryKey: ['containers', containerId],
-    queryFn: () => apiClient.getContainer(containerId),
-    enabled: !!containerId,
   });
 };
 
@@ -669,37 +357,10 @@ const useRestartContainer = () => {
 };
 
 const useFiles = (containerId: string | undefined) => {
-  return useQuery<File[]>({ 
+  return useQuery({ 
     queryKey: ['files', containerId],
     queryFn: () => containerId ? apiClient.getFiles(containerId) : Promise.resolve([]),
     enabled: !!containerId,
-  });
-};
-
-const useUploadFile = () => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: ({ containerId, file, content }: { 
-      containerId: string; 
-      file: File; 
-      content: string; 
-    }) => apiClient.uploadFile(containerId, file, content),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['files', variables.containerId] });
-    },
-  });
-};
-
-const useDeleteFile = () => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: ({ fileId, containerId }: { fileId: string; containerId: string }) =>
-      apiClient.deleteFile(fileId, containerId),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['files', variables.containerId] });
-    },
   });
 };
 
@@ -714,12 +375,6 @@ const useHealthCheck = () => {
     queryKey: ['health'],
     queryFn: () => apiClient.healthCheck(),
     refetchInterval: 30000,
-  });
-};
-
-const useRebuildIndex = () => {
-  return useMutation({
-    mutationFn: () => apiClient.rebuildIndex(),
   });
 };
 
@@ -841,7 +496,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelect, onAc
                 size="small"
                 variant="filled"
                 sx={{ 
-                  backgroundColor: container.env_label.color,
+                  backgroundColor: '#00CFE8',
                   color: 'white',
                   fontWeight: 600,
                   fontSize: '0.7rem',
@@ -971,21 +626,21 @@ const StatsOverview: React.FC = () => {
   const stats = [
     { 
       label: 'Active Containers', 
-      value: containers.filter(c => c.status === 'running').length.toString(), 
+      value: containers.filter((c: Container) => c.status === 'running').length.toString(), 
       icon: <SpeedIcon />, 
       color: 'primary', 
       change: '+2' 
     },
     { 
       label: 'Total Storage', 
-      value: `${containers.reduce((acc, c) => acc + c.storage_quota, 0) / 1024} GB`, 
+      value: `${containers.reduce((acc: number, c: Container) => acc + c.storage_quota, 0) / 1024} GB`, 
       icon: <StorageIcon />, 
       color: 'secondary', 
       change: '+5.1' 
     },
     { 
       label: 'Memory Usage', 
-      value: `${Math.round(containers.reduce((acc, c) => acc + c.memory_usage, 0) / (containers.length || 1))}%`, 
+      value: `${Math.round(containers.reduce((acc: number, c: Container) => acc + c.memory_usage, 0) / (containers.length || 1))}%`, 
       icon: <MemoryIcon />, 
       color: 'warning', 
       change: '-3.2' 
@@ -1164,8 +819,8 @@ const CreateContainerDialog: React.FC<{
     memory_limit: 512,
     storage_quota: 1024,
     file_limit: 10,
-    env_label: { key: 'environment', value: 'development', color: '#00CFE8' },
-    type_label: { key: 'type', value: 'workspace', color: '#7367F0' },
+    env_label: { key: 'environment', value: 'development' },
+    type_label: { key: 'type', value: 'workspace' },
     commands: ['search', 'debug', 'all', 'create'],
     privileged: false
   });
@@ -1179,8 +834,8 @@ const CreateContainerDialog: React.FC<{
       memory_limit: 512,
       storage_quota: 1024,
       file_limit: 10,
-      env_label: { key: 'environment', value: 'development', color: '#00CFE8' },
-      type_label: { key: 'type', value: 'workspace', color: '#7367F0' },
+      env_label: { key: 'environment', value: 'development' },
+      type_label: { key: 'type', value: 'workspace' },
       commands: ['search', 'debug', 'all', 'create'],
       privileged: false
     });
@@ -1236,16 +891,13 @@ const CreateContainerDialog: React.FC<{
 const Dashboard: React.FC = () => {
   const [selectedContainer, setSelectedContainer] = useState<Container | null>(null);
   const [createContainerOpen, setCreateContainerOpen] = useState(false);
-  const [createFileOpen, setCreateFileOpen] = useState(false);
   const [currentTab, setCurrentTab] = useState(0);
-  const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
   const [activeMenuItem, setActiveMenuItem] = useState('dashboard');
 
   const { state: appState, updateState } = useAppState();
   const { notifications, addNotification, removeNotification } = useNotifications();
 
   const { data: containers = [], isLoading: isLoadingContainers, refetch: refetchContainers } = useContainers();
-  const { data: files = [], isLoading: isLoadingFiles } = useFiles(selectedContainer?.id);
   const createContainerMutation = useCreateContainer();
   const deleteContainerMutation = useDeleteContainer();
   const restartContainerMutation = useRestartContainer();
@@ -1394,7 +1046,13 @@ const Dashboard: React.FC = () => {
       icon: <CloudUploadIcon />, 
       label: 'Upload Files', 
       color: 'secondary',
-      onClick: () => setCreateFileOpen(true)
+      onClick: () => {
+        addNotification({
+          message: 'Upload files functionality',
+          severity: 'info',
+          open: true,
+        });
+      }
     },
     { 
       icon: <SpeedIcon />, 
@@ -1466,7 +1124,7 @@ const Dashboard: React.FC = () => {
 
           <Divider sx={{ mb: 2.5, opacity: 0.2 }} />
 
-          <List sx={{ flexGrow: 1 }}>
+          <Box sx={{ flexGrow: 1 }}>
             {menuItems.map((item) => (
               <ListItemButton
                 key={item.id}
@@ -1502,7 +1160,7 @@ const Dashboard: React.FC = () => {
                 />
               </ListItemButton>
             ))}
-          </List>
+          </Box>
 
           <Box 
             sx={{ 
@@ -1514,7 +1172,6 @@ const Dashboard: React.FC = () => {
               transition: 'all 0.2s ease',
               '&:hover': { backgroundColor: 'rgba(255,255,255,0.04)' }
             }}
-            onClick={(e) => setUserMenuAnchor(e.currentTarget)}
           >
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <Avatar 
@@ -1692,22 +1349,16 @@ const Dashboard: React.FC = () => {
                   {isLoadingContainers ? (
                     <LoadingSkeleton type="card" />
                   ) : (
-                    <motion.div
-                      variants={staggerVariants}
-                      initial="hidden"
-                      animate="visible"
-                    >
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                        {containers.slice(0, 6).map((container: Container) => (
-                          <ContainerCard
-                            key={container.id}
-                            container={container}
-                            onSelect={handleContainerSelect}
-                            onAction={handleContainerAction}
-                          />
-                        ))}
-                      </Box>
-                    </motion.div>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                      {containers.slice(0, 6).map((container: Container) => (
+                        <ContainerCard
+                          key={container.id}
+                          container={container}
+                          onSelect={handleContainerSelect}
+                          onAction={handleContainerAction}
+                        />
+                      ))}
+                    </Box>
                   )}
                 </Box>
               </Box>
@@ -1771,22 +1422,51 @@ const App: React.FC = () => {
     },
   });
 
+  const [isTokenProcessed, setIsTokenProcessed] = useState(false);
+
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     
     if (token) {
+      console.log('Token found in URL:', token);
       apiClient.setToken(token);
       localStorage.setItem('auth_token', token);
       
-      window.history.replaceState({}, '', window.location.pathname);
+      setTimeout(() => {
+        window.history.replaceState({}, '', window.location.pathname);
+        console.log('Token removed from URL');
+        setIsTokenProcessed(true);
+      }, 100);
+
+      apiClient.getContainers()
     } else {
       const storedToken = localStorage.getItem('auth_token');
       if (storedToken) {
+        console.log('Token found in localStorage:', storedToken);
         apiClient.setToken(storedToken);
+      } else {
+        console.log('No token found');
       }
+      setIsTokenProcessed(true);
     }
   }, []);
+
+  if (!isTokenProcessed) {
+    return (
+      <Box 
+        sx={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          height: '100vh',
+          background: 'linear-gradient(135deg, #0F1424 0%, #13182B 100%)'
+        }}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <QueryClientProvider client={queryClient}>
