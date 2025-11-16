@@ -802,11 +802,22 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
         setFileContentDialog({ open: true, file });
         break;
       case 'delete':
-        addNotification({
-          message: `Deleting file: ${file.name || file.path}`,
-          severity: 'warning',
-          open: true,
-        });
+        apiClient.deleteFile(file.container_id, file.name)
+          .then(() => {
+            addNotification({
+              message: `File ${file.name || file.path} deleted successfully`,
+              severity: 'success',
+              open: true,
+            });
+            refetchFiles();
+          })
+          .catch((error) => {
+            addNotification({
+              message: `Failed to delete file: ${error.message}`,
+              severity: 'error',
+              open: true,
+            });
+          });
         break;
       default:
         addNotification({
@@ -815,7 +826,7 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
           open: true,
         });
     }
-  }, [addNotification]);
+  }, [addNotification, refetchFiles]);
 
   const handleViewContent = useCallback((file: ApiFile) => {
     setFileContentDialog({ 
