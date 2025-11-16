@@ -446,6 +446,14 @@ const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction }) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const truncatePath = (path: string, maxLength = 15) => {
+    if (path.length <= maxLength) return path;
+    
+    const start = path.substring(0, 8);
+    const end = path.substring(path.length - 7);
+    return `${start}...${end}`;
+  };
+
   return (
     <Box sx={{ width: '100%', maxWidth: 280, minWidth: 240 }}>
       <motion.div
@@ -492,9 +500,17 @@ const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction }) => {
             </Box>
 
             <Box sx={{ mb: 2 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                Path: {file.path}
-              </Typography>
+            <Typography 
+              variant="caption" 
+              color="text.secondary" 
+              sx={{ 
+                display: 'block', 
+                mb: 0.5,
+                fontFamily: 'monospace'
+              }}
+            >
+              Path: {truncatePath(file.path, 15)}
+            </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                 Size: {formatFileSize(file.size)}
               </Typography>
