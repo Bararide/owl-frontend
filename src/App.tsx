@@ -780,11 +780,9 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
     file: null,
   });
 
-  // Добавляем состояние для поиска
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
-  // Фильтруем файлы по поисковому запросу
   const filteredFiles = files.filter(file => 
     file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     file.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -870,27 +868,14 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5">
-          Files in Container
-        </Typography>
-        <Button 
-          startIcon={<RefreshIcon />}
-          onClick={() => refetchFiles()}
-          variant="outlined"
-          size="medium"
-        >
-          Refresh
-        </Button>
-      </Box>
-
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
       <Box 
         component="form" 
         onSubmit={(e) => e.preventDefault()}
         sx={{ 
           position: 'relative',
-          maxWidth: 400,
-          mb: 3
+          maxWidth: 600,
+          mb: 2
         }}
       >
         <TextField
@@ -970,8 +955,16 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
           </Box>
         </Fade>
       </Box>
+        <Button 
+          startIcon={<RefreshIcon />}
+          onClick={() => refetchFiles()}
+          variant="outlined"
+          size="medium"
+        >
+          Refresh
+        </Button>
+      </Box>
 
-      {/* Показываем количество найденных файлов */}
       {searchQuery && (
         <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="body2" color="text.secondary">
@@ -1013,7 +1006,12 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
           )}
         </Box>
       ) : (
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+        <Box sx={{ 
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+          gap: 3,
+          width: '100%'
+        }}>
           {filteredFiles.map((file: ApiFile) => (
             <FileCard
               key={file.name}
