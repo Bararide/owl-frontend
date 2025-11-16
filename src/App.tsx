@@ -34,7 +34,8 @@ import {
   Notifications as NotificationsIcon,
   TrendingUp as TrendingUpIcon,
   Speed as SpeedIcon,
-  Security as SecurityIcon
+  Security as SecurityIcon,
+  Delete
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
@@ -851,6 +852,10 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelect, onAc
         <MenuItem onClick={() => handleAction('stop')}>
           <ListItemIcon><CloseIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Stop</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => handleAction('delete')}>
+          <ListItemIcon><Delete fontSize="small" /></ListItemIcon>
+          <ListItemText>Delete</ListItemText>
         </MenuItem>
         <Divider />
         <MenuItem onClick={() => handleAction('logs')}>
