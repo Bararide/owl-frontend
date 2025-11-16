@@ -43,6 +43,7 @@ import {
 import { styled } from '@mui/material/styles';
 
 import { apiClient, Container, CreateContainerRequest, SearchRequest, File as ApiFile } from './api/client';
+import { useHealthCheck, useCreateContainer, useFileContent, useDeleteContainer, useRebuildIndex, useRestartContainer, useFiles, useUploadFile, useDeleteFile, useSemanticSearch, useContainers, useContainer } from './hooks/useApi';
 
 interface User {
   id: string;
@@ -320,76 +321,6 @@ const useNotifications = () => {
   return { notifications, addNotification, removeNotification };
 };
 
-const useContainers = () => {
-  return useQuery({ 
-    queryKey: ['containers'],
-    queryFn: () => apiClient.getContainers(),
-  });
-};
-
-const useCreateContainer = () => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: (data: CreateContainerRequest) => apiClient.createContainer(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['containers'] });
-    },
-  });
-};
-
-const useDeleteContainer = () => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: (containerId: string) => apiClient.deleteContainer(containerId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['containers'] });
-    },
-  });
-};
-
-const useRestartContainer = () => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: (containerId: string) => apiClient.restartContainer(containerId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['containers'] });
-    },
-  });
-};
-
-const useFiles = (containerId: string | undefined) => {
-  return useQuery({ 
-    queryKey: ['files', containerId],
-    queryFn: () => containerId ? apiClient.getFiles(containerId) : Promise.resolve([]),
-    enabled: !!containerId,
-  });
-};
-
-const useFileContent = (containerId: string, fileId: string) => {
-  return useQuery({ 
-    queryKey: ['fileContent', containerId, fileId],
-    queryFn: () => apiClient.getFileContent(containerId, fileId),
-    enabled: !!containerId && !!fileId,
-  });
-};
-
-const useSemanticSearch = () => {
-  return useMutation({
-    mutationFn: (data: SearchRequest) => apiClient.semanticSearch(data),
-  });
-};
-
-const useHealthCheck = () => {
-  return useQuery({
-    queryKey: ['health'],
-    queryFn: () => apiClient.healthCheck(),
-    refetchInterval: 30000,
-  });
-};
-
 const LoadingSkeleton: React.FC<{ type?: 'card' | 'list' | 'table' }> = ({ type = 'card' }) => {
   if (type === 'card') {
     return (
@@ -432,10 +363,26 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
   file, 
   containerId 
 }) => {
+  console.log('🔍 FileContentDialog props:', { 
+    open, 
+    file: file?.name, 
+    containerId,
+    fileExists: !!file,
+    containerIdExists: !!containerId
+  });
+
   const { data: fileContent, isLoading, error } = useFileContent(
     containerId, 
-    file?.id || ''
+    file?.name || ''
   );
+
+  console.log('📄 FileContent hook state:', { 
+    fileContent, 
+    isLoading, 
+    error,
+    queryEnabled: !!containerId && !!file?.name
+  });
+
   const [copied, setCopied] = useState(false);
 
   const handleCopyContent = async () => {
@@ -851,7 +798,11 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
   }, [addNotification]);
 
   const handleViewContent = useCallback((file: ApiFile) => {
-    setFileContentDialog({ open: true, file });
+    console.log('📂 FilesView: Setting file for dialog', file);
+    setFileContentDialog({ 
+      open: true, 
+      file: file
+    });
   }, []);
 
   const handleFileSelect = useCallback((file: ApiFile) => {
@@ -865,6 +816,7 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
   const handleCloseFileContent = useCallback(() => {
     setFileContentDialog({ open: false, file: null });
   }, []);
+
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 B';
@@ -920,7 +872,7 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
           {files.map((file: ApiFile) => (
             <FileCard
-              key={file.id}
+              key={file.name}
               file={file}
               onSelect={handleFileSelect}
               onAction={handleFileAction}

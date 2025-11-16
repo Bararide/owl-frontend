@@ -25,7 +25,6 @@ export interface Container {
 }
 
 export interface File {
-  id: string;
   path: string;
   name: string;
   size: number;
@@ -167,9 +166,13 @@ class ApiClient {
     return response.data.data;
   }
 
-  getFileContent(containerId: string, fileId: string): Promise<FileContent> {
-    return this.client.get(`/containers/${containerId}/files/${fileId}/content`)
-      .then(response => response.data);
+  async getFileContent(containerId: string, fileId: string): Promise<FileContent> {
+    const response = await this.client.get<{ data: FileContent }>(
+      `/containers/${containerId}/files/${fileId}/content`,
+      { headers: this.getAuthHeaders() }
+    );
+    console.log("UP TO SERVER")
+    return response.data.data;
   }
 
   async uploadFile(containerId: string, file: File, content: string): Promise<File> {
