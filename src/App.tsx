@@ -363,25 +363,11 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
   file, 
   containerId 
 }) => {
-  console.log('🔍 FileContentDialog props:', { 
-    open, 
-    file: file?.name, 
-    containerId,
-    fileExists: !!file,
-    containerIdExists: !!containerId
-  });
 
   const { data: fileContent, isLoading, error } = useFileContent(
     containerId, 
     file?.name || ''
   );
-
-  console.log('📄 FileContent hook state:', { 
-    fileContent, 
-    isLoading, 
-    error,
-    queryEnabled: !!containerId && !!file?.name
-  });
 
   const [copied, setCopied] = useState(false);
 
@@ -798,7 +784,6 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
   }, [addNotification]);
 
   const handleViewContent = useCallback((file: ApiFile) => {
-    console.log('📂 FilesView: Setting file for dialog', file);
     setFileContentDialog({ 
       open: true, 
       file: file

@@ -28,21 +28,16 @@ export const useCreateContainer = () => {
 };
 
 export const useFileContent = (containerId: string, fileId: string) => {
-  console.log('🎯 useFileContent called:', { containerId, fileId, enabled: !!containerId && !!fileId });
-  
   return useQuery({ 
     queryKey: ['fileContent', containerId, fileId],
     queryFn: async () => {
-      console.log('🚀 useFileContent queryFn executing:', { containerId, fileId });
       try {
         if (!containerId || !fileId) {
           throw new Error('containerId and fileId are required');
         }
         const result = await apiClient.getFileContent(containerId, fileId);
-        console.log('✅ useFileContent result:', result);
         return result;
       } catch (error) {
-        console.error('❌ useFileContent error:', error);
         throw error;
       }
     },
