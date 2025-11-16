@@ -68,6 +68,13 @@ export interface SearchResult {
   }>;
 }
 
+export interface FileContent {
+  content: string;
+  encoding: string;
+  size: number;
+  mime_type: string;
+}
+
 class ApiClient {
   private token: string | null = null;
   private client = axios.create({
@@ -158,6 +165,11 @@ class ApiClient {
       { headers: this.getAuthHeaders() }
     );
     return response.data.data;
+  }
+
+  getFileContent(containerId: string, fileId: string): Promise<FileContent> {
+    return this.client.get(`/containers/${containerId}/files/${fileId}/content`)
+      .then(response => response.data);
   }
 
   async uploadFile(containerId: string, file: File, content: string): Promise<File> {

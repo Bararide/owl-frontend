@@ -35,7 +35,10 @@ import {
   TrendingUp as TrendingUpIcon,
   Speed as SpeedIcon,
   Security as SecurityIcon,
-  Delete
+  Delete,
+  Code as CodeIcon,
+  ContentCopy as ContentCopyIcon,
+  Download as DownloadIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
@@ -365,6 +368,14 @@ const useFiles = (containerId: string | undefined) => {
   });
 };
 
+const useFileContent = (containerId: string, fileId: string) => {
+  return useQuery({ 
+    queryKey: ['fileContent', containerId, fileId],
+    queryFn: () => apiClient.getFileContent(containerId, fileId),
+    enabled: !!containerId && !!fileId,
+  });
+};
+
 const useSemanticSearch = () => {
   return useMutation({
     mutationFn: (data: SearchRequest) => apiClient.semanticSearch(data),
@@ -408,13 +419,238 @@ const LoadingSkeleton: React.FC<{ type?: 'card' | 'list' | 'table' }> = ({ type 
   return <CircularProgress />;
 };
 
+interface FileContentDialogProps {
+  open: boolean;
+  onClose: () => void;
+  file: ApiFile | null;
+  containerId: string;
+}
+
+const FileContentDialog: React.FC<FileContentDialogProps> = ({ 
+  open, 
+  onClose, 
+  file, 
+  containerId 
+}) => {
+  const { data: fileContent, isLoading, error } = useFileContent(
+    containerId, 
+    file?.id || ''
+  );
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyContent = async () => {
+    if (fileContent?.content) {
+      try {
+        await navigator.clipboard.writeText(fileContent.content);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy content:', err);
+      }
+    }
+  };
+
+  const getLanguageFromMimeType = (mimeType: string): string => {
+    const mimeToLang: Record<string, string> = {
+      'text/javascript': 'javascript',
+      'application/json': 'json',
+      'text/html': 'html',
+      'text/css': 'css',
+      'text/x-python': 'python',
+      'text/x-java': 'java',
+      'text/x-c++': 'cpp',
+      'text/x-c': 'c',
+      'text/x-ruby': 'ruby',
+      'text/x-php': 'php',
+      'text/x-go': 'go',
+      'text/x-rust': 'rust',
+      'text/x-typescript': 'typescript',
+      'text/x-yaml': 'yaml',
+      'text/x-markdown': 'markdown',
+      'text/plain': 'text',
+    };
+    
+    return mimeToLang[mimeType] || 'text';
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const isTextFile = file?.mime_type?.startsWith('text/') || 
+                    file?.mime_type === 'application/json';
+
+  return (
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      maxWidth="lg" 
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: 3,
+          background: `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.98)} 0%, ${alpha(theme.palette.background.paper, 0.95)} 100%)`,
+          backdropFilter: 'blur(20px)',
+        }
+      }}
+    >
+      <DialogTitle sx={{ 
+        borderBottom: '1px solid rgba(255,255,255,0.1)',
+        pb: 2,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <Box>
+          <Typography variant="h6" component="div">
+            {file?.name || file?.path.split('/').pop()}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {file?.path} • {file && formatFileSize(file.size)}
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {isTextFile && (
+            <Tooltip title={copied ? "Copied!" : "Copy content"}>
+              <IconButton onClick={handleCopyContent} size="small">
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          <IconButton onClick={onClose} size="small">
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+      
+      <DialogContent sx={{ p: 0, position: 'relative', minHeight: 400 }}>
+        {isLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
+            <CircularProgress />
+          </Box>
+        ) : error ? (
+          <Box sx={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: 400,
+            color: 'text.secondary'
+          }}>
+            <CodeIcon sx={{ fontSize: 64, mb: 2, opacity: 0.5 }} />
+            <Typography variant="h6" gutterBottom>
+              Unable to load file content
+            </Typography>
+            <Typography variant="body2">
+              {error instanceof Error ? error.message : 'Unknown error occurred'}
+            </Typography>
+          </Box>
+        ) : !isTextFile ? (
+          <Box sx={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: 400,
+            color: 'text.secondary'
+          }}>
+            <DescriptionIcon sx={{ fontSize: 64, mb: 2, opacity: 0.5 }} />
+            <Typography variant="h6" gutterBottom>
+              Binary File
+            </Typography>
+            <Typography variant="body2" sx={{ textAlign: 'center', maxWidth: 400 }}>
+              This file type cannot be displayed in the viewer. 
+              Please download the file to view its contents.
+            </Typography>
+            <Button 
+              variant="contained" 
+              startIcon={<DownloadIcon />}
+              sx={{ mt: 2 }}
+            >
+              Download File
+            </Button>
+          </Box>
+        ) : fileContent ? (
+          <Box sx={{ position: 'relative' }}>
+            <Box sx={{ 
+              position: 'sticky', 
+              top: 0, 
+              background: 'rgba(0,0,0,0.3)', 
+              backdropFilter: 'blur(10px)',
+              borderBottom: '1px solid rgba(255,255,255,0.1)',
+              px: 3,
+              py: 1,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              zIndex: 1
+            }}>
+              <Chip 
+                label={getLanguageFromMimeType(file ? file.mime_type : "")}
+                size="small"
+                color="primary"
+                variant="outlined"
+              />
+              <Typography variant="caption" color="text.secondary">
+                {fileContent.encoding} • {formatFileSize(fileContent.size)}
+              </Typography>
+            </Box>
+            <Box
+              component="pre"
+              sx={{
+                p: 3,
+                m: 0,
+                fontFamily: '"Fira Code", "Monaco", "Cascadia Code", monospace',
+                fontSize: '0.875rem',
+                lineHeight: 1.5,
+                background: 'rgba(0,0,0,0.2)',
+                overflow: 'auto',
+                maxHeight: '60vh',
+                '&::-webkit-scrollbar': {
+                  width: 8,
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: 'rgba(255,255,255,0.05)',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: 'rgba(255,255,255,0.2)',
+                  borderRadius: 4,
+                },
+              }}
+            >
+              {fileContent.content}
+            </Box>
+          </Box>
+        ) : null}
+      </DialogContent>
+      
+      <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
+        <Button onClick={onClose}>
+          Close
+        </Button>
+        <Button 
+          variant="contained" 
+          startIcon={<DownloadIcon />}
+        >
+          Download
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 interface FileCardProps {
   file: ApiFile;
   onSelect: (file: ApiFile) => void;
   onAction: (action: string, file: ApiFile) => void;
+  onViewContent: (file: ApiFile) => void;
 }
 
-const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction }) => {
+const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction, onViewContent }) => {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -428,6 +664,11 @@ const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction }) => {
 
   const handleAction = (action: string) => {
     onAction(action, file);
+    handleMenuClose();
+  };
+
+  const handleViewContent = () => {
+    onViewContent(file);
     handleMenuClose();
   };
 
@@ -500,17 +741,17 @@ const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction }) => {
             </Box>
 
             <Box sx={{ mb: 2 }}>
-            <Typography 
-              variant="caption" 
-              color="text.secondary" 
-              sx={{ 
-                display: 'block', 
-                mb: 0.5,
-                fontFamily: 'monospace'
-              }}
-            >
-              Path: {truncatePath(file.path, 15)}
-            </Typography>
+              <Typography 
+                variant="caption" 
+                color="text.secondary" 
+                sx={{ 
+                  display: 'block', 
+                  mb: 0.5,
+                  fontFamily: 'monospace'
+                }}
+              >
+                Path: {truncatePath(file.path, 15)}
+              </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                 Size: {formatFileSize(file.size)}
               </Typography>
@@ -552,11 +793,11 @@ const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction }) => {
         }}
       >
         <MenuItem onClick={() => handleAction('download')}>
-          <ListItemIcon><CloudUploadIcon fontSize="small" /></ListItemIcon>
+          <ListItemIcon><DownloadIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Download</ListItemText>
         </MenuItem>
-        <MenuItem onClick={() => handleAction('view')}>
-          <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
+        <MenuItem onClick={handleViewContent}>
+          <ListItemIcon><CodeIcon fontSize="small" /></ListItemIcon>
           <ListItemText>View Content</ListItemText>
         </MenuItem>
         <Divider />
@@ -572,6 +813,14 @@ const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction }) => {
 const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
   const { data: files = [], isLoading: isLoadingFiles, refetch: refetchFiles } = useFiles(containerId);
   const { addNotification } = useNotifications();
+  
+  const [fileContentDialog, setFileContentDialog] = useState<{
+    open: boolean;
+    file: ApiFile | null;
+  }>({
+    open: false,
+    file: null,
+  });
 
   const handleFileAction = useCallback((action: string, file: ApiFile) => {
     switch (action) {
@@ -583,11 +832,7 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
         });
         break;
       case 'view':
-        addNotification({
-          message: `Viewing file: ${file.name || file.path}`,
-          severity: 'info',
-          open: true,
-        });
+        setFileContentDialog({ open: true, file });
         break;
       case 'delete':
         addNotification({
@@ -605,6 +850,10 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
     }
   }, [addNotification]);
 
+  const handleViewContent = useCallback((file: ApiFile) => {
+    setFileContentDialog({ open: true, file });
+  }, []);
+
   const handleFileSelect = useCallback((file: ApiFile) => {
     addNotification({
       message: `Selected file: ${file.name || file.path}`,
@@ -612,6 +861,18 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
       open: true,
     });
   }, [addNotification]);
+
+  const handleCloseFileContent = useCallback(() => {
+    setFileContentDialog({ open: false, file: null });
+  }, []);
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
 
   if (!containerId) {
     return (
@@ -663,10 +924,18 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
               file={file}
               onSelect={handleFileSelect}
               onAction={handleFileAction}
+              onViewContent={handleViewContent}
             />
           ))}
         </Box>
       )}
+
+      <FileContentDialog
+        open={fileContentDialog.open}
+        onClose={handleCloseFileContent}
+        file={fileContentDialog.file}
+        containerId={containerId}
+      />
     </Box>
   );
 };
@@ -1241,7 +1510,7 @@ const Dashboard: React.FC = () => {
         break;
       case 'view':
         addNotification({
-          message: `Viewing file: ${file.name || file.path}`,
+          message: `Opening file: ${file.name || file.path}`,
           severity: 'info',
           open: true,
         });
@@ -1735,67 +2004,7 @@ const Dashboard: React.FC = () => {
                     </Button>
                   </Box>
                 ) : (
-                  <Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                      <Box>
-                        <Typography variant="h5" sx={{ fontSize: '1.5rem', mb: 0.5 }}>
-                          Files in {selectedContainer.id}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {selectedContainer.env_label.value} • {selectedContainer.type_label.value}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button 
-                          startIcon={<RefreshIcon />}
-                          onClick={() => refetchFiles()}
-                          variant="outlined"
-                          size="medium"
-                        >
-                          Refresh
-                        </Button>
-                        <Button 
-                          startIcon={<CloudUploadIcon />}
-                          onClick={() => handleFileAction('upload', {} as ApiFile)}
-                          variant="contained"
-                          size="medium"
-                        >
-                          Upload File
-                        </Button>
-                      </Box>
-                    </Box>
-
-                    {isLoadingFiles ? (
-                      <LoadingSkeleton type="card" />
-                    ) : files.length === 0 ? (
-                      <Box sx={{ textAlign: 'center', py: 8 }}>
-                        <FileCopyIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                        <Typography variant="h6" color="text.secondary" gutterBottom>
-                          No Files Found
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                          This container doesn't have any files yet
-                        </Typography>
-                        <Button 
-                          variant="contained" 
-                          onClick={() => handleFileAction('upload', {} as ApiFile)}
-                        >
-                          Upload First File
-                        </Button>
-                      </Box>
-                    ) : (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                        {files.map((file: ApiFile) => (
-                          <FileCard
-                            key={file.id}
-                            file={file}
-                            onSelect={handleFileSelect}
-                            onAction={handleFileAction}
-                          />
-                        ))}
-                      </Box>
-                    )}
-                  </Box>
+                  <FilesView containerId={selectedContainer.id} />
                 )}
               </Box>
             )}
