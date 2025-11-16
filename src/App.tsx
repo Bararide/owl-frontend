@@ -428,6 +428,10 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
           borderRadius: 3,
           background: `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.98)} 0%, ${alpha(theme.palette.background.paper, 0.95)} 100%)`,
           backdropFilter: 'blur(20px)',
+          minHeight: '60vh',
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column'
         }
       }}
     >
@@ -436,17 +440,18 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
         pb: 2,
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center'
+        alignItems: 'center',
+        flexShrink: 0
       }}>
-        <Box>
-          <Typography variant="h6" component="div">
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography variant="h6" component="div" noWrap>
             {file?.name || file?.path.split('/').pop()}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" color="text.secondary" noWrap>
             {file?.path} • {file && formatFileSize(file.size)}
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, ml: 1 }}>
           {isTextFile && (
             <Tooltip title={copied ? "Copied!" : "Copy content"}>
               <IconButton onClick={handleCopyContent} size="small">
@@ -460,9 +465,21 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
         </Box>
       </DialogTitle>
       
-      <DialogContent sx={{ p: 0, position: 'relative', minHeight: 400 }}>
+      <DialogContent sx={{ 
+        p: 0, 
+        position: 'relative', 
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0
+      }}>
         {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
+          <Box sx={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            flex: 1 
+          }}>
             <CircularProgress />
           </Box>
         ) : error ? (
@@ -471,7 +488,7 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
             flexDirection: 'column', 
             justifyContent: 'center', 
             alignItems: 'center', 
-            height: 400,
+            flex: 1,
             color: 'text.secondary'
           }}>
             <CodeIcon sx={{ fontSize: 64, mb: 2, opacity: 0.5 }} />
@@ -488,7 +505,7 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
             flexDirection: 'column', 
             justifyContent: 'center', 
             alignItems: 'center', 
-            height: 400,
+            flex: 1,
             color: 'text.secondary'
           }}>
             <DescriptionIcon sx={{ fontSize: 64, mb: 2, opacity: 0.5 }} />
@@ -508,7 +525,7 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
             </Button>
           </Box>
         ) : fileContent ? (
-          <Box sx={{ position: 'relative' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <Box sx={{ 
               position: 'sticky', 
               top: 0, 
@@ -520,7 +537,8 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              zIndex: 1
+              zIndex: 1,
+              flexShrink: 0
             }}>
               <Chip 
                 label={getLanguageFromMimeType(file ? file.mime_type : "")}
@@ -542,7 +560,10 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
                 lineHeight: 1.5,
                 background: 'rgba(0,0,0,0.2)',
                 overflow: 'auto',
-                maxHeight: '60vh',
+                flex: 1,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                wordWrap: 'break-word',
                 '&::-webkit-scrollbar': {
                   width: 8,
                 },
@@ -561,7 +582,11 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
         ) : null}
       </DialogContent>
       
-      <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
+      <DialogActions sx={{ 
+        borderTop: '1px solid rgba(255,255,255,0.1)', 
+        p: 2,
+        flexShrink: 0 
+      }}>
         <Button onClick={onClose}>
           Close
         </Button>
@@ -755,6 +780,17 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
     file: null,
   });
 
+  // Добавляем состояние для поиска
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  // Фильтруем файлы по поисковому запросу
+  const filteredFiles = files.filter(file => 
+    file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    file.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    file.mime_type.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   const handleFileAction = useCallback((action: string, file: ApiFile) => {
     switch (action) {
       case 'download':
@@ -802,6 +838,13 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
     setFileContentDialog({ open: false, file: null });
   }, []);
 
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+  }, []);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+  }, []);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 B';
@@ -841,21 +884,137 @@ const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
         </Button>
       </Box>
 
+      <Box 
+        component="form" 
+        onSubmit={(e) => e.preventDefault()}
+        sx={{ 
+          position: 'relative',
+          maxWidth: 400,
+          mb: 3
+        }}
+      >
+        <TextField
+          fullWidth
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onFocus={() => setIsSearchFocused(true)}
+          onBlur={() => setIsSearchFocused(false)}
+          placeholder="Search files by name, path or type..."
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon 
+                  sx={{ 
+                    color: isSearchFocused ? 'primary.main' : 'text.secondary',
+                    transition: 'color 0.2s ease'
+                  }} 
+                />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery && (
+              <InputAdornment position="end">
+                <IconButton 
+                  size="small" 
+                  onClick={handleClearSearch}
+                  sx={{ opacity: 0.6 }}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </InputAdornment>
+            ),
+            sx: {
+              borderRadius: 2,
+              backgroundColor: 'background.paper',
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                boxShadow: '0 2px 12px 0 rgba(0,0,0,0.15)',
+              },
+              ...(isSearchFocused && {
+                boxShadow: '0 2px 16px 0 rgba(115, 103, 240, 0.15)',
+                borderColor: 'primary.main',
+              })
+            }
+          }}
+        />
+        
+        <Fade in={isSearchFocused && searchQuery.length > 0}>
+          <Box sx={{ 
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            mt: 1,
+            p: 2,
+            backgroundColor: 'background.paper',
+            borderRadius: 2,
+            boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            zIndex: 1000
+          }}>
+            <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block', fontSize: '0.75rem' }}>
+              Quick Filters
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+              {['.txt', '.json', '.js', '.py', '.md'].map((filter) => (
+                <Chip
+                  key={filter}
+                  label={filter}
+                  size="small"
+                  clickable
+                  onClick={() => setSearchQuery(filter)}
+                  variant="outlined"
+                  sx={{ fontSize: '0.7rem', height: 24 }}
+                />
+              ))}
+            </Box>
+          </Box>
+        </Fade>
+      </Box>
+
+      {/* Показываем количество найденных файлов */}
+      {searchQuery && (
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Found {filteredFiles.length} files for "{searchQuery}"
+          </Typography>
+          <Button 
+            size="small" 
+            onClick={handleClearSearch}
+            startIcon={<CloseIcon />}
+            sx={{ minWidth: 'auto', p: 0.5 }}
+          >
+            Clear
+          </Button>
+        </Box>
+      )}
+
       {isLoadingFiles ? (
         <LoadingSkeleton type="card" />
-      ) : files.length === 0 ? (
+      ) : filteredFiles.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <DescriptionIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
-            No Files Found
+            {searchQuery ? 'No Files Found' : 'No Files Found'}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            This container doesn't have any files yet
+            {searchQuery 
+              ? `No files match your search for "${searchQuery}"`
+              : 'This container doesn\'t have any files yet'
+            }
           </Typography>
+          {searchQuery && (
+            <Button 
+              variant="outlined" 
+              onClick={handleClearSearch}
+              sx={{ mt: 2 }}
+            >
+              Clear Search
+            </Button>
+          )}
         </Box>
       ) : (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-          {files.map((file: ApiFile) => (
+          {filteredFiles.map((file: ApiFile) => (
             <FileCard
               key={file.name}
               file={file}
