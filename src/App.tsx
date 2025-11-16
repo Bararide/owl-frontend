@@ -407,6 +407,253 @@ const LoadingSkeleton: React.FC<{ type?: 'card' | 'list' | 'table' }> = ({ type 
   return <CircularProgress />;
 };
 
+interface FileCardProps {
+  file: ApiFile;
+  onSelect: (file: ApiFile) => void;
+  onAction: (action: string, file: ApiFile) => void;
+}
+
+const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction }) => {
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    event.stopPropagation();
+    setMenuAnchor(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setMenuAnchor(null);
+  };
+
+  const handleAction = (action: string) => {
+    onAction(action, file);
+    handleMenuClose();
+  };
+
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.includes('image')) return <DescriptionIcon color="primary" />;
+    if (mimeType.includes('pdf')) return <DescriptionIcon color="error" />;
+    if (mimeType.includes('text') || mimeType.includes('json')) return <DescriptionIcon color="info" />;
+    return <DescriptionIcon color="action" />;
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  return (
+    <Box sx={{ width: '100%', maxWidth: 280, minWidth: 240 }}>
+      <motion.div
+        whileHover={{ y: -4, transition: { type: "spring", stiffness: 400 } }}
+        whileTap={{ scale: 0.98 }}
+      >
+        <GlassCard 
+          onClick={() => onSelect(file)}
+          sx={{ 
+            cursor: 'pointer',
+            position: 'relative',
+            overflow: 'visible',
+          }}
+        >
+          <CardContent sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0, flex: 1 }}>
+                <Box sx={{ mr: 1.5 }}>
+                  {getFileIcon(file.mime_type)}
+                </Box>
+                <Typography 
+                  variant="body2" 
+                  color="text.primary" 
+                  noWrap
+                  sx={{ 
+                    fontWeight: 600,
+                    fontSize: '0.8rem'
+                  }}
+                >
+                  {file.name || file.path.split('/').pop()}
+                </Typography>
+              </Box>
+              
+              <IconButton 
+                size="small" 
+                onClick={handleMenuOpen}
+                sx={{ 
+                  opacity: 0.6,
+                  '&:hover': { opacity: 1, backgroundColor: 'rgba(255,255,255,0.08)' }
+                }}
+              >
+                <MoreVertIcon fontSize="small" />
+              </IconButton>
+            </Box>
+
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                Path: {file.path}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                Size: {formatFileSize(file.size)}
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Tooltip title="File Type">
+                <Chip
+                  label={file.mime_type.split('/')[1] || file.mime_type}
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontSize: '0.6rem', height: 18 }}
+                />
+              </Tooltip>
+              
+              <Tooltip title="Created">
+                <Typography variant="caption" color="text.secondary" fontSize="0.6rem">
+                  {new Date(file.created_at).toLocaleDateString()}
+                </Typography>
+              </Tooltip>
+            </Box>
+          </CardContent>
+        </GlassCard>
+      </motion.div>
+
+      <Menu
+        anchorEl={menuAnchor}
+        open={Boolean(menuAnchor)}
+        onClose={handleMenuClose}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            background: `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.95)} 0%, ${alpha(theme.palette.background.paper, 0.9)} 100%)`,
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+          }
+        }}
+      >
+        <MenuItem onClick={() => handleAction('download')}>
+          <ListItemIcon><CloudUploadIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Download</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => handleAction('view')}>
+          <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>View Content</ListItemText>
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={() => handleAction('delete')}>
+          <ListItemIcon><CloseIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Delete</ListItemText>
+        </MenuItem>
+      </Menu>
+    </Box>
+  );
+};
+
+const FilesView: React.FC<{ containerId: string }> = ({ containerId }) => {
+  const { data: files = [], isLoading: isLoadingFiles, refetch: refetchFiles } = useFiles(containerId);
+  const { addNotification } = useNotifications();
+
+  const handleFileAction = useCallback((action: string, file: ApiFile) => {
+    switch (action) {
+      case 'download':
+        addNotification({
+          message: `Downloading file: ${file.name || file.path}`,
+          severity: 'info',
+          open: true,
+        });
+        break;
+      case 'view':
+        addNotification({
+          message: `Viewing file: ${file.name || file.path}`,
+          severity: 'info',
+          open: true,
+        });
+        break;
+      case 'delete':
+        addNotification({
+          message: `Deleting file: ${file.name || file.path}`,
+          severity: 'warning',
+          open: true,
+        });
+        break;
+      default:
+        addNotification({
+          message: `${action} action performed on file`,
+          severity: 'info',
+          open: true,
+        });
+    }
+  }, [addNotification]);
+
+  const handleFileSelect = useCallback((file: ApiFile) => {
+    addNotification({
+      message: `Selected file: ${file.name || file.path}`,
+      severity: 'success',
+      open: true,
+    });
+  }, [addNotification]);
+
+  if (!containerId) {
+    return (
+      <Box sx={{ textAlign: 'center', py: 8 }}>
+        <DescriptionIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+        <Typography variant="h6" color="text.secondary" gutterBottom>
+          No Container Selected
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Please select a container to view its files
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5">
+          Files in Container
+        </Typography>
+        <Button 
+          startIcon={<RefreshIcon />}
+          onClick={() => refetchFiles()}
+          variant="outlined"
+          size="medium"
+        >
+          Refresh
+        </Button>
+      </Box>
+
+      {isLoadingFiles ? (
+        <LoadingSkeleton type="card" />
+      ) : files.length === 0 ? (
+        <Box sx={{ textAlign: 'center', py: 8 }}>
+          <DescriptionIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+          <Typography variant="h6" color="text.secondary" gutterBottom>
+            No Files Found
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            This container doesn't have any files yet
+          </Typography>
+        </Box>
+      ) : (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+          {files.map((file: ApiFile) => (
+            <FileCard
+              key={file.id}
+              file={file}
+              onSelect={handleFileSelect}
+              onAction={handleFileAction}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+};
+
 interface ContainerCardProps {
   container: Container;
   onSelect: (container: Container) => void;
@@ -898,6 +1145,7 @@ const Dashboard: React.FC = () => {
   const { notifications, addNotification, removeNotification } = useNotifications();
 
   const { data: containers = [], isLoading: isLoadingContainers, refetch: refetchContainers } = useContainers();
+  const { data: files = [], isLoading: isLoadingFiles, refetch: refetchFiles } = useFiles(selectedContainer?.id);
   const createContainerMutation = useCreateContainer();
   const deleteContainerMutation = useDeleteContainer();
   const restartContainerMutation = useRestartContainer();
@@ -939,6 +1187,9 @@ const Dashboard: React.FC = () => {
               severity: 'success',
               open: true,
             });
+            if (selectedContainer?.id === container.id) {
+              setSelectedContainer(null);
+            }
           },
           onError: (error) => {
             addNotification({
@@ -956,7 +1207,39 @@ const Dashboard: React.FC = () => {
           open: true,
         });
     }
-  }, [addNotification, restartContainerMutation, deleteContainerMutation, refetchContainers]);
+  }, [addNotification, restartContainerMutation, deleteContainerMutation, refetchContainers, selectedContainer]);
+
+  const handleFileAction = useCallback((action: string, file: ApiFile) => {
+    switch (action) {
+      case 'download':
+        addNotification({
+          message: `Downloading file: ${file.name || file.path}`,
+          severity: 'info',
+          open: true,
+        });
+        break;
+      case 'view':
+        addNotification({
+          message: `Viewing file: ${file.name || file.path}`,
+          severity: 'info',
+          open: true,
+        });
+        break;
+      case 'delete':
+        addNotification({
+          message: `Deleting file: ${file.name || file.path}`,
+          severity: 'warning',
+          open: true,
+        });
+        break;
+      default:
+        addNotification({
+          message: `${action} action performed on file`,
+          severity: 'info',
+          open: true,
+        });
+    }
+  }, [addNotification]);
 
   const handleSearch = useCallback((query: string) => {
     if (containers.length > 0) {
@@ -995,6 +1278,14 @@ const Dashboard: React.FC = () => {
     setCurrentTab(2);
     addNotification({
       message: `Selected container: ${container.id}`,
+      severity: 'success',
+      open: true,
+    });
+  }, [addNotification]);
+
+  const handleFileSelect = useCallback((file: ApiFile) => {
+    addNotification({
+      message: `Selected file: ${file.name || file.path}`,
       severity: 'success',
       open: true,
     });
@@ -1214,8 +1505,10 @@ const Dashboard: React.FC = () => {
             <Typography variant="h6" sx={{ flexGrow: 1, fontSize: '1.25rem' }}>
               {currentTab === 0 && 'Dashboard'}
               {currentTab === 1 && 'Containers'}
-              {currentTab === 2 && 'Files'}
+              {currentTab === 2 && `Files - ${selectedContainer ? selectedContainer.id.substring(0, 12) + '...' : 'No container selected'}`}
               {currentTab === 3 && 'Analytics'}
+              {currentTab === 4 && 'Search'}
+              {currentTab === 5 && 'Security'}
             </Typography>
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -1271,7 +1564,6 @@ const Dashboard: React.FC = () => {
         </AppBar>
 
         <Box sx={{ flexGrow: 1, p: 3, overflow: 'auto' }}>
-
           <ConnectionTest />
           
           <motion.div
@@ -1364,6 +1656,162 @@ const Dashboard: React.FC = () => {
                     </Box>
                   )}
                 </Box>
+              </Box>
+            )}
+
+            {currentTab === 1 && (
+              <Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2.5 }}>
+                  <Typography variant="h5" sx={{ fontSize: '1.5rem' }}>
+                    All Containers
+                  </Typography>
+                  <Button 
+                    startIcon={<AddIcon />}
+                    onClick={() => setCreateContainerOpen(true)}
+                    variant="contained"
+                    size="medium"
+                  >
+                    New Container
+                  </Button>
+                </Box>
+
+                {isLoadingContainers ? (
+                  <LoadingSkeleton type="card" />
+                ) : (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                    {containers.map((container: Container) => (
+                      <ContainerCard
+                        key={container.id}
+                        container={container}
+                        onSelect={handleContainerSelect}
+                        onAction={handleContainerAction}
+                      />
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            )}
+
+            {currentTab === 2 && (
+              <Box>
+                {!selectedContainer ? (
+                  <Box sx={{ textAlign: 'center', py: 8 }}>
+                    <FileCopyIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                    <Typography variant="h6" color="text.secondary" gutterBottom>
+                      No Container Selected
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                      Please select a container to view its files
+                    </Typography>
+                    <Button 
+                      variant="contained" 
+                      onClick={() => {
+                        setActiveMenuItem('containers');
+                        setCurrentTab(1);
+                      }}
+                    >
+                      Browse Containers
+                    </Button>
+                  </Box>
+                ) : (
+                  <Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                      <Box>
+                        <Typography variant="h5" sx={{ fontSize: '1.5rem', mb: 0.5 }}>
+                          Files in {selectedContainer.id}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {selectedContainer.env_label.value} • {selectedContainer.type_label.value}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button 
+                          startIcon={<RefreshIcon />}
+                          onClick={() => refetchFiles()}
+                          variant="outlined"
+                          size="medium"
+                        >
+                          Refresh
+                        </Button>
+                        <Button 
+                          startIcon={<CloudUploadIcon />}
+                          onClick={() => handleFileAction('upload', {} as ApiFile)}
+                          variant="contained"
+                          size="medium"
+                        >
+                          Upload File
+                        </Button>
+                      </Box>
+                    </Box>
+
+                    {isLoadingFiles ? (
+                      <LoadingSkeleton type="card" />
+                    ) : files.length === 0 ? (
+                      <Box sx={{ textAlign: 'center', py: 8 }}>
+                        <FileCopyIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                        <Typography variant="h6" color="text.secondary" gutterBottom>
+                          No Files Found
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                          This container doesn't have any files yet
+                        </Typography>
+                        <Button 
+                          variant="contained" 
+                          onClick={() => handleFileAction('upload', {} as ApiFile)}
+                        >
+                          Upload First File
+                        </Button>
+                      </Box>
+                    ) : (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                        {files.map((file: ApiFile) => (
+                          <FileCard
+                            key={file.id}
+                            file={file}
+                            onSelect={handleFileSelect}
+                            onAction={handleFileAction}
+                          />
+                        ))}
+                      </Box>
+                    )}
+                  </Box>
+                )}
+              </Box>
+            )}
+
+            {currentTab === 3 && (
+              <Box sx={{ textAlign: 'center', py: 8 }}>
+                <SpeedIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  Analytics Coming Soon
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Performance metrics and analytics will be available here
+                </Typography>
+              </Box>
+            )}
+
+            {currentTab === 4 && (
+              <Box sx={{ textAlign: 'center', py: 8 }}>
+                <SearchIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  Search Coming Soon
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Advanced search functionality will be available here
+                </Typography>
+              </Box>
+            )}
+
+            {currentTab === 5 && (
+              <Box sx={{ textAlign: 'center', py: 8 }}>
+                <SecurityIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  Security Coming Soon
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Security settings and scans will be available here
+                </Typography>
               </Box>
             )}
           </motion.div>

@@ -78,17 +78,14 @@ class ApiClient {
     },
   });
 
-  // Установить токен
   setToken(token: string) {
     this.token = token;
   }
 
-  // Очистить токен
   clearToken() {
     this.token = null;
   }
 
-  // Получить заголовки с авторизацией
   private getAuthHeaders() {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -101,7 +98,6 @@ class ApiClient {
     return headers;
   }
 
-  // Containers endpoints
   async getContainers(): Promise<Container[]> {
     const response = await this.client.get<{ data: Container[] }>('/containers', {
       headers: this.getAuthHeaders()
