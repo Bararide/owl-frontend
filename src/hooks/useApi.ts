@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient, File, CreateContainerRequest, SearchRequest } from '../api/client';
+import { apiClient, ApiFile, CreateContainerRequest, SearchRequest } from '../api/client';
 
 export const useContainers = () => {
   return useQuery({
@@ -82,7 +82,7 @@ export const useUploadFile = () => {
   return useMutation({
     mutationFn: ({ containerId, file, content }: { 
       containerId: string; 
-      file: File; 
+      file: ApiFile; 
       content: string; 
     }) => apiClient.uploadFile(containerId, file, content),
     onSuccess: (_, variables) => {

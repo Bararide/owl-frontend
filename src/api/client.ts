@@ -24,7 +24,7 @@ export interface Container {
   privileged: boolean;
 }
 
-export interface File {
+export interface ApiFile {
   path: string;
   name: string;
   size: number;
@@ -54,7 +54,7 @@ export interface SearchRequest {
 
 
 export interface CreateFileRequest {
-  file: File;
+  file: ApiFile;
   content: string;
 }
 
@@ -151,15 +151,15 @@ class ApiClient {
   }
 
   // Files endpoints
-  async getFiles(containerId: string): Promise<File[]> {
-    const response = await this.client.get<{ data: File[] }>(`/containers/${containerId}/files`, {
+  async getFiles(containerId: string): Promise<ApiFile[]> {
+    const response = await this.client.get<{ data: ApiFile[] }>(`/containers/${containerId}/files`, {
       headers: this.getAuthHeaders()
     });
     return response.data.data;
   }
 
-  async getFile(fileId: string, containerId: string): Promise<File> {
-    const response = await this.client.get<{ data: File }>(
+  async getFile(fileId: string, containerId: string): Promise<ApiFile> {
+    const response = await this.client.get<{ data: ApiFile }>(
       `/containers/${containerId}/files/${fileId}`,
       { headers: this.getAuthHeaders() }
     );
@@ -175,12 +175,12 @@ class ApiClient {
     return response.data.data;
   }
 
-  async uploadFile(containerId: string, file: File, content: string): Promise<File> {
+  async uploadFile(containerId: string, file: ApiFile, content: string): Promise<ApiFile> {
     const formData = new FormData();
     formData.append('file', JSON.stringify(file));
     formData.append('content', content);
 
-    const response = await this.client.post<{ data: File }>(
+    const response = await this.client.post<{ data: ApiFile }>(
       `/containers/${containerId}/files`,
       formData,
       {

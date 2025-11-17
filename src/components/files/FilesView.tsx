@@ -1,0 +1,293 @@
+import React, { useState, useCallback } from 'react';
+import {
+  Box,
+  Typography,
+  Button,
+  TextField,
+  InputAdornment,
+  IconButton,
+  Fade,
+  Chip,
+} from '@mui/material';
+import {
+  Search as SearchIcon,
+  Close as CloseIcon,
+  Refresh as RefreshIcon,
+  Description as DescriptionIcon,
+} from '@mui/icons-material';
+import { useFiles } from '../../hooks/useApi';
+import { useNotifications } from '../../hooks/useNotifications';
+import { FileCard } from './FileCard';
+import { FileContentDialog } from './FileContentDialog';
+import { LoadingSkeleton } from '../common/LoadingSkeleton';
+import { ApiFile } from '../../api/client';
+import { apiClient } from '../../api/client';
+
+interface FilesViewProps {
+  containerId: string;
+}
+
+export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
+  const { data: files = [], isLoading: isLoadingFiles, refetch: refetchFiles } = useFiles(containerId);
+  const { addNotification } = useNotifications();
+  
+  const [fileContentDialog, setFileContentDialog] = useState<{
+    open: boolean;
+    file: ApiFile | null;
+  }>({
+    open: false,
+    file: null,
+  });
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  const filteredFiles = files.filter(file => 
+    file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    file.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    file.mime_type.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleFileAction = useCallback((action: string, file: ApiFile) => {
+    switch (action) {
+      case 'download':
+        addNotification({
+          message: `Downloading file: ${file.name || file.path}`,
+          severity: 'info',
+          open: true,
+        });
+        break;
+      case 'view':
+        setFileContentDialog({ open: true, file });
+        break;
+      case 'delete':
+        apiClient.deleteFile(file.container_id, file.name)
+          .then(() => {
+            addNotification({
+              message: `File ${file.name || file.path} deleted successfully`,
+              severity: 'success',
+              open: true,
+            });
+            refetchFiles();
+          })
+          .catch((error) => {
+            addNotification({
+              message: `Failed to delete file: ${error.message}`,
+              severity: 'error',
+              open: true,
+            });
+          });
+        break;
+      default:
+        addNotification({
+          message: `${action} action performed on file`,
+          severity: 'info',
+          open: true,
+        });
+    }
+  }, [addNotification, refetchFiles]);
+
+  const handleViewContent = useCallback((file: ApiFile) => {
+    setFileContentDialog({ 
+      open: true, 
+      file: file
+    });
+  }, []);
+
+  const handleFileSelect = useCallback((file: ApiFile) => {
+    addNotification({
+      message: `Selected file: ${file.name || file.path}`,
+      severity: 'success',
+      open: true,
+    });
+  }, [addNotification]);
+
+  const handleCloseFileContent = useCallback(() => {
+    setFileContentDialog({ open: false, file: null });
+  }, []);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+  }, []);
+
+  if (!containerId) {
+    return (
+      <Box sx={{ textAlign: 'center', py: 8 }}>
+        <DescriptionIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+        <Typography variant="h6" color="text.secondary" gutterBottom>
+          No Container Selected
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Please select a container to view its files
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box 
+          component="form" 
+          onSubmit={(e) => e.preventDefault()}
+          sx={{ 
+            position: 'relative',
+            maxWidth: 600,
+            mb: 2
+          }}
+        >
+          <TextField
+            fullWidth
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
+            placeholder="Search files by name, path or type..."
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon 
+                    sx={{ 
+                      color: isSearchFocused ? 'primary.main' : 'text.secondary',
+                      transition: 'color 0.2s ease'
+                    }} 
+                  />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery && (
+                <InputAdornment position="end">
+                  <IconButton 
+                    size="small" 
+                    onClick={handleClearSearch}
+                    sx={{ opacity: 0.6 }}
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ),
+              sx: {
+                borderRadius: 2,
+                backgroundColor: 'background.paper',
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  boxShadow: '0 2px 12px 0 rgba(0,0,0,0.15)',
+                },
+                ...(isSearchFocused && {
+                  boxShadow: '0 2px 16px 0 rgba(115, 103, 240, 0.15)',
+                  borderColor: 'primary.main',
+                })
+              }
+            }}
+          />
+          
+          <Fade in={isSearchFocused && searchQuery.length > 0}>
+            <Box sx={{ 
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              mt: 1,
+              p: 2,
+              backgroundColor: 'background.paper',
+              borderRadius: 2,
+              boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              zIndex: 1000
+            }}>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block', fontSize: '0.75rem' }}>
+                Quick Filters
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                {['.txt', '.json', '.js', '.py', '.md'].map((filter) => (
+                  <Chip
+                    key={filter}
+                    label={filter}
+                    size="small"
+                    clickable
+                    onClick={() => setSearchQuery(filter)}
+                    variant="outlined"
+                    sx={{ fontSize: '0.7rem', height: 24 }}
+                  />
+                ))}
+              </Box>
+            </Box>
+          </Fade>
+        </Box>
+        <Button 
+          startIcon={<RefreshIcon />}
+          onClick={() => refetchFiles()}
+          variant="outlined"
+          size="medium"
+        >
+          Refresh
+        </Button>
+      </Box>
+
+      {searchQuery && (
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Found {filteredFiles.length} files for "{searchQuery}"
+          </Typography>
+          <Button 
+            size="small" 
+            onClick={handleClearSearch}
+            startIcon={<CloseIcon />}
+            sx={{ minWidth: 'auto', p: 0.5 }}
+          >
+            Clear
+          </Button>
+        </Box>
+      )}
+
+      {isLoadingFiles ? (
+        <LoadingSkeleton type="card" />
+      ) : filteredFiles.length === 0 ? (
+        <Box sx={{ textAlign: 'center', py: 8 }}>
+          <DescriptionIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+          <Typography variant="h6" color="text.secondary" gutterBottom>
+            {searchQuery ? 'No Files Found' : 'No Files Found'}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {searchQuery 
+              ? `No files match your search for "${searchQuery}"`
+              : 'This container doesn\'t have any files yet'
+            }
+          </Typography>
+          {searchQuery && (
+            <Button 
+              variant="outlined" 
+              onClick={handleClearSearch}
+              sx={{ mt: 2 }}
+            >
+              Clear Search
+            </Button>
+          )}
+        </Box>
+      ) : (
+        <Box sx={{ 
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+          gap: 3,
+          width: '100%'
+        }}>
+          {filteredFiles.map((file: ApiFile) => (
+            <FileCard
+              key={file.name}
+              file={file}
+              onSelect={handleFileSelect}
+              onAction={handleFileAction}
+              onViewContent={handleViewContent}
+            />
+          ))}
+        </Box>
+      )}
+
+      <FileContentDialog
+        open={fileContentDialog.open}
+        onClose={handleCloseFileContent}
+        file={fileContentDialog.file}
+        containerId={containerId}
+      />
+    </Box>
+  );
+};

@@ -1,0 +1,155 @@
+import React from 'react';
+import {
+  Drawer,
+  Box,
+  Typography,
+  Divider,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Avatar,
+} from '@mui/material';
+import {
+  Dashboard as DashboardIcon,
+  Storage as StorageIcon,
+  FileCopy as FileCopyIcon,
+  Search as SearchIcon,
+  Speed as SpeedIcon,
+  Security as SecurityIcon,
+} from '@mui/icons-material';
+import { User } from '../../types';
+
+interface SidebarProps {
+  activeMenuItem: string;
+  onMenuItemClick: (menuId: string, tabIndex: number) => void;
+  user: User;
+}
+
+const menuItems = [
+  { icon: <DashboardIcon />, text: 'Dashboard', id: 'dashboard' },
+  { icon: <StorageIcon />, text: 'Containers', id: 'containers' },
+  { icon: <FileCopyIcon />, text: 'Files', id: 'files' },
+  { icon: <SearchIcon />, text: 'Search', id: 'search' },
+  { icon: <SpeedIcon />, text: 'Analytics', id: 'analytics' },
+  { icon: <SecurityIcon />, text: 'Security', id: 'security' },
+];
+
+export const Sidebar: React.FC<SidebarProps> = ({ 
+  activeMenuItem, 
+  onMenuItemClick, 
+  user 
+}) => {
+  return (
+    <Drawer
+      variant="permanent"
+      sx={{
+        width: 260,
+        flexShrink: 0,
+        '& .MuiDrawer-paper': {
+          width: 260,
+          boxSizing: 'border-box',
+          backgroundColor: 'background.default',
+          borderRight: '1px solid rgba(255,255,255,0.04)',
+          background: 'linear-gradient(180deg, #0F1424 0%, #13182B 100%)',
+        },
+      }}
+    >
+      <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+          <Box
+            sx={{
+              width: 36,
+              height: 36,
+              borderRadius: 2,
+              background: 'linear-gradient(135deg, #7367F0 0%, #CE9FFC 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              mr: 2,
+              boxShadow: '0 2px 8px rgba(115, 103, 240, 0.3)'
+            }}
+          >
+            <StorageIcon sx={{ color: 'white', fontSize: 18 }} />
+          </Box>
+          <Typography variant="h6" fontWeight="700" color="primary">
+            ContainerHub
+          </Typography>
+        </Box>
+
+        <Divider sx={{ mb: 2.5, opacity: 0.2 }} />
+
+        <Box sx={{ flexGrow: 1 }}>
+          {menuItems.map((item) => (
+            <ListItemButton
+              key={item.id}
+              selected={activeMenuItem === item.id}
+              onClick={() => {
+                const tabMap: Record<string, number> = {
+                  dashboard: 0,
+                  containers: 1,
+                  files: 2,
+                  analytics: 3,
+                  search: 4,
+                  security: 5,
+                };
+                onMenuItemClick(item.id, tabMap[item.id] || 0);
+              }}
+              sx={{
+                borderRadius: 1.5,
+                mb: 0.5,
+                py: 1,
+                '&.Mui-selected': {
+                  backgroundColor: 'primary.main',
+                  '&:hover': { backgroundColor: 'primary.dark' }
+                }
+              }}
+            >
+              <ListItemIcon sx={{ color: 'inherit', minWidth: 36, fontSize: '1.25rem' }}>
+                {item.icon}
+              </ListItemIcon>
+              <ListItemText 
+                primary={item.text} 
+                primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }}
+              />
+            </ListItemButton>
+          ))}
+        </Box>
+
+        <Box 
+          sx={{ 
+            p: 1.5, 
+            borderRadius: 2, 
+            backgroundColor: 'rgba(255,255,255,0.02)',
+            border: '1px solid rgba(255,255,255,0.04)',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            '&:hover': { backgroundColor: 'rgba(255,255,255,0.04)' }
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Avatar 
+              src={user.avatar}
+              sx={{ 
+                width: 36, 
+                height: 36, 
+                mr: 1.5,
+                background: 'linear-gradient(135deg, #7367F0 0%, #CE9FFC 100%)',
+                fontSize: '0.875rem'
+              }}
+            >
+              {user.name.split(' ').map(n => n[0]).join('')}
+            </Avatar>
+            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+              <Typography variant="subtitle2" noWrap fontSize="0.875rem">
+                {user.name}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" noWrap fontSize="0.75rem">
+                {user.role}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    </Drawer>
+  );
+};
