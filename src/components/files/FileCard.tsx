@@ -76,7 +76,7 @@ export const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction, on
   };
 
   return (
-    <Box sx={{ width: '100%', maxWidth: 280, minWidth: 240 }}>
+    <Box sx={{ width: '100%', maxWidth: 380, minWidth: 240 }}>
       <motion.div
         whileHover={{ y: -4, transition: { type: "spring", stiffness: 400 } }}
         whileTap={{ scale: 0.98 }}

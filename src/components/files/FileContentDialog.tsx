@@ -92,7 +92,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
     <Dialog 
       open={open} 
       onClose={onClose} 
-      maxWidth="lg" 
+      maxWidth="xl" 
       fullWidth
       PaperProps={{
         sx: {
