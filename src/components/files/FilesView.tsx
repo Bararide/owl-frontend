@@ -48,14 +48,88 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     file.mime_type.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+    const handleDownloadFile = useCallback(async (file: ApiFile) => {
+    try {
+      addNotification({
+        message: `Downloading file: ${file.name || file.path}`,
+        severity: 'info',
+        open: true,
+      });
+
+      const fileContent = await apiClient.getFileContent(containerId, file.name);
+      
+      const blob = new Blob([fileContent.content || ''], { 
+        type: file.mime_type || 'application/octet-stream' 
+      });
+      
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = file.name || 'download';
+      document.body.appendChild(link);
+      
+      link.click();
+      
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      addNotification({
+        message: `File "${file.name || file.path}" downloaded successfully`,
+        severity: 'success',
+        open: true,
+      });
+
+    } catch (error) {
+      console.error('Download error:', error);
+      addNotification({
+        message: `Failed to download file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error',
+        open: true,
+      });
+    }
+  }, [containerId, addNotification]);
+
+  // const handleDownloadFileBlob = useCallback(async (file: ApiFile) => {
+  //   try {
+  //     addNotification({
+  //       message: `Downloading file: ${file.name || file.path}`,
+  //       severity: 'info',
+  //       open: true,
+  //     });
+
+  //     const response = await apiClient.downloadFile(containerId, file.name);
+  //     const blob = await response.blob();
+      
+  //     const url = URL.createObjectURL(blob);
+  //     const link = document.createElement('a');
+  //     link.href = url;
+  //     link.download = file.name || 'download';
+  //     document.body.appendChild(link);
+  //     link.click();
+  //     document.body.removeChild(link);
+  //     URL.revokeObjectURL(url);
+
+  //     addNotification({
+  //       message: `File "${file.name || file.path}" downloaded successfully`,
+  //       severity: 'success',
+  //       open: true,
+  //     });
+
+  //   } catch (error) {
+  //     console.error('Download error:', error);
+  //     addNotification({
+  //       message: `Failed to download file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+  //       severity: 'error',
+  //       open: true,
+  //     });
+  //   }
+  // }, [containerId, addNotification]);
+
   const handleFileAction = useCallback((action: string, file: ApiFile) => {
     switch (action) {
       case 'download':
-        addNotification({
-          message: `Downloading file: ${file.name || file.path}`,
-          severity: 'info',
-          open: true,
-        });
+        handleDownloadFile(file);
         break;
       case 'view':
         setFileContentDialog({ open: true, file });

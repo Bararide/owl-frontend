@@ -150,7 +150,6 @@ class ApiClient {
     return response.data.data;
   }
 
-  // Files endpoints
   async getFiles(containerId: string): Promise<ApiFile[]> {
     const response = await this.client.get<{ data: ApiFile[] }>(`/containers/${containerId}/files`, {
       headers: this.getAuthHeaders()
@@ -171,7 +170,6 @@ class ApiClient {
       `/containers/${containerId}/files/${fileId}/content`,
       { headers: this.getAuthHeaders() }
     );
-    console.log("UP TO SERVER")
     return response.data.data;
   }
 
@@ -215,7 +213,6 @@ class ApiClient {
     return response.data.data;
   }
 
-  // Search endpoints
   async semanticSearch(data: SearchRequest): Promise<SearchResult> {
     const response = await this.client.post<{ data: SearchResult }>('/search/semantic', data, {
       headers: this.getAuthHeaders()
@@ -223,7 +220,6 @@ class ApiClient {
     return response.data.data;
   }
 
-  // System endpoints
   async healthCheck(): Promise<{ status: string }> {
     const response = await this.client.get<{ data: { status: string } }>('/health', {
       headers: this.getAuthHeaders()
