@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -53,14 +53,14 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
   const [searchResults, setSearchResults] = useState<SearchResultFile[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // Обычный поиск по имени/пути/типу
+  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const filteredFiles = files.filter(file => 
     file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     file.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
     file.mime_type.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Семантический поиск
   const handleSemanticSearch = useCallback(async (query: string) => {
     if (!query.trim() || !containerId) return;
 
@@ -74,7 +74,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
         limit: 50
       });
 
-      // Сопоставляем результаты поиска с файлами для получения полной информации
       const resultFiles: SearchResultFile[] = result.results.map(searchResult => {
         const originalFile = files.find(f => f.name === searchResult.file_id || f.path === searchResult.path);
         return {
@@ -107,7 +106,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
         severity: 'error',
         open: true,
       });
-      // Fallback to regular search
       setIsSemanticSearch(false);
     } finally {
       setIsSearching(false);
@@ -116,23 +114,28 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
-    if (value.trim() && containerId) {
-      // Автоматически запускаем семантический поиск при вводе
-      const searchTimer = setTimeout(() => {
-        handleSemanticSearch(value);
-      }, 500);
-      return () => clearTimeout(searchTimer);
-    } else {
+    
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+    
+    if (!value.trim()) {
       setIsSemanticSearch(false);
       setSearchResults([]);
     }
-  }, [containerId, handleSemanticSearch]);
+  }, []);
 
-  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && searchQuery.trim() && containerId) {
+  const handleSearchSubmit = useCallback(() => {
+    if (searchQuery.trim() && containerId) {
       handleSemanticSearch(searchQuery);
     }
   }, [searchQuery, containerId, handleSemanticSearch]);
+
+  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && searchQuery.trim() && containerId) {
+      handleSearchSubmit();
+    }
+  }, [searchQuery, containerId, handleSearchSubmit]);
 
   const handleDownloadFile = useCallback(async (file: ApiFile) => {
     try {
@@ -259,16 +262,16 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
           component="form" 
           onSubmit={(e) => {
             e.preventDefault();
-            if (searchQuery.trim() && containerId) {
-              handleSemanticSearch(searchQuery);
-            }
+            handleSearchSubmit();
           }}
           sx={{ 
             position: 'relative',
             maxWidth: 600,
             mb: 2,
             flex: 1,
-            mr: 2
+            mr: 2,
+            display: 'flex',
+            gap: 1
           }}
         >
           <TextField
@@ -282,16 +285,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  {isSearching ? (
-                    <CircularProgress size={20} />
-                  ) : (
-                    <SemanticSearchIcon 
-                      sx={{ 
-                        color: isSearchFocused ? 'primary.main' : 'text.secondary',
-                        transition: 'color 0.2s ease'
-                      }} 
-                    />
-                  )}
+                  <SemanticSearchIcon 
+                    sx={{ 
+                      color: isSearchFocused ? 'primary.main' : 'text.secondary',
+                      transition: 'color 0.2s ease'
+                    }} 
+                  />
                 </InputAdornment>
               ),
               endAdornment: searchQuery && (
@@ -319,6 +318,19 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
               }
             }}
           />
+          
+          <Button
+            variant="contained"
+            onClick={handleSearchSubmit}
+            disabled={!searchQuery.trim() || isSearching}
+            startIcon={isSearching ? <CircularProgress size={20} /> : <SearchIcon />}
+            sx={{ 
+              minWidth: '120px',
+              borderRadius: 2
+            }}
+          >
+            {isSearching ? 'Searching...' : 'Search'}
+          </Button>
           
           <Fade in={isSearchFocused && searchQuery.length > 0}>
             <Box sx={{ 
