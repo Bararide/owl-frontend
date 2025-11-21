@@ -8,28 +8,36 @@ import {
   IconButton,
   Fade,
   Chip,
+  CircularProgress,
 } from '@mui/material';
 import {
   Search as SearchIcon,
   Close as CloseIcon,
   Refresh as RefreshIcon,
   Description as DescriptionIcon,
+  SmartToy as SemanticSearchIcon,
 } from '@mui/icons-material';
-import { useFiles } from '../../hooks/useApi';
+import { useFiles, useSemanticSearch } from '../../hooks/useApi';
 import { useNotifications } from '../../hooks/useNotifications';
 import { FileCard } from './FileCard';
 import { FileContentDialog } from './FileContentDialog';
 import { LoadingSkeleton } from '../common/LoadingSkeleton';
-import { ApiFile } from '../../api/client';
+import { ApiFile, SearchResult } from '../../api/client';
 import { apiClient } from '../../api/client';
 
 interface FilesViewProps {
   containerId: string;
 }
 
+interface SearchResultFile extends ApiFile {
+  score?: number;
+  content_preview?: string;
+}
+
 export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
   const { data: files = [], isLoading: isLoadingFiles, refetch: refetchFiles } = useFiles(containerId);
   const { addNotification } = useNotifications();
+  const semanticSearchMutation = useSemanticSearch();
   
   const [fileContentDialog, setFileContentDialog] = useState<{
     open: boolean;
@@ -41,14 +49,92 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [isSemanticSearch, setIsSemanticSearch] = useState(false);
+  const [searchResults, setSearchResults] = useState<SearchResultFile[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
+  // Обычный поиск по имени/пути/типу
   const filteredFiles = files.filter(file => 
     file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     file.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
     file.mime_type.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-    const handleDownloadFile = useCallback(async (file: ApiFile) => {
+  // Семантический поиск
+  const handleSemanticSearch = useCallback(async (query: string) => {
+    if (!query.trim() || !containerId) return;
+
+    setIsSearching(true);
+    setIsSemanticSearch(true);
+
+    try {
+      const result = await semanticSearchMutation.mutateAsync({
+        query: query,
+        container_id: containerId,
+        limit: 50
+      });
+
+      // Сопоставляем результаты поиска с файлами для получения полной информации
+      const resultFiles: SearchResultFile[] = result.results.map(searchResult => {
+        const originalFile = files.find(f => f.name === searchResult.file_id || f.path === searchResult.path);
+        return {
+          ...(originalFile || {
+            path: searchResult.path,
+            name: searchResult.file_id,
+            size: 0,
+            container_id: containerId,
+            user_id: '',
+            created_at: '',
+            mime_type: 'text/plain'
+          }),
+          score: searchResult.score,
+          content_preview: searchResult.content_preview
+        };
+      });
+
+      setSearchResults(resultFiles);
+
+      addNotification({
+        message: `Found ${resultFiles.length} semantically relevant files`,
+        severity: 'success',
+        open: true,
+      });
+
+    } catch (error) {
+      console.error('Semantic search error:', error);
+      addNotification({
+        message: `Semantic search failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error',
+        open: true,
+      });
+      // Fallback to regular search
+      setIsSemanticSearch(false);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [containerId, files, semanticSearchMutation, addNotification]);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+    if (value.trim() && containerId) {
+      // Автоматически запускаем семантический поиск при вводе
+      const searchTimer = setTimeout(() => {
+        handleSemanticSearch(value);
+      }, 500);
+      return () => clearTimeout(searchTimer);
+    } else {
+      setIsSemanticSearch(false);
+      setSearchResults([]);
+    }
+  }, [containerId, handleSemanticSearch]);
+
+  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && searchQuery.trim() && containerId) {
+      handleSemanticSearch(searchQuery);
+    }
+  }, [searchQuery, containerId, handleSemanticSearch]);
+
+  const handleDownloadFile = useCallback(async (file: ApiFile) => {
     try {
       addNotification({
         message: `Downloading file: ${file.name || file.path}`,
@@ -90,42 +176,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     }
   }, [containerId, addNotification]);
 
-  // const handleDownloadFileBlob = useCallback(async (file: ApiFile) => {
-  //   try {
-  //     addNotification({
-  //       message: `Downloading file: ${file.name || file.path}`,
-  //       severity: 'info',
-  //       open: true,
-  //     });
-
-  //     const response = await apiClient.downloadFile(containerId, file.name);
-  //     const blob = await response.blob();
-      
-  //     const url = URL.createObjectURL(blob);
-  //     const link = document.createElement('a');
-  //     link.href = url;
-  //     link.download = file.name || 'download';
-  //     document.body.appendChild(link);
-  //     link.click();
-  //     document.body.removeChild(link);
-  //     URL.revokeObjectURL(url);
-
-  //     addNotification({
-  //       message: `File "${file.name || file.path}" downloaded successfully`,
-  //       severity: 'success',
-  //       open: true,
-  //     });
-
-  //   } catch (error) {
-  //     console.error('Download error:', error);
-  //     addNotification({
-  //       message: `Failed to download file: ${error instanceof Error ? error.message : 'Unknown error'}`,
-  //       severity: 'error',
-  //       open: true,
-  //     });
-  //   }
-  // }, [containerId, addNotification]);
-
   const handleFileAction = useCallback((action: string, file: ApiFile) => {
     switch (action) {
       case 'download':
@@ -159,7 +209,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
           open: true,
         });
     }
-  }, [addNotification, refetchFiles]);
+  }, [addNotification, refetchFiles, handleDownloadFile]);
 
   const handleViewContent = useCallback((file: ApiFile) => {
     setFileContentDialog({ 
@@ -182,7 +232,11 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
 
   const handleClearSearch = useCallback(() => {
     setSearchQuery('');
+    setIsSemanticSearch(false);
+    setSearchResults([]);
   }, []);
+
+  const displayFiles = isSemanticSearch ? searchResults : (searchQuery ? filteredFiles : files);
 
   if (!containerId) {
     return (
@@ -203,29 +257,41 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Box 
           component="form" 
-          onSubmit={(e) => e.preventDefault()}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (searchQuery.trim() && containerId) {
+              handleSemanticSearch(searchQuery);
+            }
+          }}
           sx={{ 
             position: 'relative',
             maxWidth: 600,
-            mb: 2
+            mb: 2,
+            flex: 1,
+            mr: 2
           }}
         >
           <TextField
             fullWidth
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            onKeyPress={handleKeyPress}
             onFocus={() => setIsSearchFocused(true)}
             onBlur={() => setIsSearchFocused(false)}
-            placeholder="Search files by name, path or type..."
+            placeholder="Search files semantically by content..."
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon 
-                    sx={{ 
-                      color: isSearchFocused ? 'primary.main' : 'text.secondary',
-                      transition: 'color 0.2s ease'
-                    }} 
-                  />
+                  {isSearching ? (
+                    <CircularProgress size={20} />
+                  ) : (
+                    <SemanticSearchIcon 
+                      sx={{ 
+                        color: isSearchFocused ? 'primary.main' : 'text.secondary',
+                        transition: 'color 0.2s ease'
+                      }} 
+                    />
+                  )}
                 </InputAdornment>
               ),
               endAdornment: searchQuery && (
@@ -269,16 +335,19 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
               zIndex: 1000
             }}>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block', fontSize: '0.75rem' }}>
-                Quick Filters
+                Semantic Search - finds files by meaning and context
               </Typography>
               <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-                {['.txt', '.json', '.js', '.py', '.md'].map((filter) => (
+                {['authentication', 'database', 'error handling', 'API endpoints', 'configuration'].map((filter) => (
                   <Chip
                     key={filter}
                     label={filter}
                     size="small"
                     clickable
-                    onClick={() => setSearchQuery(filter)}
+                    onClick={() => {
+                      setSearchQuery(filter);
+                      handleSemanticSearch(filter);
+                    }}
                     variant="outlined"
                     sx={{ fontSize: '0.7rem', height: 24 }}
                   />
@@ -298,10 +367,22 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
       </Box>
 
       {searchQuery && (
-        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="body2" color="text.secondary">
-            Found {filteredFiles.length} files for "{searchQuery}"
+            {isSemanticSearch 
+              ? `Found ${searchResults.length} semantically relevant files for "${searchQuery}"`
+              : `Found ${filteredFiles.length} files for "${searchQuery}"`
+            }
           </Typography>
+          {isSemanticSearch && (
+            <Chip 
+              label="Semantic Search" 
+              size="small" 
+              color="primary" 
+              variant="outlined"
+              icon={<SemanticSearchIcon />}
+            />
+          )}
           <Button 
             size="small" 
             onClick={handleClearSearch}
@@ -315,7 +396,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
 
       {isLoadingFiles ? (
         <LoadingSkeleton type="card" />
-      ) : filteredFiles.length === 0 ? (
+      ) : displayFiles.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <DescriptionIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
@@ -323,7 +404,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
           </Typography>
           <Typography variant="body2" color="text.secondary">
             {searchQuery 
-              ? `No files match your search for "${searchQuery}"`
+              ? `No files match your ${isSemanticSearch ? 'semantic' : ''} search for "${searchQuery}"`
               : 'This container doesn\'t have any files yet'
             }
           </Typography>
@@ -344,13 +425,15 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
           gap: 3,
           width: '100%'
         }}>
-          {filteredFiles.map((file: ApiFile) => (
+          {displayFiles.map((file: SearchResultFile) => (
             <FileCard
-              key={file.name}
+              key={`${file.name}-${file.score || ''}`}
               file={file}
               onSelect={handleFileSelect}
               onAction={handleFileAction}
               onViewContent={handleViewContent}
+              searchScore={file.score}
+              contentPreview={file.content_preview}
             />
           ))}
         </Box>

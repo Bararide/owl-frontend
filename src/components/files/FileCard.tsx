@@ -28,6 +28,8 @@ interface FileCardProps {
   onSelect: (file: ApiFile) => void;
   onAction: (action: string, file: ApiFile) => void;
   onViewContent: (file: ApiFile) => void;
+  searchScore?: number;
+  contentPreview?: string;
 }
 
 export const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction, onViewContent }) => {
