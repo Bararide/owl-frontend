@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -12,6 +12,8 @@ import {
   ListItemText,
   Divider,
   CardContent,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import {
   MoreVert as MoreVertIcon,
@@ -23,10 +25,13 @@ import {
   Memory as MemoryIcon,
   Storage as StorageIcon,
   Delete,
+  CloudUpload as UploadIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
+import { useDropzone } from 'react-dropzone';
 import { GlassCard, StatusIndicator, AnimatedChip } from '../styled';
 import { Container } from '../../api/client';
+import { useUploadFile } from '../../hooks/useApi';
 
 interface ContainerCardProps {
   container: Container;
@@ -36,6 +41,12 @@ interface ContainerCardProps {
 
 export const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelect, onAction }) => {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<{ open: boolean; success?: boolean; message?: string }>({
+    open: false,
+  });
+
+  const uploadFileMutation = useUploadFile();
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     event.stopPropagation();
@@ -51,8 +62,107 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelec
     handleMenuClose();
   };
 
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    if (acceptedFiles.length === 0) return;
+
+    const file = acceptedFiles[0];
+    
+    try {
+      const content = await readFileContent(file);
+      
+      const apiFile = {
+        path: `/${file.name}`,
+        name: file.name,
+        size: file.size,
+        container_id: container.id,
+        user_id: container.user_id,
+        created_at: new Date().toISOString(),
+        mime_type: file.type || 'application/octet-stream',
+      };
+
+      await uploadFileMutation.mutateAsync({
+        containerId: container.id,
+        file: apiFile,
+        content,
+      });
+
+      setUploadStatus({
+        open: true,
+        success: true,
+        message: `Файл "${file.name}" успешно загружен`,
+      });
+    } catch (error) {
+      console.error('Ошибка загрузки файла:', error);
+      setUploadStatus({
+        open: true,
+        success: false,
+        message: `Ошибка загрузки файла: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`,
+      });
+    }
+  }, [container.id, container.user_id, uploadFileMutation]);
+
+  const readFileContent = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result;
+        if (typeof content === 'string') {
+          resolve(content);
+        } else if (content instanceof ArrayBuffer) {
+          const bytes = new Uint8Array(content);
+          let binary = '';
+          for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          resolve(btoa(binary));
+        } else {
+          reject(new Error('Не удалось прочитать содержимое файла'));
+        }
+      };
+      reader.onerror = () => reject(new Error('Ошибка чтения файла'));
+      
+      if (file.type.startsWith('text/') || file.type === 'application/json') {
+        reader.readAsText(file);
+      } else {
+        reader.readAsArrayBuffer(file);
+      }
+    });
+  };
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    noClick: true,
+    multiple: false,
+    onDragEnter: () => setDragOver(true),
+    onDragLeave: () => setDragOver(false),
+    onDropAccepted: () => setDragOver(false),
+    onDropRejected: () => setDragOver(false),
+  });
+
+  const handleUploadClick = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.style.display = 'none';
+    input.onchange = (e) => {
+      const files = (e.target as HTMLInputElement).files;
+      if (files && files.length > 0) {
+        onDrop(Array.from(files));
+      }
+    };
+    document.body.appendChild(input);
+    input.click();
+    document.body.removeChild(input);
+  };
+
+  const handleCloseSnackbar = () => {
+    setUploadStatus({ open: false });
+  };
+
   return (
-    <Box sx={{ width: '100%', maxWidth: 320, minWidth: 280 }}>
+    <Box sx={{ width: '100%', maxWidth: 320, minWidth: 280 }} {...getRootProps()}>
+      <input {...getInputProps()} />
+      
       <motion.div
         whileHover={{ y: -4, transition: { type: "spring", stiffness: 400 } }}
         whileTap={{ scale: 0.98 }}
@@ -63,8 +173,41 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelec
             cursor: 'pointer',
             position: 'relative',
             overflow: 'visible',
+            border: dragOver ? '2px dashed #00CFE8' : '1px solid rgba(255, 255, 255, 0.08)',
+            backgroundColor: dragOver ? 'rgba(0, 207, 232, 0.05)' : undefined,
+            transition: 'all 0.2s ease',
           }}
         >
+          {dragOver && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 207, 232, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10,
+                borderRadius: 2,
+              }}
+            >
+              <Box
+                sx={{
+                  textAlign: 'center',
+                  color: '#00CFE8',
+                }}
+              >
+                <UploadIcon sx={{ fontSize: 48, mb: 1 }} />
+                <Typography variant="body2" fontWeight="600">
+                  Перетащите файл для загрузки
+                </Typography>
+              </Box>
+            </Box>
+          )}
+
           {container.env_label.value === 'prod' && (
             <Chip
               label="Production"
@@ -199,6 +342,22 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelec
                 </Box>
               </Tooltip>
             </Box>
+
+            {/* Индикатор drag & drop */}
+            {isDragActive && !dragOver && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  bottom: 8,
+                  right: 8,
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  backgroundColor: '#00CFE8',
+                  animation: 'pulse 1.5s infinite',
+                }}
+              />
+            )}
           </CardContent>
         </GlassCard>
       </motion.div>
@@ -218,6 +377,10 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelec
           }
         }}
       >
+        <MenuItem onClick={handleUploadClick}>
+          <ListItemIcon><UploadIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Upload File</ListItemText>
+        </MenuItem>
         <MenuItem onClick={() => handleAction('restart')}>
           <ListItemIcon><RefreshIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Restart</ListItemText>
@@ -240,6 +403,21 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelec
           <ListItemText>Settings</ListItemText>
         </MenuItem>
       </Menu>
+
+      <Snackbar
+        open={uploadStatus.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={uploadStatus.success ? 'success' : 'error'}
+          variant="filled"
+        >
+          {uploadStatus.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
