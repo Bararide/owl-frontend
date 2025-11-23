@@ -91,6 +91,17 @@ export const useUploadFile = () => {
   });
 };
 
+export const useDownloadFile = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ container_id, file}: {
+      container_id: string,
+      file: ApiFile;
+    }) => apiClient.downloadFile(file.name, container_id)
+  })
+}
+
 export const useDeleteFile = () => {
   const queryClient = useQueryClient();
   
