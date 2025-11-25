@@ -25,10 +25,11 @@ import {
   Image as ImageIcon,
   Download as DownloadIcon,
   Visibility as ViewIcon,
+  SmartToy as BotIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Container, ApiFile, SearchResult } from '../api/client';
-import { useSemanticSearch, useFiles, useDownloadFile, useFileContent } from '../hooks/useApi';
+import { Container, ApiFile } from '../api/client';
+import { useChatWithBot, useFiles, useDownloadFile, useFileContent } from '../hooks/useApi';
 import { FileCard } from '../components/files/FileCard';
 import { useNotifications } from '../hooks/useNotifications';
 
@@ -42,10 +43,11 @@ interface Message {
   type: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  files?: Array<{
-    file: ApiFile;
-    score: number;
-    content_preview: string;
+  used_files?: Array<{
+    file_path: string;
+    file_name: string;
+    relevance_score: number;
+    content_snippet: string;
   }>;
 }
 
@@ -59,17 +61,16 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { addNotification } = useNotifications();
 
-  const semanticSearchMutation = useSemanticSearch();
+  const chatWithBotMutation = useChatWithBot();
   const { data: files = [] } = useFiles(selectedContainer?.id);
   const downloadFileMutation = useDownloadFile();
-  const fileContentQuery = useFileContent(selectedContainer?.id || '', '');
 
   // Авто-скролл к новым сообщениям
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSearch = async () => {
+  const handleSendMessage = async () => {
     if (!searchQuery.trim() || !selectedContainer) return;
 
     const userMessage: Message = {
@@ -81,42 +82,48 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
+    const currentQuery = searchQuery;
+    setSearchQuery('');
 
     try {
-      const searchResult = await semanticSearchMutation.mutateAsync({
-        query: searchQuery,
+      // Подготавливаем историю сообщений для API
+      const conversationHistory = messages
+        .filter(msg => msg.type === 'user' || msg.type === 'assistant')
+        .map(msg => ({
+          role: msg.type as 'user' | 'assistant',
+          content: msg.content,
+        }));
+
+      const response = await chatWithBotMutation.mutateAsync({
+        query: currentQuery,
         container_id: selectedContainer.id,
-        limit: 5,
+        conversation_history: conversationHistory,
       });
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
-        content: `I found ${searchResult.results.length} relevant files for your query: "${searchQuery}"`,
+        content: response.answer,
         timestamp: new Date(),
-        files: searchResult.results.map(result => ({
-          file: files.find(f => f.path === result.path) || {
-            path: result.path,
-            name: result.path.split('/').pop() || result.path,
-            size: 0,
-            container_id: selectedContainer.id,
-            user_id: '',
-            created_at: new Date().toISOString(),
-            mime_type: 'text/plain',
-          },
-          score: result.score,
-          content_preview: result.content_preview,
-        })),
+        used_files: response.used_files,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
-      setSearchQuery('');
     } catch (error) {
       addNotification({
-        message: `Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `Chat failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         severity: 'error',
         open: true,
       });
+      
+      // Добавляем сообщение об ошибке
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        type: 'assistant',
+        content: 'Sorry, I encountered an error while processing your request. Please try again.',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -125,7 +132,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSearch();
+      handleSendMessage();
     }
   };
 
@@ -167,6 +174,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
           severity: 'info',
           open: true,
         });
+        // Здесь можно добавить логику для просмотра файла
         break;
       
       default:
@@ -180,6 +188,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
       severity: 'info',
       open: true,
     });
+    // Здесь можно добавить логику для просмотра содержимого файла
   };
 
   const getFileIcon = (fileName: string) => {
@@ -211,11 +220,15 @@ export const SearchView: React.FC<SearchViewProps> = ({
     return (score * 100).toFixed(1);
   };
 
+  const findFileByPath = (filePath: string): ApiFile | undefined => {
+    return files.find(file => file.path === filePath);
+  };
+
   if (!selectedContainer) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
         <Alert severity="info" sx={{ maxWidth: 400 }}>
-          Please select a container first to use semantic search
+          Please select a container first to chat with the AI assistant
         </Alert>
       </Box>
     );
@@ -223,22 +236,6 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
   return (
     <Box sx={{ height: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" gutterBottom sx={{ fontWeight: 700 }}>
-          Semantic Search
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Ask questions about your container files and get AI-powered answers
-        </Typography>
-        <Chip 
-          label={`Container: ${selectedContainer.id.substring(0, 12)}...`}
-          color="primary"
-          variant="outlined"
-          sx={{ mt: 1 }}
-        />
-      </Box>
-
       <Grid container spacing={3} sx={{ flex: 1, minHeight: 0 }}>
         {/* Чат-панель */}
         <Grid>
@@ -264,12 +261,12 @@ export const SearchView: React.FC<SearchViewProps> = ({
                     color: 'text.secondary',
                     textAlign: 'center'
                   }}>
-                    <SearchIcon sx={{ fontSize: 64, mb: 2, opacity: 0.5 }} />
+                    <BotIcon sx={{ fontSize: 64, mb: 2, opacity: 0.5 }} />
                     <Typography variant="h6" gutterBottom>
-                      Ask questions about your files
+                      Chat with AI Assistant
                     </Typography>
                     <Typography variant="body2">
-                      The AI will search through your container files and provide relevant answers
+                      Ask questions about your files and get intelligent answers based on their content
                     </Typography>
                   </Box>
                 ) : (
@@ -301,91 +298,99 @@ export const SearchView: React.FC<SearchViewProps> = ({
                         {message.type === 'assistant' && (
                           <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
                             <Box sx={{ maxWidth: '90%' }}>
-                              <Paper
-                                sx={{
-                                  p: 2,
-                                  background: 'rgba(255, 255, 255, 0.05)',
-                                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                                }}
-                              >
-                                <Typography variant="body1" sx={{ mb: message.files ? 2 : 0 }}>
-                                  {message.content}
-                                </Typography>
+                              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                                <BotIcon sx={{ color: 'primary.main', mt: 0.5 }} />
+                                <Paper
+                                  sx={{
+                                    p: 2,
+                                    flex: 1,
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                                  }}
+                                >
+                                  <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                                    {message.content}
+                                  </Typography>
 
-                                {/* Файлы с релевантностью */}
-                                {message.files && message.files.length > 0 && (
-                                  <Box sx={{ mt: 2 }}>
-                                    <Typography variant="subtitle2" gutterBottom sx={{ opacity: 0.8 }}>
-                                      Relevant files:
-                                    </Typography>
-                                    {message.files.map((fileInfo, index) => (
-                                      <Card
-                                        key={index}
-                                        sx={{
-                                          mb: 1,
-                                          background: 'rgba(255, 255, 255, 0.02)',
-                                          border: '1px solid rgba(255, 255, 255, 0.04)',
-                                          cursor: 'pointer',
-                                          '&:hover': {
-                                            background: 'rgba(255, 255, 255, 0.05)',
-                                          },
-                                        }}
-                                        onClick={() => handleFileAction('view', fileInfo.file)}
-                                      >
-                                        <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                            <Box
-                                              sx={{
-                                                p: 1,
-                                                borderRadius: 1,
-                                                backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.1),
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                              }}
-                                            >
-                                              {getFileIcon(fileInfo.file.name)}
-                                            </Box>
-                                            <Box sx={{ flex: 1, minWidth: 0 }}>
-                                              <Typography variant="body2" noWrap fontWeight={600}>
-                                                {fileInfo.file.name}
-                                              </Typography>
-                                              <Typography variant="caption" color="text.secondary" noWrap>
-                                                {fileInfo.file.path}
-                                              </Typography>
-                                            </Box>
-                                            <Chip
-                                              label={`${formatScore(fileInfo.score)}% match`}
-                                              size="small"
-                                              color="success"
-                                              variant="outlined"
-                                            />
-                                          </Box>
-                                          
-                                          {/* Превью контента */}
-                                          {fileInfo.content_preview && (
-                                            <Typography
-                                              variant="caption"
-                                              sx={{
-                                                display: 'block',
-                                                mt: 1,
-                                                p: 1,
-                                                background: 'rgba(0, 0, 0, 0.2)',
-                                                borderRadius: 1,
-                                                fontFamily: 'monospace',
-                                                fontSize: '0.7rem',
-                                                lineHeight: 1.2,
-                                              }}
-                                            >
-                                              {fileInfo.content_preview}
-                                            </Typography>
-                                          )}
-                                        </CardContent>
-                                      </Card>
-                                    ))}
-                                  </Box>
-                                )}
-                              </Paper>
-                              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                                  {/* Использованные файлы */}
+                                  {message.used_files && message.used_files.length > 0 && (
+                                    <Box sx={{ mt: 2 }}>
+                                      <Typography variant="subtitle2" gutterBottom sx={{ opacity: 0.8 }}>
+                                        Sources used:
+                                      </Typography>
+                                      {message.used_files.map((fileInfo, index) => {
+                                        const file = findFileByPath(fileInfo.file_path);
+                                        return (
+                                          <Card
+                                            key={index}
+                                            sx={{
+                                              mb: 1,
+                                              background: 'rgba(255, 255, 255, 0.02)',
+                                              border: '1px solid rgba(255, 255, 255, 0.04)',
+                                              cursor: 'pointer',
+                                              '&:hover': {
+                                                background: 'rgba(255, 255, 255, 0.05)',
+                                              },
+                                            }}
+                                            onClick={() => file && handleFileAction('view', file)}
+                                          >
+                                            <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                                <Box
+                                                  sx={{
+                                                    p: 1,
+                                                    borderRadius: 1,
+                                                    backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.1),
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                  }}
+                                                >
+                                                  {getFileIcon(fileInfo.file_name)}
+                                                </Box>
+                                                <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                  <Typography variant="body2" noWrap fontWeight={600}>
+                                                    {fileInfo.file_name}
+                                                  </Typography>
+                                                  <Typography variant="caption" color="text.secondary" noWrap>
+                                                    {fileInfo.file_path}
+                                                  </Typography>
+                                                </Box>
+                                                <Chip
+                                                  label={`${formatScore(fileInfo.relevance_score)}% relevant`}
+                                                  size="small"
+                                                  color="success"
+                                                  variant="outlined"
+                                                />
+                                              </Box>
+                                              
+                                              {/* Превью контента */}
+                                              {fileInfo.content_snippet && (
+                                                <Typography
+                                                  variant="caption"
+                                                  sx={{
+                                                    display: 'block',
+                                                    mt: 1,
+                                                    p: 1,
+                                                    background: 'rgba(0, 0, 0, 0.2)',
+                                                    borderRadius: 1,
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.7rem',
+                                                    lineHeight: 1.2,
+                                                    whiteSpace: 'pre-wrap',
+                                                  }}
+                                                >
+                                                  {fileInfo.content_snippet}
+                                                </Typography>
+                                              )}
+                                            </CardContent>
+                                          </Card>
+                                        );
+                                      })}
+                                    </Box>
+                                  )}
+                                </Paper>
+                              </Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ ml: 4 }}>
                                 {message.timestamp.toLocaleTimeString()}
                               </Typography>
                             </Box>
@@ -399,19 +404,22 @@ export const SearchView: React.FC<SearchViewProps> = ({
               
               {/* Индикатор загрузки */}
               {isLoading && (
-                <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 2 }}>
-                  <Paper
-                    sx={{
-                      p: 2,
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CircularProgress size={16} />
-                      <Typography variant="body2">Searching through files...</Typography>
-                    </Box>
-                  </Paper>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 2, ml: 4 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <BotIcon sx={{ color: 'primary.main' }} />
+                    <Paper
+                      sx={{
+                        p: 2,
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={16} />
+                        <Typography variant="body2">Thinking...</Typography>
+                      </Box>
+                    </Paper>
+                  </Box>
                 </Box>
               )}
               
@@ -441,7 +449,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 />
                 <Button
                   variant="contained"
-                  onClick={handleSearch}
+                  onClick={handleSendMessage}
                   disabled={!searchQuery.trim() || isLoading || !selectedContainer}
                   sx={{ minWidth: 'auto', px: 2 }}
                 >
@@ -472,7 +480,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 Container Files
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {files.length} files available for search
+                {files.length} files available for AI analysis
               </Typography>
             </Box>
 

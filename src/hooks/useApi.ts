@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient, ApiFile, CreateContainerRequest, SearchRequest } from '../api/client';
+import { apiClient, ApiFile, ChatRequest, CreateContainerRequest, SearchRequest } from '../api/client';
 
 export const useContainers = () => {
   return useQuery({
@@ -13,6 +13,12 @@ export const useContainer = (containerId: string) => {
     queryKey: ['containers', containerId],
     queryFn: () => apiClient.getContainer(containerId),
     enabled: !!containerId,
+  });
+};
+
+export const useChatWithBot = () => {
+  return useMutation({
+    mutationFn: (data: ChatRequest) => apiClient.chatWithBot(data),
   });
 };
 

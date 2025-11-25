@@ -74,6 +74,26 @@ export interface FileContent {
   mime_type: string;
 }
 
+export interface ChatRequest {
+  query: string;
+  container_id: string;
+  conversation_history?: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+  }>;
+}
+
+export interface ChatResponse {
+  answer: string;
+  used_files: Array<{
+    file_path: string;
+    file_name: string;
+    relevance_score: number;
+    content_snippet: string;
+  }>;
+  conversation_id?: string;
+}
+
 class ApiClient {
   private token: string | null = null;
   private client = axios.create({
@@ -102,6 +122,13 @@ class ApiClient {
     }
     
     return headers;
+  }
+
+  async chatWithBot(data: ChatRequest): Promise<ChatResponse> {
+    const response = await this.client.post<{ data: ChatResponse }>('/chat', data, {
+      headers: this.getAuthHeaders()
+    });
+    return response.data.data;
   }
 
   async getContainers(): Promise<Container[]> {
