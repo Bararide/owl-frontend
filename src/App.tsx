@@ -94,6 +94,16 @@ const App: React.FC = () => {
   };
 
   const handleMenuItemClick = (menuId: string, tabIndex: number) => {
+    // Блокируем переход на Search если контейнер не выбран
+    if (menuId === 'search' && !selectedContainer) {
+      addNotification({
+        message: 'Please select a container first to use search functionality',
+        severity: 'warning',
+        open: true,
+      });
+      return;
+    }
+    
     setActiveMenuItem(menuId);
     setCurrentTab(tabIndex);
   };
@@ -141,13 +151,6 @@ const App: React.FC = () => {
           />
         );
       case 4:
-        if (!selectedContainer) {
-          return <NotificationSnackbar
-            notifications={notifications}
-            onClose={removeNotification}
-          />
-        }
-
         return (
           <SearchView
             selectedContainer={selectedContainer}
@@ -192,6 +195,7 @@ const App: React.FC = () => {
             activeMenuItem={activeMenuItem}
             onMenuItemClick={handleMenuItemClick}
             user={mockUser}
+            selectedContainer={selectedContainer}
           />
 
           <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>

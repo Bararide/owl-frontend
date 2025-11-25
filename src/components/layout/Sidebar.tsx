@@ -8,6 +8,7 @@ import {
   ListItemIcon,
   ListItemText,
   Avatar,
+  Tooltip,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -18,11 +19,13 @@ import {
   Security as SecurityIcon,
 } from '@mui/icons-material';
 import { User } from '../../types';
+import { Container } from '../../api/client';
 
 interface SidebarProps {
   activeMenuItem: string;
   onMenuItemClick: (menuId: string, tabIndex: number) => void;
   user: User;
+  selectedContainer: Container | null;
 }
 
 const menuItems = [
@@ -37,8 +40,11 @@ const menuItems = [
 export const Sidebar: React.FC<SidebarProps> = ({ 
   activeMenuItem, 
   onMenuItemClick, 
-  user 
+  user,
+  selectedContainer 
 }) => {
+  const isSearchDisabled = !selectedContainer;
+
   return (
     <Drawer
       variant="permanent"
@@ -79,40 +85,70 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <Divider sx={{ mb: 2.5, opacity: 0.2 }} />
 
         <Box sx={{ flexGrow: 1 }}>
-          {menuItems.map((item) => (
-            <ListItemButton
-              key={item.id}
-              selected={activeMenuItem === item.id}
-              onClick={() => {
-                const tabMap: Record<string, number> = {
-                  dashboard: 0,
-                  containers: 1,
-                  files: 2,
-                  analytics: 3,
-                  search: 4,
-                  security: 5,
-                };
-                onMenuItemClick(item.id, tabMap[item.id] || 0);
-              }}
-              sx={{
-                borderRadius: 1.5,
-                mb: 0.5,
-                py: 1,
-                '&.Mui-selected': {
-                  backgroundColor: 'primary.main',
-                  '&:hover': { backgroundColor: 'primary.dark' }
-                }
-              }}
-            >
-              <ListItemIcon sx={{ color: 'inherit', minWidth: 36, fontSize: '1.25rem' }}>
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText 
-                primary={item.text} 
-                primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }}
-              />
-            </ListItemButton>
-          ))}
+          {menuItems.map((item) => {
+            const isSearchItem = item.id === 'search';
+            const isDisabled = isSearchItem && isSearchDisabled;
+
+            return (
+              <Tooltip
+                key={item.id}
+                title={isDisabled ? "Select a container first to use search" : ""}
+                placement="right"
+                arrow
+              >
+                <ListItemButton
+                  key={item.id}
+                  selected={activeMenuItem === item.id}
+                  onClick={() => {
+                    if (isDisabled) return;
+                    
+                    const tabMap: Record<string, number> = {
+                      dashboard: 0,
+                      containers: 1,
+                      files: 2,
+                      analytics: 3,
+                      search: 4,
+                      security: 5,
+                    };
+                    onMenuItemClick(item.id, tabMap[item.id] || 0);
+                  }}
+                  sx={{
+                    borderRadius: 1.5,
+                    mb: 0.5,
+                    py: 1,
+                    '&.Mui-selected': {
+                      backgroundColor: 'primary.main',
+                      '&:hover': { backgroundColor: 'primary.dark' }
+                    },
+                    ...(isDisabled && {
+                      opacity: 0.5,
+                      pointerEvents: 'none',
+                      cursor: 'not-allowed',
+                    })
+                  }}
+                  disabled={isDisabled}
+                >
+                  <ListItemIcon 
+                    sx={{ 
+                      color: isDisabled ? 'text.disabled' : 'inherit', 
+                      minWidth: 36, 
+                      fontSize: '1.25rem' 
+                    }}
+                  >
+                    {item.icon}
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={item.text} 
+                    primaryTypographyProps={{ 
+                      fontWeight: 600, 
+                      fontSize: '0.9rem',
+                      color: isDisabled ? 'text.disabled' : 'inherit'
+                    }}
+                  />
+                </ListItemButton>
+              </Tooltip>
+            );
+          })}
         </Box>
 
         <Box 
