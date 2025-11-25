@@ -32,7 +32,7 @@ const menuItems = [
   { icon: <DashboardIcon />, text: 'Dashboard', id: 'dashboard' },
   { icon: <StorageIcon />, text: 'Containers', id: 'containers' },
   { icon: <FileCopyIcon />, text: 'Files', id: 'files' },
-  { icon: <SearchIcon />, text: 'Search', id: 'search' },
+  { icon: <SearchIcon />, text: 'Advanced search', id: 'search' },
   { icon: <SpeedIcon />, text: 'Analytics', id: 'analytics' },
   { icon: <SecurityIcon />, text: 'Security', id: 'security' },
 ];

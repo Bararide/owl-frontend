@@ -94,7 +94,6 @@ const App: React.FC = () => {
   };
 
   const handleMenuItemClick = (menuId: string, tabIndex: number) => {
-    // Блокируем переход на Search если контейнер не выбран
     if (menuId === 'search' && !selectedContainer) {
       addNotification({
         message: 'Please select a container first to use search functionality',

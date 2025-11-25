@@ -132,48 +132,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
-      <Box sx={{ textAlign: 'center', mb: 4 }}>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <SearchIcon 
-            sx={{ 
-              fontSize: 64, 
-              color: 'primary.main',
-              mb: 2,
-              opacity: 0.8
-            }} 
-          />
-          <Typography 
-            variant="h3" 
-            component="h1" 
-            gutterBottom
-            sx={{ 
-              fontWeight: 700,
-              background: 'linear-gradient(135deg, #00CFE8 0%, #7367F0 100%)',
-              backgroundClip: 'text',
-              WebkitBackgroundClip: 'text',
-              color: 'transparent',
-              mb: 2
-            }}
-          >
-            Advanced Search
-          </Typography>
-          <Typography 
-            variant="h6" 
-            color="text.secondary"
-            sx={{ mb: 4, maxWidth: 600, mx: 'auto' }}
-          >
-            Search across all containers, files, and logs with powerful filtering options
-          </Typography>
-        </motion.div>
-      </Box>
-
       <EnhancedSearch onSearch={handleSearch} />
 
-      {/* Filters */}
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
         <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center' }}>
           <FilterIcon sx={{ mr: 1, fontSize: 18 }} />
@@ -192,7 +152,6 @@ export const SearchView: React.FC<SearchViewProps> = ({
         ))}
       </Box>
 
-      {/* Search Results */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
