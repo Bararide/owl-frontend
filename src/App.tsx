@@ -16,6 +16,7 @@ import { FloatingActionButton } from './components/styled';
 import { Dashboard } from './views/Dashboard';
 import { ContainersView } from './views/ContainersView';
 import { FilesView } from './views/FilesView';
+import { SearchView } from './views/SearchView';
 import { PlaceholderView } from './views/PlaceholderView';
 
 import { apiClient } from './api/client';
@@ -121,6 +122,7 @@ const App: React.FC = () => {
           />
         );
       case 2:
+        console.log(selectedContainer)
         return (
           <FilesView
             selectedContainer={selectedContainer}
@@ -139,11 +141,17 @@ const App: React.FC = () => {
           />
         );
       case 4:
+        if (!selectedContainer) {
+          return <NotificationSnackbar
+            notifications={notifications}
+            onClose={removeNotification}
+          />
+        }
+
         return (
-          <PlaceholderView
-            icon={<SearchIcon sx={{ fontSize: 64, color: 'text.secondary' }} />}
-            title="Search Coming Soon"
-            description="Advanced search functionality will be available here"
+          <SearchView
+            selectedContainer={selectedContainer}
+            onContainerSelect={handleContainerSelect}
           />
         );
       case 5:

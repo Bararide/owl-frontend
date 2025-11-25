@@ -180,7 +180,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     <Box>
       <ConnectionTest />
       <StatsOverview />
-      <EnhancedSearch onSearch={handleSearch} />
       
       <QuickActions
         onCreateContainer={() => setCreateContainerOpen(true)}
