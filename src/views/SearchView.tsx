@@ -238,18 +238,19 @@ export const SearchView: React.FC<SearchViewProps> = ({
     <Box sx={{ height: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
       <Grid container spacing={3} sx={{ flex: 1, minHeight: 0 }}>
         {/* Чат-панель */}
-        <Grid>
+        <Grid sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <Paper 
             sx={{ 
-              height: '100%', 
+              flex: 1,
               display: 'flex', 
               flexDirection: 'column',
+              minHeight: 0,
               background: 'linear-gradient(135deg, rgba(26, 31, 54, 0.8) 0%, rgba(26, 31, 54, 0.6) 100%)',
               border: '1px solid rgba(255, 255, 255, 0.08)',
             }}
           >
             {/* Сообщения */}
-            <Box sx={{ flex: 1, p: 2, overflow: 'auto' }}>
+            <Box sx={{ flex: 1, p: 2, overflow: 'auto', minHeight: 0 }}>
               <AnimatePresence>
                 {messages.length === 0 ? (
                   <Box sx={{ 
@@ -464,12 +465,13 @@ export const SearchView: React.FC<SearchViewProps> = ({
         </Grid>
 
         {/* Панель файлов */}
-        <Grid>
+        <Grid sx={{ display: 'flex', flexDirection: 'column', minWidth: 0, width: 350 }}>
           <Paper 
             sx={{ 
-              height: '100%',
+              flex: 1,
               display: 'flex',
               flexDirection: 'column',
+              minHeight: 0,
               background: 'linear-gradient(135deg, rgba(26, 31, 54, 0.8) 0%, rgba(26, 31, 54, 0.6) 100%)',
               border: '1px solid rgba(255, 255, 255, 0.08)',
             }}
@@ -484,7 +486,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
               </Typography>
             </Box>
 
-            <Box sx={{ flex: 1, p: 2, overflow: 'auto' }}>
+            <Box sx={{ flex: 1, p: 2, overflow: 'auto', minHeight: 0 }}>
               {files.length === 0 ? (
                 <Box sx={{ textAlign: 'center', color: 'text.secondary', py: 4 }}>
                   <DescriptionIcon sx={{ fontSize: 48, mb: 1, opacity: 0.5 }} />
