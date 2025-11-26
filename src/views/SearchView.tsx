@@ -31,6 +31,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Container, ApiFile } from '../api/client';
 import { useChatWithBot, useFiles, useDownloadFile, useFileContent } from '../hooks/useApi';
 import { FileCard } from '../components/files/FileCard';
+import { FileContentDialog } from '../components/files/FileContentDialog';
 import { useNotifications } from '../hooks/useNotifications';
 
 interface SearchViewProps {
@@ -59,6 +60,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [relevantFiles, setRelevantFiles] = useState<ApiFile[]>([]);
+  const [selectedFile, setSelectedFile] = useState<ApiFile | null>(null);
+  const [contentDialogOpen, setContentDialogOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { addNotification } = useNotifications();
 
@@ -66,12 +69,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const { data: files = [] } = useFiles(selectedContainer?.id);
   const downloadFileMutation = useDownloadFile();
 
-  // Авто-скролл к новым сообщениям
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Обновляем relevantFiles при получении новых сообщений
   useEffect(() => {
     const allUsedFiles = messages.flatMap(msg => 
       msg.used_files?.map(usedFile => ({
@@ -82,7 +83,6 @@ export const SearchView: React.FC<SearchViewProps> = ({
       })) || []
     );
 
-    // Находим соответствующие ApiFile объекты
     const newRelevantFiles = allUsedFiles.map(usedFile => {
       const file = files.find(f => f.path === usedFile.file_path);
       return file ? {
@@ -92,7 +92,6 @@ export const SearchView: React.FC<SearchViewProps> = ({
       } : null;
     }).filter(Boolean) as ApiFile[];
 
-    // Убираем дубликаты
     const uniqueFiles = Array.from(new Map(
       newRelevantFiles.map(file => [file.path, file])
     ).values());
@@ -198,11 +197,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
         break;
       
       case 'view':
-        addNotification({
-          message: `Viewing file: ${file.name}`,
-          severity: 'info',
-          open: true,
-        });
+        setSelectedFile(file);
+        setContentDialogOpen(true);
         break;
       
       default:
@@ -211,11 +207,13 @@ export const SearchView: React.FC<SearchViewProps> = ({
   };
 
   const handleViewContent = (file: ApiFile) => {
-    addNotification({
-      message: `Opening file content: ${file.name}`,
-      severity: 'info',
-      open: true,
-    });
+    setSelectedFile(file);
+    setContentDialogOpen(true);
+  };
+
+  const handleCloseContentDialog = () => {
+    setContentDialogOpen(false);
+    setSelectedFile(null);
   };
 
   const getFileIcon = (fileName: string) => {
@@ -260,7 +258,6 @@ export const SearchView: React.FC<SearchViewProps> = ({
   return (
     <Box sx={{ height: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
       <Grid container spacing={3} sx={{ flex: 1, minHeight: 0 }}>
-        {/* Чат-панель */}
         <Grid sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <Paper 
             sx={{ 
@@ -272,7 +269,6 @@ export const SearchView: React.FC<SearchViewProps> = ({
               border: '1px solid rgba(255, 255, 255, 0.08)',
             }}
           >
-            {/* Сообщения */}
             <Box sx={{ flex: 1, p: 2, overflow: 'auto', minHeight: 0 }}>
               <AnimatePresence>
                 {messages.length === 0 ? (
@@ -349,7 +345,6 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 )}
               </AnimatePresence>
               
-              {/* Индикатор загрузки */}
               {isLoading && (
                 <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 2, ml: 4 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -410,7 +405,6 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </Paper>
         </Grid>
 
-        {/* Панель файлов - теперь показываем только релевантные файлы */}
         <Grid sx={{ display: 'flex', flexDirection: 'column', minWidth: 0, width: 350 }}>
           <Paper 
             sx={{ 
@@ -465,6 +459,13 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </Paper>
         </Grid>
       </Grid>
+
+      <FileContentDialog
+        open={contentDialogOpen}
+        onClose={handleCloseContentDialog}
+        file={selectedFile}
+        containerId={selectedContainer?.id || ''}
+      />
     </Box>
   );
 };
