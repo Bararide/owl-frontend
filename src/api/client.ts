@@ -77,6 +77,7 @@ export interface FileContent {
 export interface ChatRequest {
   query: string;
   container_id: string;
+  limit: number;
   conversation_history?: Array<{
     role: 'user' | 'assistant';
     content: string;
