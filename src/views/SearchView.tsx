@@ -15,6 +15,12 @@ import {
   CardContent,
   Tooltip,
   alpha,
+  Menu,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Select,
+  SelectChangeEvent,
 } from '@mui/material';
 import {
   Send as SendIcon,
@@ -26,6 +32,8 @@ import {
   Download as DownloadIcon,
   Visibility as ViewIcon,
   SmartToy as BotIcon,
+  Settings as SettingsIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Container, ApiFile } from '../api/client';
@@ -52,6 +60,18 @@ interface Message {
   }>;
 }
 
+// Типы для моделей
+type ModelType = 'mistral' | 'deepseek';
+type ModelConfig = {
+  value: number;
+  label: string;
+};
+
+const MODEL_CONFIGS: Record<ModelType, ModelConfig> = {
+  mistral: { value: 0, label: 'Mistral' },
+  deepseek: { value: 1, label: 'DeepSeek' }
+};
+
 export const SearchView: React.FC<SearchViewProps> = ({
   selectedContainer,
   onContainerSelect,
@@ -62,12 +82,18 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [relevantFiles, setRelevantFiles] = useState<ApiFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<ApiFile | null>(null);
   const [contentDialogOpen, setContentDialogOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<ModelType>('mistral');
+  const [fileLimit, setFileLimit] = useState<number>(5);
+  const [settingsAnchorEl, setSettingsAnchorEl] = useState<null | HTMLElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { addNotification } = useNotifications();
 
   const chatWithBotMutation = useChatWithBot();
   const { data: files = [] } = useFiles(selectedContainer?.id);
   const downloadFileMutation = useDownloadFile();
+
+  // Получаем максимальное количество файлов из доступных файлов
+  const maxFileLimit = files.length;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -125,8 +151,9 @@ export const SearchView: React.FC<SearchViewProps> = ({
       const response = await chatWithBotMutation.mutateAsync({
         query: currentQuery,
         container_id: selectedContainer.id,
+        model: MODEL_CONFIGS[selectedModel].value,
         conversation_history: conversationHistory,
-        limit: 5
+        limit: fileLimit
       });
 
       const assistantMessage: Message = {
@@ -216,6 +243,24 @@ export const SearchView: React.FC<SearchViewProps> = ({
     setSelectedFile(null);
   };
 
+  const handleSettingsOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setSettingsAnchorEl(event.currentTarget);
+  };
+
+  const handleSettingsClose = () => {
+    setSettingsAnchorEl(null);
+  };
+
+  const handleModelChange = (model: ModelType) => {
+    setSelectedModel(model);
+    handleSettingsClose();
+  };
+
+  // Исправленная функция для обработки изменения лимита
+  const handleLimitChange = (event: SelectChangeEvent<number>) => {
+    setFileLimit(event.target.value as number);
+  };
+
   const getFileIcon = (fileName: string) => {
     const extension = fileName.split('.').pop()?.toLowerCase();
     switch (extension) {
@@ -257,6 +302,54 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
   return (
     <Box sx={{ height: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
+      {/* Панель настроек */}
+      <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <BotIcon />
+            AI Assistant
+          </Typography>
+          
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            {/* Кнопка выбора модели */}
+            <Button
+              variant="outlined"
+              onClick={handleSettingsOpen}
+              startIcon={<SettingsIcon />}
+              endIcon={<ExpandMoreIcon />}
+              size="small"
+            >
+              {MODEL_CONFIGS[selectedModel].label}
+            </Button>
+
+            {/* Выбор лимита файлов */}
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Files Limit</InputLabel>
+              <Select
+                value={fileLimit}
+                label="Files Limit"
+                onChange={handleLimitChange}
+              >
+                <MenuItem value={0}>All files</MenuItem>
+                {[1, 2, 3, 4, 5, 10, 15, 20].map(limit => (
+                  <MenuItem 
+                    key={limit} 
+                    value={limit}
+                    disabled={limit > maxFileLimit}
+                  >
+                    {limit} {limit <= maxFileLimit ? '' : '(max)'}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </Box>
+
+        <Typography variant="caption" color="text.secondary">
+          Model: {MODEL_CONFIGS[selectedModel].label} • Files: {fileLimit === 0 ? 'All' : fileLimit} • Available: {maxFileLimit} files
+        </Typography>
+      </Box>
+
       <Grid container spacing={3} sx={{ flex: 1, minHeight: 0 }}>
         <Grid sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <Paper 
@@ -288,6 +381,11 @@ export const SearchView: React.FC<SearchViewProps> = ({
                     <Typography variant="body2">
                       Ask questions about your files and get intelligent answers based on their content
                     </Typography>
+                    <Box sx={{ mt: 2, p: 2, background: 'rgba(255, 255, 255, 0.05)', borderRadius: 1 }}>
+                      <Typography variant="caption" display="block">
+                        Current settings: {MODEL_CONFIGS[selectedModel].label} model, {fileLimit === 0 ? 'all' : fileLimit} files
+                      </Typography>
+                    </Box>
                   </Box>
                 ) : (
                   messages.map((message) => (
@@ -459,6 +557,26 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </Paper>
         </Grid>
       </Grid>
+
+      {/* Меню выбора модели */}
+      <Menu
+        anchorEl={settingsAnchorEl}
+        open={Boolean(settingsAnchorEl)}
+        onClose={handleSettingsClose}
+      >
+        <MenuItem 
+          onClick={() => handleModelChange('mistral')}
+          selected={selectedModel === 'mistral'}
+        >
+          Mistral
+        </MenuItem>
+        <MenuItem 
+          onClick={() => handleModelChange('deepseek')}
+          selected={selectedModel === 'deepseek'}
+        >
+          DeepSeek
+        </MenuItem>
+      </Menu>
 
       <FileContentDialog
         open={contentDialogOpen}

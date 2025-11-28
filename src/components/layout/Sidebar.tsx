@@ -17,6 +17,7 @@ import {
   Search as SearchIcon,
   Speed as SpeedIcon,
   Security as SecurityIcon,
+  Photo as PhotoIcon,
 } from '@mui/icons-material';
 import { User } from '../../types';
 import { Container } from '../../api/client';
@@ -33,6 +34,7 @@ const menuItems = [
   { icon: <StorageIcon />, text: 'Containers', id: 'containers' },
   { icon: <FileCopyIcon />, text: 'Files', id: 'files' },
   { icon: <SearchIcon />, text: 'Advanced search', id: 'search' },
+  { icon: <PhotoIcon />, text: 'Photo', id: 'photo'},
   { icon: <SpeedIcon />, text: 'Analytics', id: 'analytics' },
   { icon: <SecurityIcon />, text: 'Security', id: 'security' },
 ];

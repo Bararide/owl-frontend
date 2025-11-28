@@ -77,6 +77,7 @@ export interface FileContent {
 export interface ChatRequest {
   query: string;
   container_id: string;
+  model: number;
   limit: number;
   conversation_history?: Array<{
     role: 'user' | 'assistant';
@@ -93,6 +94,19 @@ export interface ChatResponse {
     content_snippet: string;
   }>;
   conversation_id?: string;
+}
+
+export interface OcrProcessRequest {
+  container_id: string;
+  file: File;
+  output_format: 'txt' | 'pdf' | 'json';
+}
+
+export interface OcrProcessResponse {
+  text: string;
+  confidence: number;
+  processing_time: number;
+  file_name: string;
 }
 
 class ApiClient {
@@ -127,6 +141,13 @@ class ApiClient {
 
   async chatWithBot(data: ChatRequest): Promise<ChatResponse> {
     const response = await this.client.post<{ data: ChatResponse }>('/chat', data, {
+      headers: this.getAuthHeaders()
+    });
+    return response.data.data;
+  }
+
+  async ocrProcess(data: OcrProcessRequest): Promise<OcrProcessResponse> {
+    const response = await this.client.post<{ data: OcrProcessResponse }>('/ocr/process', data, {
       headers: this.getAuthHeaders()
     });
     return response.data.data;
