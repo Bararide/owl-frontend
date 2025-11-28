@@ -90,7 +90,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
 
     setUploadedFiles(prev => [...prev, ...newFiles]);
     
-    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -105,7 +104,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
 
     setIsProcessing(true);
 
-    // Create initial results for UI feedback
     const initialResults: OcrResult[] = uploadedFiles.map(file => ({
       id: Math.random().toString(36).substr(2, 9),
       fileName: file.name,
@@ -117,7 +115,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
     setOcrResults(prev => [...prev, ...initialResults]);
 
     try {
-      // Process files sequentially
       for (let i = 0; i < uploadedFiles.length; i++) {
         const file = uploadedFiles[i];
         const resultId = initialResults[i].id;
@@ -125,11 +122,9 @@ export const OcrView: React.FC<OcrViewProps> = ({
         try {
           const result = await ocrProcessMutation.mutateAsync({
             container_id: selectedContainer.id,
-            file: file,
-            output_format: selectedFormat,
+            file: file
           });
 
-          // Update the specific result
           setOcrResults(prev => prev.map(ocrResult => 
             ocrResult.id === resultId 
               ? {
@@ -163,7 +158,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
         }
       }
 
-      // Clear uploaded files after processing
       setUploadedFiles([]);
 
     } catch (error) {
@@ -197,8 +191,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
         extension = 'json';
         break;
       case 'pdf':
-        // For PDF we'd need a proper PDF generation library
-        // For now, just download as text
         content = result.text;
         mimeType = 'text/plain';
         extension = 'txt';

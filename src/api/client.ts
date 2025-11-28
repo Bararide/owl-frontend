@@ -99,7 +99,6 @@ export interface ChatResponse {
 export interface OcrProcessRequest {
   container_id: string;
   file: File;
-  output_format: 'txt' | 'pdf' | 'json';
 }
 
 export interface OcrProcessResponse {
@@ -107,6 +106,7 @@ export interface OcrProcessResponse {
   confidence: number;
   processing_time: number;
   file_name: string;
+  extracted_text: string;
 }
 
 class ApiClient {
