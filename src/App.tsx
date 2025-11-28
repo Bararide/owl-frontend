@@ -95,9 +95,19 @@ const App: React.FC = () => {
   };
 
   const handleMenuItemClick = (menuId: string, tabIndex: number) => {
+    console.log(menuId)
     if (menuId === 'search' && !selectedContainer) {
       addNotification({
         message: 'Please select a container first to use search functionality',
+        severity: 'warning',
+        open: true,
+      });
+      return;
+    }
+
+    if (menuId === 'photo' && !selectedContainer) {
+      addNotification({
+        message: 'Please select a container first to use photo ocr functionality',
         severity: 'warning',
         open: true,
       });
@@ -113,6 +123,7 @@ const App: React.FC = () => {
   };
 
   const renderCurrentView = () => {
+    console.log(currentTab)
     switch (currentTab) {
       case 0:
         return (

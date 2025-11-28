@@ -34,7 +34,7 @@ const menuItems = [
   { icon: <StorageIcon />, text: 'Containers', id: 'containers' },
   { icon: <FileCopyIcon />, text: 'Files', id: 'files' },
   { icon: <SearchIcon />, text: 'Advanced search', id: 'search' },
-  { icon: <PhotoIcon />, text: 'Photo OCR', id: 'photo'},
+  { icon: <PhotoIcon />, text: 'Photo', id: 'photo'},
   { icon: <SpeedIcon />, text: 'Analytics', id: 'analytics' },
   { icon: <SecurityIcon />, text: 'Security', id: 'security' },
 ];
@@ -110,7 +110,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       files: 2,
                       analytics: 3,
                       search: 4,
-                      security: 5,
+                      photo: 5,
+                      security: 6,
                     };
                     onMenuItemClick(item.id, tabMap[item.id] || 0);
                   }}

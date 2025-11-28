@@ -38,7 +38,8 @@ export const Header: React.FC<HeaderProps> = ({
       case 2: return 'Files';
       case 3: return 'Analytics';
       case 4: return 'Search';
-      case 5: return 'Security';
+      case 5: return 'Photo';
+      case 6: return 'Security';
       default: return 'Dashboard';
     }
   };
