@@ -103,6 +103,14 @@ export interface OcrProcessRequest {
   mime_type: string;
 }
 
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  role: string;
+}
+
 export interface OcrProcessResponse {
   text: string;
   confidence: number;
@@ -154,6 +162,13 @@ class ApiClient {
 
   async ocrProcess(data: OcrProcessRequest): Promise<OcrProcessResponse> {
     const response = await this.client.post<{ data: OcrProcessResponse }>('/ocr/process', data, {
+      headers: this.getAuthHeaders()
+    });
+    return response.data.data;
+  }
+
+  async getUser(): Promise<User> {
+    const response = await this.client.get<{data: User}>('/user', {
       headers: this.getAuthHeaders()
     });
     return response.data.data;

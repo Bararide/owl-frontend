@@ -49,6 +49,7 @@ const mockUser: User = {
 
 const App: React.FC = () => {
   const [selectedContainer, setSelectedContainer] = useState<Container | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [createContainerOpen, setCreateContainerOpen] = useState(false);
   const [currentTab, setCurrentTab] = useState(0);
   const [activeMenuItem, setActiveMenuItem] = useState('dashboard');
@@ -70,6 +71,8 @@ const App: React.FC = () => {
         window.history.replaceState({}, '', window.location.pathname);
         console.log('Token removed from URL');
         setIsTokenProcessed(true);
+
+        apiClient.getUser();
       }, 100);
     } else {
       const storedToken = localStorage.getItem('auth_token');

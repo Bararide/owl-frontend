@@ -1,13 +1,5 @@
 import { AlertColor } from "@mui/material";
 
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  avatar?: string;
-  role: string;
-}
-
 export interface AppState {
   viewMode: 'grid' | 'list';
   sortBy: 'name' | 'date' | 'size' | 'status';

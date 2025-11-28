@@ -19,9 +19,7 @@ import { CreateContainerDialog } from '../components/dialogs/CreateContainerDial
 import { LoadingSkeleton } from '../components/common/LoadingSkeleton';
 import { ConnectionTest } from '../components/common/ConnectionTest';
 
-import { Container, CreateContainerRequest } from '../api/client';
-import { User } from '../types';
-import { pageVariants } from '../types';
+import { Container, CreateContainerRequest, User } from '../api/client';
 
 interface DashboardProps {
   onContainerSelect: (container: Container) => void;
