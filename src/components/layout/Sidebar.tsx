@@ -19,8 +19,7 @@ import {
   Security as SecurityIcon,
   Photo as PhotoIcon,
 } from '@mui/icons-material';
-import { User } from '../../types';
-import { Container } from '../../api/client';
+import { Container, User } from '../../api/client';
 
 interface SidebarProps {
   activeMenuItem: string;

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient, ApiFile, ChatRequest, CreateContainerRequest, OcrProcessRequest, SearchRequest } from '../api/client';
+import { apiClient, ApiFile, ChatRequest, CreateContainerRequest, OcrProcessRequest, SearchRequest, User } from '../api/client';
 
 export const useContainers = () => {
   return useQuery({
@@ -38,6 +38,17 @@ export const useCreateContainer = () => {
     },
   });
 };
+
+export const useGetUser = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: User) => apiClient.getUser(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user'] });
+    },
+  })
+}
 
 export const useFileContent = (containerId: string, fileId: string) => {
   return useQuery({ 
