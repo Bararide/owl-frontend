@@ -20,8 +20,7 @@ import { SearchView } from './views/SearchView';
 import { PlaceholderView } from './views/PlaceholderView';
 
 import { apiClient } from './api/client';
-import { Container } from './api/client';
-import { User } from './types';
+import { Container, User } from './api/client';
 import { 
   Speed as SpeedIcon,
   Search as SearchIcon,
