@@ -85,7 +85,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
 
     setSelectedFile(file);
     
-    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -100,7 +99,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
 
     setIsProcessing(true);
 
-    // Convert file to base64 for both processing and display
     const fileData = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
@@ -111,7 +109,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
       reader.readAsDataURL(selectedFile);
     });
 
-    // Create initial result for UI feedback
     const initialResult: OcrResult = {
       id: Math.random().toString(36).substr(2, 9),
       fileName: selectedFile.name,
@@ -127,14 +124,13 @@ export const OcrView: React.FC<OcrViewProps> = ({
     try {
       const requestData = {
         container_id: selectedContainer.id,
-        file_data: fileData.split(',')[1], // Remove data URL prefix for API
+        file_data: fileData.split(',')[1],
         file_name: selectedFile.name,
         mime_type: selectedFile.type,
       };
 
       const result = await ocrProcessMutation.mutateAsync(requestData);
 
-      // Update the result with both text and visualization
       setOcrResults(prev => prev.map(ocrResult => 
         ocrResult.id === initialResult.id 
           ? {
@@ -156,7 +152,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
         open: true,
       });
 
-      // Clear selected file after processing
       setSelectedFile(null);
 
     } catch (error) {
@@ -236,123 +231,50 @@ export const OcrView: React.FC<OcrViewProps> = ({
 
   return (
     <Box sx={{ height: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
       <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <ImageIcon />
-          OCR Processing
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          Extract text from images and PDF files
-        </Typography>
+        <Button
+          variant="contained"
+          component="label"
+          startIcon={<UploadIcon />}
+          disabled={!selectedContainer}
+          sx={{ mr: 2 }}
+        >
+          Upload File
+          <input
+            type="file"
+            hidden
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            accept=".png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.pdf"
+          />
+        </Button>
+        
+        {selectedFile && (
+          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body2" sx={{ ml: 2 }}>
+              {selectedFile.name}
+            </Typography>
+            <IconButton
+              size="small"
+              onClick={handleRemoveFile}
+              disabled={isProcessing}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+            <Button
+              variant="outlined"
+              onClick={handleProcessOcr}
+              disabled={isProcessing}
+              startIcon={isProcessing ? <CircularProgress size={16} /> : <ImageIcon />}
+            >
+              {isProcessing ? 'Processing...' : 'Process OCR'}
+            </Button>
+          </Box>
+        )}
       </Box>
 
       <Grid container spacing={3} sx={{ flex: 1, minHeight: 0, p: 2 }}>
-        {/* Left Panel - Upload and Processing */}
-        <Grid sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <Paper 
-            sx={{ 
-              flex: 1,
-              display: 'flex', 
-              flexDirection: 'column',
-              minHeight: 0,
-              background: 'linear-gradient(135deg, rgba(26, 31, 54, 0.8) 0%, rgba(26, 31, 54, 0.6) 100%)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-            }}
-          >
-            <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-              <Typography variant="subtitle1" gutterBottom>
-                Upload File
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Supported formats: PNG, JPEG, GIF, BMP, TIFF, PDF
-              </Typography>
-            </Box>
-
-            <Box sx={{ flex: 1, p: 2, overflow: 'auto', minHeight: 0 }}>
-              {/* Upload Area */}
-              <Box
-                sx={{
-                  border: '2px dashed rgba(255, 255, 255, 0.2)',
-                  borderRadius: 2,
-                  p: 4,
-                  textAlign: 'center',
-                  mb: 2,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  '&:hover': {
-                    borderColor: 'primary.main',
-                    backgroundColor: 'rgba(115, 103, 240, 0.05)',
-                  },
-                }}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <UploadIcon sx={{ fontSize: 48, mb: 1, opacity: 0.7 }} />
-                <Typography variant="h6" gutterBottom>
-                  Click to select a file
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Maximum file size: 10MB
-                </Typography>
-              </Box>
-
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                accept=".png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.pdf"
-                style={{ display: 'none' }}
-              />
-
-              {/* Selected File */}
-              {selectedFile && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Selected File
-                  </Typography>
-                  <Card variant="outlined" sx={{ background: 'rgba(255, 255, 255, 0.02)' }}>
-                    <CardContent sx={{ py: 1, '&:last-child': { py: 1 } }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-                          <ImageIcon sx={{ fontSize: 20, opacity: 0.7 }} />
-                          <Typography variant="body2" noWrap sx={{ flex: 1 }}>
-                            {selectedFile.name}
-                          </Typography>
-                        </Box>
-                        <IconButton
-                          size="small"
-                          onClick={handleRemoveFile}
-                          disabled={isProcessing}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
-                      <Typography variant="caption" color="text.secondary">
-                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Box>
-              )}
-            </Box>
-
-            {/* Action Buttons */}
-            <Box sx={{ p: 2, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
-              <Button
-                fullWidth
-                variant="contained"
-                onClick={handleProcessOcr}
-                disabled={!selectedFile || isProcessing}
-                startIcon={isProcessing ? <CircularProgress size={16} /> : <ImageIcon />}
-              >
-                {isProcessing ? 'Processing...' : 'Process OCR'}
-              </Button>
-            </Box>
-          </Paper>
-        </Grid>
-
-        {/* Middle Panel - Images */}
-        <Grid sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <Grid  sx={{flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <Paper 
             sx={{ 
               flex: 1,
@@ -363,15 +285,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
               border: '1px solid rgba(255, 255, 255, 0.08)',
             }}
           >
-            <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-              <Typography variant="subtitle1">
-                Image Preview
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Original and processed images
-              </Typography>
-            </Box>
-
             <Box sx={{ flex: 1, p: 2, overflow: 'auto', minHeight: 0 }}>
               <AnimatePresence>
                 {ocrResults.length === 0 ? (
@@ -402,7 +315,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
                         transition={{ delay: index * 0.1 }}
                       >
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          {/* Original Image */}
                           {result.originalImage && (
                             <Card variant="outlined" sx={{ background: 'rgba(255, 255, 255, 0.02)' }}>
                               <CardContent>
@@ -424,7 +336,7 @@ export const OcrView: React.FC<OcrViewProps> = ({
                                     style={{ 
                                       width: '100%', 
                                       height: 'auto',
-                                      maxHeight: 200,
+                                      maxHeight: 500,
                                       objectFit: 'contain'
                                     }} 
                                   />
@@ -433,7 +345,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
                             </Card>
                           )}
 
-                          {/* Processed Image with Bounding Boxes */}
                           {result.visualizedImage && (
                             <Card variant="outlined" sx={{ background: 'rgba(255, 255, 255, 0.02)' }}>
                               <CardContent>
@@ -455,7 +366,7 @@ export const OcrView: React.FC<OcrViewProps> = ({
                                     style={{ 
                                       width: '100%', 
                                       height: 'auto',
-                                      maxHeight: 200,
+                                      maxHeight: 500,
                                       objectFit: 'contain'
                                     }} 
                                   />
@@ -478,7 +389,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
           </Paper>
         </Grid>
 
-        {/* Right Panel - Results */}
         <Grid sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <Paper 
             sx={{ 
@@ -585,7 +495,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
         </Grid>
       </Grid>
 
-      {/* Text Preview Dialog */}
       <AnimatePresence>
         {previewOpen && (
           <motion.div
@@ -648,7 +557,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Image Preview Dialog */}
       <AnimatePresence>
         {imagePreviewOpen && (
           <motion.div
