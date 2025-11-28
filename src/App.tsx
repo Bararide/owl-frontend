@@ -28,6 +28,7 @@ import {
   Security as SecurityIcon,
   Add as AddIcon,
 } from '@mui/icons-material';
+import { OcrView } from './views/OCRView';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -158,10 +159,9 @@ const App: React.FC = () => {
         );
       case 5:
         return (
-          <PlaceholderView
-            icon={<SecurityIcon sx={{ fontSize: 64, color: 'text.secondary' }} />}
-            title="Security Coming Soon"
-            description="Security settings and scans will be available here"
+          <OcrView
+            selectedContainer={selectedContainer}
+            onContainerSelect={handleContainerSelect}
           />
         );
       default:
