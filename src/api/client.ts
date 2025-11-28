@@ -98,7 +98,9 @@ export interface ChatResponse {
 
 export interface OcrProcessRequest {
   container_id: string;
-  file: File;
+  file_data: string;
+  file_name: string;
+  mime_type: string;
 }
 
 export interface OcrProcessResponse {
@@ -106,7 +108,11 @@ export interface OcrProcessResponse {
   confidence: number;
   processing_time: number;
   file_name: string;
-  extracted_text: string;
+  extracted_text_length: number;
+  boxes_count: number;
+  has_visualization: boolean;
+  visualization?: string;
+  visualization_format?: string;
 }
 
 class ApiClient {

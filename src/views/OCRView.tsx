@@ -1,11 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Box,
   Typography,
   Paper,
   Button,
   IconButton,
-  Divider,
   CircularProgress,
   Alert,
   Grid,
@@ -13,11 +12,6 @@ import {
   CardContent,
   Tooltip,
   Chip,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  SelectChangeEvent,
 } from '@mui/material';
 import {
   Upload as UploadIcon,
@@ -50,16 +44,12 @@ interface OcrResult {
   timestamp: Date;
 }
 
-type OutputFormat = 'txt' | 'pdf' | 'json';
-
 export const OcrView: React.FC<OcrViewProps> = ({
   selectedContainer,
-  onContainerSelect,
 }) => {
-  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [ocrResults, setOcrResults] = useState<OcrResult[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [selectedFormat, setSelectedFormat] = useState<OutputFormat>('txt');
   const [previewText, setPreviewText] = useState<string>('');
   const [previewOpen, setPreviewOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,95 +64,99 @@ export const OcrView: React.FC<OcrViewProps> = ({
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    if (!files) return;
+    if (!files || files.length === 0) return;
 
-    const newFiles = Array.from(files).filter(file => 
-      supportedFormats.includes(file.type)
-    );
-
-    if (newFiles.length !== files.length) {
+    const file = files[0];
+    
+    if (!supportedFormats.includes(file.type)) {
       addNotification({
-        message: 'Some files were skipped - only images and PDFs are supported',
+        message: 'Unsupported file format - only images and PDFs are supported',
         severity: 'warning',
         open: true,
       });
+      return;
     }
 
-    setUploadedFiles(prev => [...prev, ...newFiles]);
+    setSelectedFile(file);
     
+    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
-  const handleRemoveFile = (index: number) => {
-    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
   };
 
   const handleProcessOcr = async () => {
-    if (!selectedContainer || uploadedFiles.length === 0) return;
+    if (!selectedContainer || !selectedFile) return;
 
     setIsProcessing(true);
 
-    const initialResults: OcrResult[] = uploadedFiles.map(file => ({
+    // Create initial result for UI feedback
+    const initialResult: OcrResult = {
       id: Math.random().toString(36).substr(2, 9),
-      fileName: file.name,
-      fileType: file.type,
+      fileName: selectedFile.name,
+      fileType: selectedFile.type,
       status: 'processing',
       timestamp: new Date(),
-    }));
+    };
 
-    setOcrResults(prev => [...prev, ...initialResults]);
+    setOcrResults(prev => [initialResult, ...prev]);
 
     try {
-      for (let i = 0; i < uploadedFiles.length; i++) {
-        const file = uploadedFiles[i];
-        const resultId = initialResults[i].id;
+      // Convert file to base64
+      const fileData = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result as string;
+          const base64Data = base64.split(',')[1]; // Remove data URL prefix
+          resolve(base64Data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(selectedFile);
+      });
 
-        try {
-          const result = await ocrProcessMutation.mutateAsync({
-            container_id: selectedContainer.id,
-            file: file
-          });
+      const requestData = {
+        container_id: selectedContainer.id,
+        file_data: fileData,
+        file_name: selectedFile.name,
+        mime_type: selectedFile.type,
+      };
 
-          setOcrResults(prev => prev.map(ocrResult => 
-            ocrResult.id === resultId 
-              ? {
-                  ...ocrResult,
-                  status: 'completed',
-                  text: result.text,
-                  confidence: result.confidence,
-                  processingTime: result.processing_time,
-                }
-              : ocrResult
-          ));
+      const result = await ocrProcessMutation.mutateAsync(requestData);
 
-          addNotification({
-            message: `Processed: ${file.name}`,
-            severity: 'success',
-            open: true,
-          });
+      setOcrResults(prev => prev.map(ocrResult => 
+        ocrResult.id === initialResult.id 
+          ? {
+              ...ocrResult,
+              status: 'completed',
+              text: result.text,
+              confidence: result.confidence,
+              processingTime: result.processing_time,
+            }
+          : ocrResult
+      ));
 
-        } catch (error) {
-          setOcrResults(prev => prev.map(ocrResult => 
-            ocrResult.id === resultId 
-              ? { ...ocrResult, status: 'error' }
-              : ocrResult
-          ));
+      addNotification({
+        message: `OCR processing completed for ${selectedFile.name}`,
+        severity: 'success',
+        open: true,
+      });
 
-          addNotification({
-            message: `Failed to process ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            severity: 'error',
-            open: true,
-          });
-        }
-      }
-
-      setUploadedFiles([]);
+      // Clear selected file after processing
+      setSelectedFile(null);
 
     } catch (error) {
+      setOcrResults(prev => prev.map(ocrResult => 
+        ocrResult.id === initialResult.id 
+          ? { ...ocrResult, status: 'error' }
+          : ocrResult
+      ));
+
       addNotification({
-        message: `OCR processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `OCR failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         severity: 'error',
         open: true,
       });
@@ -174,39 +168,12 @@ export const OcrView: React.FC<OcrViewProps> = ({
   const handleDownloadResult = (result: OcrResult) => {
     if (!result.text) return;
 
-    let content: string;
-    let mimeType: string;
-    let extension: string;
-
-    switch (selectedFormat) {
-      case 'json':
-        content = JSON.stringify({
-          fileName: result.fileName,
-          text: result.text,
-          confidence: result.confidence,
-          processingTime: result.processingTime,
-          timestamp: result.timestamp.toISOString(),
-        }, null, 2);
-        mimeType = 'application/json';
-        extension = 'json';
-        break;
-      case 'pdf':
-        content = result.text;
-        mimeType = 'text/plain';
-        extension = 'txt';
-        break;
-      case 'txt':
-      default:
-        content = result.text;
-        mimeType = 'text/plain';
-        extension = 'txt';
-    }
-
-    const blob = new Blob([content], { type: mimeType });
+    const content = result.text;
+    const blob = new Blob([content], { type: 'text/plain' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${result.fileName.split('.')[0]}_ocr.${extension}`;
+    a.download = `${result.fileName.split('.')[0]}_ocr.txt`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
@@ -216,10 +183,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
   const handlePreviewText = (text: string) => {
     setPreviewText(text);
     setPreviewOpen(true);
-  };
-
-  const handleFormatChange = (event: SelectChangeEvent<OutputFormat>) => {
-    setSelectedFormat(event.target.value as OutputFormat);
   };
 
   const getStatusIcon = (status: OcrResult['status']) => {
@@ -267,9 +230,9 @@ export const OcrView: React.FC<OcrViewProps> = ({
         </Typography>
       </Box>
 
-      <Grid container spacing={3} sx={{ flex: 1, minHeight: 0 }}>
+      <Grid container spacing={3} sx={{ flex: 1, minHeight: 0, p: 2 }}>
         {/* Left Panel - Upload and Processing */}
-        <Grid sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <Grid  sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <Paper 
             sx={{ 
               flex: 1,
@@ -282,7 +245,7 @@ export const OcrView: React.FC<OcrViewProps> = ({
           >
             <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
               <Typography variant="subtitle1" gutterBottom>
-                Upload Files
+                Upload File
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 Supported formats: PNG, JPEG, GIF, BMP, TIFF, PDF
@@ -309,10 +272,10 @@ export const OcrView: React.FC<OcrViewProps> = ({
               >
                 <UploadIcon sx={{ fontSize: 48, mb: 1, opacity: 0.7 }} />
                 <Typography variant="h6" gutterBottom>
-                  Drop files here or click to upload
+                  Click to select a file
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Maximum file size: 10MB per file
+                  Maximum file size: 10MB
                 </Typography>
               </Box>
 
@@ -320,61 +283,40 @@ export const OcrView: React.FC<OcrViewProps> = ({
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileSelect}
-                multiple
                 accept=".png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.pdf"
                 style={{ display: 'none' }}
               />
 
-              {/* Uploaded Files List */}
-              {uploadedFiles.length > 0 && (
+              {/* Selected File */}
+              {selectedFile && (
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="subtitle2" gutterBottom>
-                    Selected Files ({uploadedFiles.length})
+                    Selected File
                   </Typography>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {uploadedFiles.map((file, index) => (
-                      <Card key={index} variant="outlined" sx={{ background: 'rgba(255, 255, 255, 0.02)' }}>
-                        <CardContent sx={{ py: 1, '&:last-child': { py: 1 } }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-                              <ImageIcon sx={{ fontSize: 20, opacity: 0.7 }} />
-                              <Typography variant="body2" noWrap sx={{ flex: 1 }}>
-                                {file.name}
-                              </Typography>
-                            </Box>
-                            <IconButton
-                              size="small"
-                              onClick={() => handleRemoveFile(index)}
-                              disabled={isProcessing}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </Box>
-                          <Typography variant="caption" color="text.secondary">
-                            {(file.size / 1024 / 1024).toFixed(2)} MB
+                  <Card variant="outlined" sx={{ background: 'rgba(255, 255, 255, 0.02)' }}>
+                    <CardContent sx={{ py: 1, '&:last-child': { py: 1 } }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                          <ImageIcon sx={{ fontSize: 20, opacity: 0.7 }} />
+                          <Typography variant="body2" noWrap sx={{ flex: 1 }}>
+                            {selectedFile.name}
                           </Typography>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </Box>
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={handleRemoveFile}
+                          disabled={isProcessing}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary">
+                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                      </Typography>
+                    </CardContent>
+                  </Card>
                 </Box>
               )}
-
-              {/* Settings */}
-              <Box sx={{ mt: 2 }}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Output Format</InputLabel>
-                  <Select
-                    value={selectedFormat}
-                    label="Output Format"
-                    onChange={handleFormatChange}
-                  >
-                    <MenuItem value="txt">Text (.txt)</MenuItem>
-                    <MenuItem value="json">JSON (.json)</MenuItem>
-                    <MenuItem value="pdf">PDF (.pdf)</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
             </Box>
 
             {/* Action Buttons */}
@@ -383,10 +325,10 @@ export const OcrView: React.FC<OcrViewProps> = ({
                 fullWidth
                 variant="contained"
                 onClick={handleProcessOcr}
-                disabled={uploadedFiles.length === 0 || isProcessing || !selectedContainer}
+                disabled={!selectedFile || isProcessing}
                 startIcon={isProcessing ? <CircularProgress size={16} /> : <ImageIcon />}
               >
-                {isProcessing ? 'Processing...' : `Process ${uploadedFiles.length} File(s)`}
+                {isProcessing ? 'Processing...' : 'Process OCR'}
               </Button>
             </Box>
           </Paper>
@@ -431,7 +373,7 @@ export const OcrView: React.FC<OcrViewProps> = ({
                       No Results Yet
                     </Typography>
                     <Typography variant="body2">
-                      Upload files and start OCR processing to see results here
+                      Select a file and process OCR to see results here
                     </Typography>
                   </Box>
                 ) : (
