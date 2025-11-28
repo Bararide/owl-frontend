@@ -38,10 +38,13 @@ interface OcrResult {
   fileName: string;
   fileType: string;
   status: 'processing' | 'completed' | 'error';
+  boxCount: number;
   text?: string;
   confidence?: number;
   processingTime?: number;
   timestamp: Date;
+  originalImage?: string;
+  visualizedImage?: string;
 }
 
 export const OcrView: React.FC<OcrViewProps> = ({
@@ -52,6 +55,9 @@ export const OcrView: React.FC<OcrViewProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewText, setPreviewText] = useState<string>('');
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string>('');
+  const [previewTitle, setPreviewTitle] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const ocrProcessMutation = useOcrProcess();
@@ -94,6 +100,17 @@ export const OcrView: React.FC<OcrViewProps> = ({
 
     setIsProcessing(true);
 
+    // Convert file to base64 for both processing and display
+    const fileData = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result as string;
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(selectedFile);
+    });
+
     // Create initial result for UI feedback
     const initialResult: OcrResult = {
       id: Math.random().toString(36).substr(2, 9),
@@ -101,32 +118,23 @@ export const OcrView: React.FC<OcrViewProps> = ({
       fileType: selectedFile.type,
       status: 'processing',
       timestamp: new Date(),
+      originalImage: fileData,
+      boxCount: 0
     };
 
     setOcrResults(prev => [initialResult, ...prev]);
 
     try {
-      // Convert file to base64
-      const fileData = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const base64 = reader.result as string;
-          const base64Data = base64.split(',')[1]; // Remove data URL prefix
-          resolve(base64Data);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(selectedFile);
-      });
-
       const requestData = {
         container_id: selectedContainer.id,
-        file_data: fileData,
+        file_data: fileData.split(',')[1], // Remove data URL prefix for API
         file_name: selectedFile.name,
         mime_type: selectedFile.type,
       };
 
       const result = await ocrProcessMutation.mutateAsync(requestData);
 
+      // Update the result with both text and visualization
       setOcrResults(prev => prev.map(ocrResult => 
         ocrResult.id === initialResult.id 
           ? {
@@ -135,6 +143,9 @@ export const OcrView: React.FC<OcrViewProps> = ({
               text: result.text,
               confidence: result.confidence,
               processingTime: result.processing_time,
+              visualizedImage: result.visualization 
+                ? `data:${result.visualization_format || 'image/jpeg'};base64,${result.visualization}`
+                : undefined,
             }
           : ocrResult
       ));
@@ -185,6 +196,12 @@ export const OcrView: React.FC<OcrViewProps> = ({
     setPreviewOpen(true);
   };
 
+  const handlePreviewImage = (image: string, title: string) => {
+    setPreviewImage(image);
+    setPreviewTitle(title);
+    setImagePreviewOpen(true);
+  };
+
   const getStatusIcon = (status: OcrResult['status']) => {
     switch (status) {
       case 'processing':
@@ -232,7 +249,7 @@ export const OcrView: React.FC<OcrViewProps> = ({
 
       <Grid container spacing={3} sx={{ flex: 1, minHeight: 0, p: 2 }}>
         {/* Left Panel - Upload and Processing */}
-        <Grid  sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <Grid sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <Paper 
             sx={{ 
               flex: 1,
@@ -334,6 +351,133 @@ export const OcrView: React.FC<OcrViewProps> = ({
           </Paper>
         </Grid>
 
+        {/* Middle Panel - Images */}
+        <Grid sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <Paper 
+            sx={{ 
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: 0,
+              background: 'linear-gradient(135deg, rgba(26, 31, 54, 0.8) 0%, rgba(26, 31, 54, 0.6) 100%)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+            }}
+          >
+            <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
+              <Typography variant="subtitle1">
+                Image Preview
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Original and processed images
+              </Typography>
+            </Box>
+
+            <Box sx={{ flex: 1, p: 2, overflow: 'auto', minHeight: 0 }}>
+              <AnimatePresence>
+                {ocrResults.length === 0 ? (
+                  <Box sx={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    height: '100%',
+                    color: 'text.secondary',
+                    textAlign: 'center'
+                  }}>
+                    <ImageIcon sx={{ fontSize: 64, mb: 2, opacity: 0.5 }} />
+                    <Typography variant="h6" gutterBottom>
+                      No Images Yet
+                    </Typography>
+                    <Typography variant="body2">
+                      Process a file to see original and visualized images
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {ocrResults.filter(r => r.status === 'completed').map((result, index) => (
+                      <motion.div
+                        key={result.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                      >
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {/* Original Image */}
+                          {result.originalImage && (
+                            <Card variant="outlined" sx={{ background: 'rgba(255, 255, 255, 0.02)' }}>
+                              <CardContent>
+                                <Typography variant="subtitle2" gutterBottom>
+                                  Original Image
+                                </Typography>
+                                <Box 
+                                  sx={{ 
+                                    cursor: 'pointer',
+                                    borderRadius: 1,
+                                    overflow: 'hidden',
+                                    '&:hover': { opacity: 0.8 }
+                                  }}
+                                  onClick={() => handlePreviewImage(result.originalImage!, 'Original Image')}
+                                >
+                                  <img 
+                                    src={result.originalImage} 
+                                    alt="Original" 
+                                    style={{ 
+                                      width: '100%', 
+                                      height: 'auto',
+                                      maxHeight: 200,
+                                      objectFit: 'contain'
+                                    }} 
+                                  />
+                                </Box>
+                              </CardContent>
+                            </Card>
+                          )}
+
+                          {/* Processed Image with Bounding Boxes */}
+                          {result.visualizedImage && (
+                            <Card variant="outlined" sx={{ background: 'rgba(255, 255, 255, 0.02)' }}>
+                              <CardContent>
+                                <Typography variant="subtitle2" gutterBottom>
+                                  Processed with Bounding Boxes
+                                </Typography>
+                                <Box 
+                                  sx={{ 
+                                    cursor: 'pointer',
+                                    borderRadius: 1,
+                                    overflow: 'hidden',
+                                    '&:hover': { opacity: 0.8 }
+                                  }}
+                                  onClick={() => handlePreviewImage(result.visualizedImage!, 'Processed Image with Bounding Boxes')}
+                                >
+                                  <img 
+                                    src={result.visualizedImage} 
+                                    alt="Processed" 
+                                    style={{ 
+                                      width: '100%', 
+                                      height: 'auto',
+                                      maxHeight: 200,
+                                      objectFit: 'contain'
+                                    }} 
+                                  />
+                                </Box>
+                                {result.boxCount && (
+                                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                                    Detected {result.boxCount} text regions
+                                  </Typography>
+                                )}
+                              </CardContent>
+                            </Card>
+                          )}
+                        </Box>
+                      </motion.div>
+                    ))}
+                  </Box>
+                )}
+              </AnimatePresence>
+            </Box>
+          </Paper>
+        </Grid>
+
         {/* Right Panel - Results */}
         <Grid sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <Paper 
@@ -406,14 +550,8 @@ export const OcrView: React.FC<OcrViewProps> = ({
                               </Typography>
                             )}
 
-                            {result.processingTime && (
-                              <Typography variant="caption" color="text.secondary" display="block">
-                                Time: {result.processingTime}s
-                              </Typography>
-                            )}
-
                             {result.text && (
-                              <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                              <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                                 <Tooltip title="Preview text">
                                   <IconButton
                                     size="small"
@@ -430,6 +568,9 @@ export const OcrView: React.FC<OcrViewProps> = ({
                                     <DownloadIcon fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
+                                <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                                  {result.text.length} chars
+                                </Typography>
                               </Box>
                             )}
                           </CardContent>
@@ -502,6 +643,65 @@ export const OcrView: React.FC<OcrViewProps> = ({
               >
                 {previewText}
               </Paper>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Image Preview Dialog */}
+      <AnimatePresence>
+        {imagePreviewOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.9)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1300,
+              padding: 20,
+            }}
+            onClick={() => setImagePreviewOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: 'linear-gradient(135deg, #1a1f36 0%, #13182B 100%)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: 12,
+                padding: 24,
+                maxWidth: '90vw',
+                maxHeight: '90vh',
+                overflow: 'auto',
+              }}
+            >
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">{previewTitle}</Typography>
+                <IconButton onClick={() => setImagePreviewOpen(false)}>
+                  <DeleteIcon />
+                </IconButton>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                <img 
+                  src={previewImage} 
+                  alt={previewTitle}
+                  style={{ 
+                    maxWidth: '100%', 
+                    maxHeight: '70vh',
+                    objectFit: 'contain'
+                  }} 
+                />
+              </Box>
             </motion.div>
           </motion.div>
         )}
