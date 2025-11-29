@@ -9,6 +9,7 @@ import {
   ListItemText,
   Avatar,
   Tooltip,
+  Button,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -18,6 +19,7 @@ import {
   Speed as SpeedIcon,
   Security as SecurityIcon,
   Photo as PhotoIcon,
+  ExitToApp as ExitToAppIcon,
 } from '@mui/icons-material';
 import { Container, User } from '../../api/client';
 
@@ -26,6 +28,7 @@ interface SidebarProps {
   onMenuItemClick: (menuId: string, tabIndex: number) => void;
   user: User;
   selectedContainer: Container | null;
+  onLogout?: () => void;
 }
 
 const menuItems = [
@@ -42,9 +45,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeMenuItem, 
   onMenuItemClick, 
   user,
-  selectedContainer 
+  selectedContainer,
+  onLogout 
 }) => {
   const isSearchDisabled = !selectedContainer;
+  const isPhotoDisabled = !selectedContainer;
 
   return (
     <Drawer
@@ -88,12 +93,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <Box sx={{ flexGrow: 1 }}>
           {menuItems.map((item) => {
             const isSearchItem = item.id === 'search';
-            const isDisabled = isSearchItem && isSearchDisabled;
+            const isPhotoItem = item.id === 'photo';
+            const isDisabled = (isSearchItem && isSearchDisabled) || (isPhotoItem && isPhotoDisabled);
 
             return (
               <Tooltip
                 key={item.id}
-                title={isDisabled ? "Select a container first to use search" : ""}
+                title={isDisabled ? "Select a container first to use this feature" : ""}
                 placement="right"
                 arrow
               >
@@ -153,39 +159,59 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </Box>
 
-        <Box 
-          sx={{ 
-            p: 1.5, 
-            borderRadius: 2, 
-            backgroundColor: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.04)',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            '&:hover': { backgroundColor: 'rgba(255,255,255,0.04)' }
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Avatar 
-              src={user.avatar}
-              sx={{ 
-                width: 36, 
-                height: 36, 
-                mr: 1.5,
-                background: 'linear-gradient(135deg, #7367F0 0%, #CE9FFC 100%)',
-                fontSize: '0.875rem'
-              }}
-            >
-              {user.name.split(' ').map(n => n[0]).join('')}
-            </Avatar>
-            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-              <Typography variant="subtitle2" noWrap fontSize="0.875rem">
-                {user.name}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" noWrap fontSize="0.75rem">
-                {user.role}
-              </Typography>
+        <Box sx={{ mt: 'auto' }}>
+          <Box 
+            sx={{ 
+              p: 1.5, 
+              borderRadius: 2, 
+              backgroundColor: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.04)',
+              mb: 2
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Avatar 
+                src={user.avatar}
+                sx={{ 
+                  width: 36, 
+                  height: 36, 
+                  mr: 1.5,
+                  background: 'linear-gradient(135deg, #7367F0 0%, #CE9FFC 100%)',
+                  fontSize: '0.875rem'
+                }}
+              >
+                {user.name.split(' ').map(n => n[0]).join('')}
+              </Avatar>
+              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                <Typography variant="subtitle2" noWrap fontSize="0.875rem">
+                  {user.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap fontSize="0.75rem">
+                  {user.role}
+                </Typography>
+              </Box>
             </Box>
           </Box>
+
+          {onLogout && (
+            <Button
+              fullWidth
+              variant="outlined"
+              color="secondary"
+              onClick={onLogout}
+              startIcon={<ExitToAppIcon />}
+              sx={{
+                color: 'text.secondary',
+                borderColor: 'rgba(255, 255, 255, 0.2)',
+                '&:hover': {
+                  borderColor: 'error.main',
+                  color: 'error.main',
+                }
+              }}
+            >
+              Logout
+            </Button>
+          )}
         </Box>
       </Box>
     </Drawer>

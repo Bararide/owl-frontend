@@ -1,3 +1,4 @@
+// App.tsx
 import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material/styles';
@@ -12,6 +13,7 @@ import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { NotificationSnackbar } from './components/notifications/NotificationSnackbar';
 import { FloatingActionButton } from './components/styled';
+import { Login } from './components/auth/Login';
 
 import { Dashboard } from './views/Dashboard';
 import { ContainersView } from './views/ContainersView';
@@ -53,37 +55,91 @@ const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState(0);
   const [activeMenuItem, setActiveMenuItem] = useState('dashboard');
   const [isTokenProcessed, setIsTokenProcessed] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
 
   const { state: appState, updateState } = useAppState();
   const { notifications, addNotification, removeNotification } = useNotifications();
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
-    
-    if (token) {
-      console.log('Token found in URL:', token);
-      apiClient.setToken(token);
-      localStorage.setItem('auth_token', token);
-      
-      setTimeout(() => {
-        window.history.replaceState({}, '', window.location.pathname);
-        console.log('Token removed from URL');
-        setIsTokenProcessed(true);
-
-        apiClient.getUser();
-      }, 100);
-    } else {
+    const checkExistingToken = async () => {
       const storedToken = localStorage.getItem('auth_token');
+      
       if (storedToken) {
-        console.log('Token found in localStorage:', storedToken);
+        console.log('Token found in localStorage, validating...');
         apiClient.setToken(storedToken);
+        setAuthLoading(true);
+        
+        try {
+          const userData = await apiClient.getUser();
+          if (userData) {
+            setUser(userData);
+            setIsAuthenticated(true);
+            addNotification({
+              message: 'Successfully logged in',
+              severity: 'success',
+              open: true,
+            });
+          }
+        } catch (error) {
+          console.error('Invalid token:', error);
+          localStorage.removeItem('auth_token');
+          setAuthError('Your session has expired. Please login again.');
+        } finally {
+          setAuthLoading(false);
+          setIsTokenProcessed(true);
+        }
       } else {
-        console.log('No token found');
+        setIsTokenProcessed(true);
       }
-      setIsTokenProcessed(true);
+    };
+
+    checkExistingToken();
+  }, [addNotification]);
+
+  const handleLogin = async (token: string) => {
+    setAuthLoading(true);
+    setAuthError('');
+
+    try {
+      apiClient.setToken(token);
+      
+      const userData = await apiClient.getUser();
+      
+      if (userData) {
+        setUser(userData);
+        setIsAuthenticated(true);
+        localStorage.setItem('auth_token', token);
+        
+        addNotification({
+          message: 'Successfully logged in!',
+          severity: 'success',
+          open: true,
+        });
+      }
+    } catch (error) {
+      console.error('Login failed:', error);
+      setAuthError('Invalid token. Please check your access token and try again.');
+      apiClient.setToken('');
+    } finally {
+      setAuthLoading(false);
     }
-  }, []);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    apiClient.setToken('');
+    setIsAuthenticated(false);
+    setUser(null);
+    setSelectedContainer(null);
+    
+    addNotification({
+      message: 'Successfully logged out',
+      severity: 'info',
+      open: true,
+    });
+  };
 
   const handleContainerSelect = (container: Container) => {
     setSelectedContainer(container);
@@ -132,7 +188,7 @@ const App: React.FC = () => {
           <Dashboard
             onContainerSelect={handleContainerSelect}
             onTabChange={setCurrentTab}
-            user={mockUser}
+            user={user || mockUser}
           />
         );
       case 1:
@@ -178,11 +234,11 @@ const App: React.FC = () => {
           />
         );
       default:
-        return <Dashboard onContainerSelect={handleContainerSelect} onTabChange={setCurrentTab} user={mockUser} />;
+        return <Dashboard onContainerSelect={handleContainerSelect} onTabChange={setCurrentTab} user={user || mockUser} />;
     }
   };
-
-  if (!isTokenProcessed) {
+  
+  if (!isTokenProcessed || authLoading) {
     return (
       <Box 
         sx={{ 
@@ -198,6 +254,21 @@ const App: React.FC = () => {
     );
   }
 
+  if (!isAuthenticated) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider theme={theme}>
+          <CssBaseline />
+          <Login 
+            onLogin={handleLogin} 
+            isLoading={authLoading}
+            error={authError}
+          />
+        </ThemeProvider>
+      </QueryClientProvider>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
@@ -206,8 +277,9 @@ const App: React.FC = () => {
           <Sidebar
             activeMenuItem={activeMenuItem}
             onMenuItemClick={handleMenuItemClick}
-            user={mockUser}
+            user={user || mockUser}
             selectedContainer={selectedContainer}
+            onLogout={handleLogout}
           />
 
           <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
@@ -216,6 +288,7 @@ const App: React.FC = () => {
               appState={appState}
               onViewModeChange={handleViewModeChange}
               notificationsCount={notifications.length}
+              onLogout={handleLogout}
             />
 
             <Box sx={{ flexGrow: 1, p: 3, overflow: 'auto' }}>

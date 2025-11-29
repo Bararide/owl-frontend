@@ -8,6 +8,7 @@ import {
   Badge,
   Box,
   Divider,
+  Button,
 } from '@mui/material';
 import {
   ViewModule as ViewModuleIcon,
@@ -15,6 +16,7 @@ import {
   FilterList as FilterIcon,
   Sort as SortIcon,
   Notifications as NotificationsIcon,
+  ExitToApp as ExitToAppIcon,
 } from '@mui/icons-material';
 import { AppState } from '../../types';
 
@@ -23,6 +25,7 @@ interface HeaderProps {
   appState: AppState;
   onViewModeChange: (mode: 'grid' | 'list') => void;
   notificationsCount: number;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -30,6 +33,7 @@ export const Header: React.FC<HeaderProps> = ({
   appState,
   onViewModeChange,
   notificationsCount,
+  onLogout,
 }) => {
   const getTitle = () => {
     switch (currentTab) {
@@ -109,6 +113,28 @@ export const Header: React.FC<HeaderProps> = ({
             </Badge>
           </IconButton>
         </Tooltip>
+
+        {onLogout && (
+          <Tooltip title="Logout">
+            <Button
+              variant="outlined"
+              color="secondary"
+              onClick={onLogout}
+              startIcon={<ExitToAppIcon />}
+              size="small"
+              sx={{
+                color: 'text.secondary',
+                borderColor: 'rgba(255, 255, 255, 0.2)',
+                '&:hover': {
+                  borderColor: 'error.main',
+                  color: 'error.main',
+                }
+              }}
+            >
+              Logout
+            </Button>
+          </Tooltip>
+        )}
       </Toolbar>
     </AppBar>
   );
