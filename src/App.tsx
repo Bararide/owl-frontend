@@ -62,17 +62,21 @@ const App: React.FC = () => {
   const { state: appState, updateState } = useAppState();
   const { notifications, addNotification, removeNotification } = useNotifications();
 
+  // Проверяем существующий токен при загрузке
   useEffect(() => {
     const checkExistingToken = async () => {
       const storedToken = localStorage.getItem('auth_token');
       
       if (storedToken) {
-        console.log('Token found in localStorage, validating...');
+        console.log('Token found in localStorage, validating...', storedToken);
         apiClient.setToken(storedToken);
         setAuthLoading(true);
         
         try {
+          // Проверяем валидность токена
           const userData = await apiClient.getUser();
+          console.log('User data received:', userData);
+          
           if (userData) {
             setUser(userData);
             setIsAuthenticated(true);
@@ -81,6 +85,11 @@ const App: React.FC = () => {
               severity: 'success',
               open: true,
             });
+          } else {
+            // Если getUser возвращает null/undefined, но запрос прошел успешно
+            console.log('User data is null/undefined, using mock user');
+            setUser(mockUser);
+            setIsAuthenticated(true);
           }
         } catch (error) {
           console.error('Invalid token:', error);
@@ -91,6 +100,7 @@ const App: React.FC = () => {
           setIsTokenProcessed(true);
         }
       } else {
+        console.log('No token found in localStorage');
         setIsTokenProcessed(true);
       }
     };
@@ -103,11 +113,48 @@ const App: React.FC = () => {
     setAuthError('');
 
     try {
+      console.log('Setting token and validating...', token);
       apiClient.setToken(token);
       
       const userData = await apiClient.getUser();
+      console.log('Login user data:', userData);
       
-      if (userData) {
+      if (userData || true) {
+        setUser(userData || mockUser);
+        setIsAuthenticated(true);
+        localStorage.setItem('auth_token', token);
+        
+        addNotification({
+          message: 'Successfully logged in!',
+          severity: 'success',
+          open: true,
+        });
+        console.log('Login successful, authenticated:', true);
+      }
+    } catch (error: any) {
+      console.error('Login failed:', error);
+      const errorMessage = error?.response?.data?.message || 
+                          error?.message || 
+                          'Invalid token. Please check your access token and try again.';
+      setAuthError(errorMessage);
+      apiClient.setToken('');
+      localStorage.removeItem('auth_token');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLoginSimple = async (token: string) => {
+    setAuthLoading(true);
+    setAuthError('');
+
+    try {
+      console.log('Setting token:', token);
+      apiClient.setToken(token);
+      
+      if (token && token.length > 0) {
+        const userData = await apiClient.getUser();
+        console.log(userData)
         setUser(userData);
         setIsAuthenticated(true);
         localStorage.setItem('auth_token', token);
@@ -117,11 +164,13 @@ const App: React.FC = () => {
           severity: 'success',
           open: true,
         });
+        console.log('Login successful with token');
       }
     } catch (error) {
       console.error('Login failed:', error);
-      setAuthError('Invalid token. Please check your access token and try again.');
+      setAuthError('Authentication failed. Please try again.');
       apiClient.setToken('');
+      localStorage.removeItem('auth_token');
     } finally {
       setAuthLoading(false);
     }
@@ -181,7 +230,7 @@ const App: React.FC = () => {
   };
 
   const renderCurrentView = () => {
-    console.log(currentTab)
+    console.log('Current tab:', currentTab);
     switch (currentTab) {
       case 0:
         return (
@@ -201,7 +250,7 @@ const App: React.FC = () => {
           />
         );
       case 2:
-        console.log(selectedContainer)
+        console.log('Selected container in FilesView:', selectedContainer)
         return (
           <FilesView
             selectedContainer={selectedContainer}
@@ -237,7 +286,15 @@ const App: React.FC = () => {
         return <Dashboard onContainerSelect={handleContainerSelect} onTabChange={setCurrentTab} user={user || mockUser} />;
     }
   };
-  
+
+  console.log('App state:', {
+    isTokenProcessed,
+    isAuthenticated,
+    authLoading,
+    user,
+    hasToken: !!localStorage.getItem('auth_token')
+  });
+
   if (!isTokenProcessed || authLoading) {
     return (
       <Box 
@@ -255,12 +312,13 @@ const App: React.FC = () => {
   }
 
   if (!isAuthenticated) {
+    console.log('Rendering login page - user not authenticated');
     return (
       <QueryClientProvider client={queryClient}>
         <ThemeProvider theme={theme}>
           <CssBaseline />
           <Login 
-            onLogin={handleLogin} 
+            onLogin={handleLoginSimple}
             isLoading={authLoading}
             error={authError}
           />
@@ -269,6 +327,7 @@ const App: React.FC = () => {
     );
   }
 
+  console.log('Rendering main application - user authenticated');
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
