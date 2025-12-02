@@ -68,22 +68,9 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelec
     const file = acceptedFiles[0];
     
     try {
-      const content = await readFileContent(file);
-      
-      const apiFile = {
-        path: `/${file.name}`,
-        name: file.name,
-        size: file.size,
-        container_id: container.id,
-        user_id: container.user_id,
-        created_at: new Date().toISOString(),
-        mime_type: file.type || 'application/octet-stream',
-      };
-
       await uploadFileMutation.mutateAsync({
         containerId: container.id,
-        file: apiFile,
-        content,
+        file: file,
       });
 
       setUploadStatus({
@@ -99,7 +86,7 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelec
         message: `Ошибка загрузки файла: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`,
       });
     }
-  }, [container.id, container.user_id, uploadFileMutation]);
+  }, [container.id, uploadFileMutation]);
 
   const readFileContent = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -144,10 +131,29 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelec
     const input = document.createElement('input');
     input.type = 'file';
     input.style.display = 'none';
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const files = (e.target as HTMLInputElement).files;
       if (files && files.length > 0) {
-        onDrop(Array.from(files));
+        const file = files[0];
+        try {
+          await uploadFileMutation.mutateAsync({
+            containerId: container.id,
+            file: file,
+          });
+          
+          setUploadStatus({
+            open: true,
+            success: true,
+            message: `Файл "${file.name}" успешно загружен`,
+          });
+        } catch (error) {
+          console.error('Ошибка загрузки файла:', error);
+          setUploadStatus({
+            open: true,
+            success: false,
+            message: `Ошибка загрузки файла`,
+          });
+        }
       }
     };
     document.body.appendChild(input);

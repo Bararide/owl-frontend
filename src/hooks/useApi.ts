@@ -103,11 +103,10 @@ export const useUploadFile = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ containerId, file, content }: { 
+    mutationFn: ({ containerId, file }: { 
       containerId: string; 
-      file: ApiFile; 
-      content: string; 
-    }) => apiClient.uploadFile(containerId, file, content),
+      file: File; 
+    }) => apiClient.uploadFile(containerId, file),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['files', variables.containerId] });
     },

@@ -243,18 +243,24 @@ class ApiClient {
     return response.data.data;
   }
 
-  async uploadFile(containerId: string, file: ApiFile, content: string): Promise<ApiFile> {
+  async uploadFile(
+    containerId: string, 
+    file: File
+  ): Promise<ApiFile> {
     const formData = new FormData();
-    formData.append('file', JSON.stringify(file));
-    formData.append('content', content);
-
-    const response = await this.client.post<{ data: ApiFile }>(
+    formData.append('file', file);
+    
+    const uploadClient = axios.create({
+      baseURL: API_BASE_URL,
+      timeout: 30000,
+    });
+    
+    const response = await uploadClient.post<{ data: ApiFile }>(
       `/containers/${containerId}/files`,
       formData,
       {
         headers: {
-          ...this.getAuthHeaders(),
-          'Content-Type': 'multipart/form-data',
+          'Authorization': this.token ? `Bearer ${this.token}` : '',
         },
       }
     );
