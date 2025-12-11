@@ -60,7 +60,6 @@ interface Message {
   }>;
 }
 
-// Типы для моделей
 type ModelType = 'mistral' | 'deepseek';
 type ModelConfig = {
   value: number;

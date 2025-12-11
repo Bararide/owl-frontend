@@ -1,4 +1,3 @@
-// App.tsx
 import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material/styles';
@@ -14,12 +13,14 @@ import { Header } from './components/layout/Header';
 import { NotificationSnackbar } from './components/notifications/NotificationSnackbar';
 import { FloatingActionButton } from './components/styled';
 import { Login } from './components/auth/Login';
+import { CreateTxtFileView } from './views/CreateFileView';
 
 import { Dashboard } from './views/Dashboard';
 import { ContainersView } from './views/ContainersView';
 import { FilesView } from './views/FilesView';
 import { SearchView } from './views/SearchView';
 import { PlaceholderView } from './views/PlaceholderView';
+import { CreateTxtMainView } from './views/CreateMainView';
 
 import { apiClient } from './api/client';
 import { Container, User } from './api/client';
@@ -28,6 +29,7 @@ import {
   Search as SearchIcon,
   Security as SecurityIcon,
   Add as AddIcon,
+  Create as CreateIcon, // Добавлено
 } from '@mui/icons-material';
 import { OcrView } from './views/OCRView';
 
@@ -52,6 +54,7 @@ const App: React.FC = () => {
   const [selectedContainer, setSelectedContainer] = useState<Container | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [createContainerOpen, setCreateContainerOpen] = useState(false);
+  const [createTxtDialogOpen, setCreateTxtDialogOpen] = useState(false); // Добавлено
   const [currentTab, setCurrentTab] = useState(0);
   const [activeMenuItem, setActiveMenuItem] = useState('dashboard');
   const [isTokenProcessed, setIsTokenProcessed] = useState(false);
@@ -220,6 +223,15 @@ const App: React.FC = () => {
       });
       return;
     }
+
+    if (menuId === 'create-txt' && !selectedContainer) {
+      addNotification({
+        message: 'Please select a container first to create text files',
+        severity: 'warning',
+        open: true,
+      });
+      return;
+    }
     
     setActiveMenuItem(menuId);
     setCurrentTab(tabIndex);
@@ -227,6 +239,18 @@ const App: React.FC = () => {
 
   const handleViewModeChange = (mode: 'grid' | 'list') => {
     updateState({ viewMode: mode });
+  };
+
+  const handleCreateTxtClick = () => {
+    setCreateTxtDialogOpen(true);
+  };
+
+  const handleFileCreated = () => {
+    addNotification({
+      message: 'Text file created successfully',
+      severity: 'success',
+      open: true,
+    });
   };
 
   const renderCurrentView = () => {
@@ -280,6 +304,20 @@ const App: React.FC = () => {
           <OcrView
             selectedContainer={selectedContainer}
             onContainerSelect={handleContainerSelect}
+          />
+        );
+      case 6: // Добавлено для Create TXT
+        return (
+          <CreateTxtMainView
+            selectedContainer={selectedContainer}
+          />
+        );
+      case 7: // Security сдвинуто
+        return (
+          <PlaceholderView
+            icon={<SecurityIcon sx={{ fontSize: 64, color: 'text.secondary' }} />}
+            title="Security"
+            description="Security settings and monitoring"
           />
         );
       default:
@@ -348,6 +386,8 @@ const App: React.FC = () => {
               onViewModeChange={handleViewModeChange}
               notificationsCount={notifications.length}
               onLogout={handleLogout}
+              selectedContainer={selectedContainer} // Добавлено
+              onCreateTxtClick={currentTab === 6 ? handleCreateTxtClick : undefined} // Добавлено
             />
 
             <Box sx={{ flexGrow: 1, p: 3, overflow: 'auto' }}>

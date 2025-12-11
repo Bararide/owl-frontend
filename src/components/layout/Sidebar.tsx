@@ -20,6 +20,7 @@ import {
   Security as SecurityIcon,
   Photo as PhotoIcon,
   ExitToApp as ExitToAppIcon,
+  Create as CreateIcon, // Добавлено
 } from '@mui/icons-material';
 import { Container, User } from '../../api/client';
 
@@ -37,6 +38,7 @@ const menuItems = [
   { icon: <FileCopyIcon />, text: 'Files', id: 'files' },
   { icon: <SearchIcon />, text: 'Advanced search', id: 'search' },
   { icon: <PhotoIcon />, text: 'Photo', id: 'photo'},
+  { icon: <CreateIcon />, text: 'Create TXT', id: 'create-txt' }, // Добавлено
   { icon: <SpeedIcon />, text: 'Analytics', id: 'analytics' },
   { icon: <SecurityIcon />, text: 'Security', id: 'security' },
 ];
@@ -50,6 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const isSearchDisabled = !selectedContainer;
   const isPhotoDisabled = !selectedContainer;
+  const isCreateTxtDisabled = !selectedContainer; // Добавлено
 
   return (
     <Drawer
@@ -94,7 +97,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {menuItems.map((item) => {
             const isSearchItem = item.id === 'search';
             const isPhotoItem = item.id === 'photo';
-            const isDisabled = (isSearchItem && isSearchDisabled) || (isPhotoItem && isPhotoDisabled);
+            const isCreateTxtItem = item.id === 'create-txt'; // Добавлено
+            const isDisabled = (isSearchItem && isSearchDisabled) || 
+                              (isPhotoItem && isPhotoDisabled) || 
+                              (isCreateTxtItem && isCreateTxtDisabled); // Обновлено
 
             return (
               <Tooltip
@@ -116,7 +122,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       analytics: 3,
                       search: 4,
                       photo: 5,
-                      security: 6,
+                      'create-txt': 6, // Добавлено
+                      security: 7, // Сдвинуто
                     };
                     onMenuItemClick(item.id, tabMap[item.id] || 0);
                   }}

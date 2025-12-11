@@ -17,6 +17,7 @@ import {
   Sort as SortIcon,
   Notifications as NotificationsIcon,
   ExitToApp as ExitToAppIcon,
+  Create as CreateIcon, // Добавлено
 } from '@mui/icons-material';
 import { AppState } from '../../types';
 
@@ -26,6 +27,8 @@ interface HeaderProps {
   onViewModeChange: (mode: 'grid' | 'list') => void;
   notificationsCount: number;
   onLogout?: () => void;
+  onCreateTxtClick?: () => void; // Добавлено
+  selectedContainer: any; // Добавлено
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -34,6 +37,8 @@ export const Header: React.FC<HeaderProps> = ({
   onViewModeChange,
   notificationsCount,
   onLogout,
+  onCreateTxtClick, // Добавлено
+  selectedContainer, // Добавлено
 }) => {
   const getTitle = () => {
     switch (currentTab) {
@@ -43,10 +48,13 @@ export const Header: React.FC<HeaderProps> = ({
       case 3: return 'Analytics';
       case 4: return 'Search';
       case 5: return 'Photo';
-      case 6: return 'Security';
+      case 6: return 'Create TXT'; // Обновлено
+      case 7: return 'Security'; // Обновлено
       default: return 'Dashboard';
     }
   };
+
+  const isCreateTxtDisabled = !selectedContainer; // Добавлено
 
   return (
     <AppBar 
