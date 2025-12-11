@@ -27,21 +27,12 @@ export const StatsOverview: React.FC = () => {
       value: containers.filter((c: Container) => c.status === 'running').length.toString(), 
       icon: <SpeedIcon />, 
       color: 'primary', 
-      change: '+2' 
     },
     { 
       label: 'Total Storage', 
       value: `${containers.reduce((acc: number, c: Container) => acc + c.storage_quota, 0) / 1024} GB`, 
       icon: <StorageIcon />, 
-      color: 'secondary', 
-      change: '+5.1' 
-    },
-    { 
-      label: 'Memory Usage', 
-      value: `${Math.round(containers.reduce((acc: number, c: Container) => acc + c.memory_usage, 0) / (containers.length || 1))}%`, 
-      icon: <MemoryIcon />, 
-      color: 'warning', 
-      change: '-3.2' 
+      color: 'secondary',
     },
     { 
       label: 'Service Status', 
@@ -71,18 +62,6 @@ export const StatsOverview: React.FC = () => {
                     <Typography variant="body2" sx={{ opacity: 0.8, mb: 1, fontSize: '0.875rem' }}>
                       {stat.label}
                     </Typography>
-                    <Chip 
-                      label={stat.change} 
-                      size="small" 
-                      color={stat.change.startsWith('+') ? 'success' : 'error'}
-                      sx={{ 
-                        backgroundColor: 'rgba(255,255,255,0.15)',
-                        color: 'white',
-                        fontWeight: 600,
-                        fontSize: '0.7rem',
-                        height: 20
-                      }}
-                    />
                   </Box>
                   <Box
                     sx={{

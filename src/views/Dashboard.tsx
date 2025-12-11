@@ -17,7 +17,6 @@ import { QuickActions } from '../components/dashboard/QuickActions';
 import { ContainerCard } from '../components/containers/ContainerCard';
 import { CreateContainerDialog } from '../components/dialogs/CreateContainerDialog';
 import { LoadingSkeleton } from '../components/common/LoadingSkeleton';
-import { ConnectionTest } from '../components/common/ConnectionTest';
 
 import { Container, CreateContainerRequest, User } from '../api/client';
 
@@ -176,7 +175,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <Box>
-      <ConnectionTest />
       <StatsOverview />
       
       <QuickActions
