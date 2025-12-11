@@ -127,12 +127,12 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
       });
 
       setIsEditing(false);
-      
-      refetch();
 
       if (onFileUpdated) {
         onFileUpdated();
       }
+
+      onClose()
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to save file';
       setSaveError(errorMessage);

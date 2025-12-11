@@ -17,7 +17,7 @@ import {
   Description as DescriptionIcon,
   SmartToy as SemanticSearchIcon,
 } from '@mui/icons-material';
-import { useFiles, useSemanticSearch } from '../../hooks/useApi';
+import { useFiles, useFilesRebuildIndex, useSemanticSearch } from '../../hooks/useApi';
 import { useNotifications } from '../../hooks/useNotifications';
 import { FileCard } from './FileCard';
 import { FileContentDialog } from './FileContentDialog';
@@ -35,7 +35,7 @@ interface SearchResultFile extends ApiFile {
 }
 
 export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
-  const { data: files = [], isLoading: isLoadingFiles, refetch: refetchFiles } = useFiles(containerId);
+  const { data: files = [], isLoading: isLoadingFiles, refetch: refetchFiles } = useFilesRebuildIndex(containerId);
   const { addNotification } = useNotifications();
   const semanticSearchMutation = useSemanticSearch();
   

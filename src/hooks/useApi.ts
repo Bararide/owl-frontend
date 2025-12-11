@@ -99,6 +99,14 @@ export const useFiles = (containerId: string | undefined) => {
   });
 };
 
+export const useFilesRebuildIndex = (containerId: string | undefined) => {
+  return useQuery({
+    queryKey: ['files', containerId],
+    queryFn: () => apiClient.getFilesRebuildIndex(containerId ? containerId : ""),
+    enabled: !!containerId,
+  });
+};
+
 export const useUploadFile = () => {
   const queryClient = useQueryClient();
   

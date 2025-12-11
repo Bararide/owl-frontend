@@ -227,6 +227,13 @@ class ApiClient {
     return response.data.data;
   }
 
+  async getFilesRebuildIndex(containerId: string): Promise<ApiFile[]> {
+    const response = await this.client.get<{ data: ApiFile[] }>(`/containers/${containerId}/files/refresh`, {
+      headers: this.getAuthHeaders()
+    });
+    return response.data.data;
+  }
+
   async getFile(fileId: string, containerId: string): Promise<ApiFile> {
     const response = await this.client.get<{ data: ApiFile }>(
       `/containers/${containerId}/files/${fileId}`,
