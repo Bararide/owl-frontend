@@ -9,6 +9,9 @@ import {
   Fade,
   Chip,
   CircularProgress,
+  Tooltip,
+  Alert,
+  Snackbar,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -16,8 +19,9 @@ import {
   Refresh as RefreshIcon,
   Description as DescriptionIcon,
   SmartToy as SemanticSearchIcon,
+  Cached as RebuildIndexIcon,
 } from '@mui/icons-material';
-import { useFiles, useFilesRebuildIndex, useSemanticSearch } from '../../hooks/useApi';
+import { useFiles, useSemanticSearch } from '../../hooks/useApi';
 import { useNotifications } from '../../hooks/useNotifications';
 import { FileCard } from './FileCard';
 import { FileContentDialog } from './FileContentDialog';
@@ -35,7 +39,7 @@ interface SearchResultFile extends ApiFile {
 }
 
 export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
-  const { data: files = [], isLoading: isLoadingFiles, refetch: refetchFiles } = useFilesRebuildIndex(containerId);
+  const { data: files = [], isLoading: isLoadingFiles, refetch: refetchFiles } = useFiles(containerId);
   const { addNotification } = useNotifications();
   const semanticSearchMutation = useSemanticSearch();
   
@@ -52,6 +56,16 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
   const [isSemanticSearch, setIsSemanticSearch] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResultFile[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isRebuildingIndex, setIsRebuildingIndex] = useState(false);
+  const [rebuildNotification, setRebuildNotification] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info' | 'warning';
+  }>({
+    open: false,
+    message: '',
+    severity: 'info',
+  });
 
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -136,6 +150,64 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
       handleSearchSubmit();
     }
   }, [searchQuery, containerId, handleSearchSubmit]);
+
+  const handleRefreshFiles = useCallback(async () => {
+    if (!containerId) return;
+
+    setIsRebuildingIndex(true);
+
+    try {
+      // Используем прямой вызов API метода для перестроения индекса
+      const result = await apiClient.getFilesRebuildIndex(containerId);
+      
+      // После успешного перестроения индекса, обновляем данные
+      refetchFiles();
+      
+      setRebuildNotification({
+        open: true,
+        message: `File index rebuilt successfully. Found ${result.length} files.`,
+        severity: 'success',
+      });
+
+      addNotification({
+        message: `File index rebuilt. ${result.length} files found.`,
+        severity: 'success',
+        open: true,
+      });
+
+    } catch (error) {
+      console.error('Rebuild index error:', error);
+      
+      setRebuildNotification({
+        open: true,
+        message: `Failed to rebuild index: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error',
+      });
+
+      addNotification({
+        message: `Failed to rebuild file index`,
+        severity: 'error',
+        open: true,
+      });
+      
+      // Все равно пробуем обновить обычным способом
+      refetchFiles();
+    } finally {
+      setIsRebuildingIndex(false);
+    }
+  }, [containerId, refetchFiles, addNotification]);
+
+  // Если нужен mutation hook, можно создать его:
+  // const useRebuildFilesIndex = () => {
+  //   const queryClient = useQueryClient();
+  //   
+  //   return useMutation({
+  //     mutationFn: (containerId: string) => apiClient.getFilesRebuildIndex(containerId),
+  //     onSuccess: (_, variables) => {
+  //       queryClient.invalidateQueries({ queryKey: ['files', variables] });
+  //     },
+  //   });
+  // };
 
   const handleDownloadFile = useCallback(async (file: ApiFile) => {
     try {
@@ -257,6 +329,23 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
 
   return (
     <Box>
+      {/* Уведомление о перестроении индекса */}
+      <Snackbar
+        open={rebuildNotification.open}
+        autoHideDuration={6000}
+        onClose={() => setRebuildNotification(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert 
+          severity={rebuildNotification.severity} 
+          onClose={() => setRebuildNotification(prev => ({ ...prev, open: false }))}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {rebuildNotification.message}
+        </Alert>
+      </Snackbar>
+
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Box 
           component="form" 
@@ -368,14 +457,72 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
             </Box>
           </Fade>
         </Box>
-        <Button 
-          startIcon={<RefreshIcon />}
-          onClick={() => refetchFiles()}
-          variant="outlined"
-          size="medium"
-        >
-          Refresh
-        </Button>
+
+        {/* Кнопка обновления с тултипом */}
+        <Tooltip title="Rebuild file index and refresh">
+          <span>
+            <Button 
+              startIcon={isRebuildingIndex ? <CircularProgress size={20} /> : <RefreshIcon />}
+              onClick={handleRefreshFiles}
+              variant="outlined"
+              size="medium"
+              disabled={isRebuildingIndex}
+              sx={{
+                position: 'relative',
+                '&:hover': {
+                  backgroundColor: 'primary.light',
+                  color: 'white',
+                }
+              }}
+            >
+              {isRebuildingIndex ? 'Rebuilding...' : 'Refresh'}
+            </Button>
+          </span>
+        </Tooltip>
+      </Box>
+
+      {/* Информационная панель */}
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        mb: 2,
+        p: 2,
+        backgroundColor: 'rgba(0,0,0,0.1)',
+        borderRadius: 2,
+        border: '1px solid rgba(255,255,255,0.08)'
+      }}>
+        <Box>
+          <Typography variant="body2" color="text.secondary">
+            {isSemanticSearch 
+              ? `Semantic search results`
+              : `Showing ${displayFiles.length} of ${files.length} files`
+            }
+          </Typography>
+          {isSemanticSearch && (
+            <Chip 
+              label="Semantic Search" 
+              size="small" 
+              color="primary" 
+              variant="outlined"
+              icon={<SemanticSearchIcon />}
+              sx={{ mt: 0.5 }}
+            />
+          )}
+        </Box>
+        
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Tooltip title="Last refresh: Click to rebuild index">
+            <Chip
+              icon={<RebuildIndexIcon />}
+              label={`Index: ${files.length} files`}
+              size="small"
+              variant="outlined"
+              onClick={handleRefreshFiles}
+              clickable
+            />
+          </Tooltip>
+        </Box>
       </Box>
 
       {searchQuery && (
@@ -417,9 +564,20 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
           <Typography variant="body2" color="text.secondary">
             {searchQuery 
               ? `No files match your ${isSemanticSearch ? 'semantic' : ''} search for "${searchQuery}"`
-              : 'This container doesn\'t have any files yet'
+              : 'This container doesn\'t have any files yet. Try rebuilding the index or uploading files.'
             }
           </Typography>
+          {!searchQuery && (
+            <Button 
+              variant="contained" 
+              onClick={handleRefreshFiles}
+              startIcon={<RefreshIcon />}
+              sx={{ mt: 2 }}
+              disabled={isRebuildingIndex}
+            >
+              {isRebuildingIndex ? 'Rebuilding...' : 'Rebuild Index'}
+            </Button>
+          )}
           {searchQuery && (
             <Button 
               variant="outlined" 
@@ -456,6 +614,14 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
         onClose={handleCloseFileContent}
         file={fileContentDialog.file}
         containerId={containerId}
+        onFileUpdated={() => {
+          // После редактирования файла обновляем список
+          handleRefreshFiles();
+        }}
+        onFileDeleted={() => {
+          // После удаления файла обновляем список
+          handleRefreshFiles();
+        }}
       />
     </Box>
   );

@@ -287,23 +287,6 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelec
 
             <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
-                <Typography variant="caption" color="text.secondary">CPU</Typography>
-                <Typography variant="caption" fontWeight="600">
-                  {container.cpu_usage}%
-                </Typography>
-              </Box>
-              <LinearProgress 
-                variant="determinate" 
-                value={container.cpu_usage} 
-                color={container.cpu_usage > 80 ? "error" : "primary"}
-                sx={{ 
-                  height: 4, 
-                  borderRadius: 2,
-                  mb: 1.5 
-                }}
-              />
-
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
                 <Typography variant="caption" color="text.secondary">Memory</Typography>
                 <Typography variant="caption" fontWeight="600">
                   {container.memory_usage}%
