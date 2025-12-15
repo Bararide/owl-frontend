@@ -91,7 +91,6 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const { data: files = [] } = useFiles(selectedContainer?.id);
   const downloadFileMutation = useDownloadFile();
 
-  // Получаем максимальное количество файлов из доступных файлов
   const maxFileLimit = files.length;
 
   useEffect(() => {
@@ -119,7 +118,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
     const uniqueFiles = Array.from(new Map(
       newRelevantFiles.map(file => [file.path, file])
-    ).values());
+    ).values()).reverse();
 
     setRelevantFiles(uniqueFiles);
   }, [messages, files]);

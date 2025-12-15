@@ -111,8 +111,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
         }
         
         return acc;
-      }, [])
-      .reverse();
+      }, []);
 
       setSearchResults(resultFiles);
 
