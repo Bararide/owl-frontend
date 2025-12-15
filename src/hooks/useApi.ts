@@ -66,6 +66,7 @@ export const useFileContent = (containerId: string, fileId: string) => {
     },
     enabled: !!containerId && !!fileId,
     retry: 1,
+    staleTime: 0
   });
 };
 

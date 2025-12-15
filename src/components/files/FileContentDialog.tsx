@@ -1,3 +1,4 @@
+// FileContentDialog.tsx - Улучшаем обновление содержимого
 import React, { useState, useEffect, useMemo, JSX } from 'react';
 import {
   Dialog,
@@ -33,6 +34,8 @@ import {
   Clear as ClearIcon,
   NavigateNext as NavigateNextIcon,
   NavigateBefore as NavigateBeforeIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { useFileContent, useDeleteFile, useUploadFile } from '../../hooks/useApi';
 import { ApiFile } from '../../api/client';
@@ -45,7 +48,11 @@ interface FileContentDialogProps {
   containerId: string;
   onFileUpdated?: () => void;
   onFileDeleted?: () => void;
-  searchQuery?: string; // Добавляем пропс для поискового запроса из семантического поиска
+  searchQuery?: string;
+  currentFileIndex?: number;
+  totalFiles?: number;
+  onNextFile?: () => void;
+  onPrevFile?: () => void;
 }
 
 export const FileContentDialog: React.FC<FileContentDialogProps> = ({ 
@@ -55,12 +62,27 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   containerId,
   onFileUpdated,
   onFileDeleted,
-  searchQuery: initialSearchQuery = '', // Значение по умолчанию
+  searchQuery: initialSearchQuery = '',
+  currentFileIndex = 0,
+  totalFiles = 0,
+  onNextFile,
+  onPrevFile,
 }) => {
-  const { data: fileContent, isLoading, error, refetch } = useFileContent(
+  // Используем ключ, который меняется при каждом открытии нового файла
+  const fileContentKey = useMemo(() => {
+    return `fileContent-${containerId}-${file?.name || ''}-${Date.now()}`;
+  }, [containerId, file?.name]);
+
+  const { 
+    data: fileContent, 
+    isLoading, 
+    error, 
+    refetch 
+  } = useFileContent(
     containerId, 
-    file?.name || ''
+    file?.name || '',
   );
+  
   const deleteFileMutation = useDeleteFile();
   const uploadFileMutation = useUploadFile();
   const { addNotification } = useNotifications();
@@ -77,12 +99,40 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   const [searchMatches, setSearchMatches] = useState<number[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
   const [isSearchActive, setIsSearchActive] = useState(false);
+  const [forceRefreshKey, setForceRefreshKey] = useState(0);
+
+  // Сбрасываем состояние при изменении файла
+  useEffect(() => {
+    if (file?.name && open) {
+      console.log(`Loading file: ${file.name}, forceRefreshKey: ${forceRefreshKey}`);
+      
+      // Сбрасываем редактирование
+      setIsEditing(false);
+      setEditedContent('');
+      setSaveError('');
+      
+      // Сбрасываем поиск
+      setSearchQuery(initialSearchQuery);
+      setSearchMatches([]);
+      setCurrentMatchIndex(-1);
+      setIsSearchActive(!!initialSearchQuery);
+      
+      // Увеличиваем ключ принудительного обновления
+      setForceRefreshKey(prev => prev + 1);
+      
+      // Форсируем перезагрузку содержимого с небольшой задержкой
+      setTimeout(() => {
+        refetch();
+      }, 100);
+    }
+  }, [file?.name, initialSearchQuery, open, refetch]);
 
   useEffect(() => {
     if (fileContent?.content && !editedContent) {
+      console.log(`Setting edited content for file: ${file?.name}`);
       setEditedContent(fileContent.content);
     }
-  }, [fileContent]);
+  }, [fileContent, editedContent, file?.name]);
 
   useEffect(() => {
     if (!open) {
@@ -91,15 +141,14 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
       setSaveError('');
       setAnchorEl(null);
       setShowDeleteConfirm(false);
-      // Сбрасываем поиск при закрытии диалога
       setSearchQuery('');
       setSearchMatches([]);
       setCurrentMatchIndex(-1);
       setIsSearchActive(false);
+      setForceRefreshKey(0);
     }
   }, [open]);
 
-  // При открытии диалога устанавливаем начальный поисковый запрос
   useEffect(() => {
     if (open && initialSearchQuery) {
       setSearchQuery(initialSearchQuery);
@@ -107,7 +156,6 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
     }
   }, [open, initialSearchQuery]);
 
-  // Функция для поиска совпадений в тексте
   const findSearchMatches = useMemo(() => {
     if (!searchQuery.trim() || !editedContent) {
       return [];
@@ -182,7 +230,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
       // Текст до совпадения
       const beforeMatch = editedContent.substring(lastIndex, matchIndex);
       if (beforeMatch) {
-        result.push(<span key={`before-${index}`}>{beforeMatch}</span>);
+        result.push(<span key={`before-${index}-${forceRefreshKey}`}>{beforeMatch}</span>);
       }
       
       // Подсвеченный текст
@@ -190,7 +238,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
       const isCurrent = index === currentMatchIndex;
       result.push(
         <mark 
-          key={`match-${index}`}
+          key={`match-${index}-${forceRefreshKey}`}
           style={{
             backgroundColor: isCurrent ? '#ffeb3b' : 'rgba(255, 235, 59, 0.3)',
             color: isCurrent ? '#000' : 'inherit',
@@ -210,7 +258,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
     // Остаток текста после последнего совпадения
     const afterLastMatch = editedContent.substring(lastIndex);
     if (afterLastMatch) {
-      result.push(<span key="after-last">{afterLastMatch}</span>);
+      result.push(<span key={`after-last-${forceRefreshKey}`}>{afterLastMatch}</span>);
     }
     
     return result;
@@ -390,6 +438,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
         onClose={onClose} 
         maxWidth="xl" 
         fullWidth
+        key={fileContentKey}
         PaperProps={{
           sx: {
             borderRadius: 3,
@@ -410,14 +459,52 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
           alignItems: 'center',
           flexShrink: 0
         }}>
-          <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography variant="h6" component="div" noWrap>
-              {file?.name || file?.path.split('/').pop()}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {file?.path} • {file && formatFileSize(file.size)}
-            </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
+            {/* Стрелка навигации влево */}
+            {totalFiles > 1 && onPrevFile && (
+              <Tooltip title="Previous file (Ctrl/Cmd + ←)">
+                <IconButton 
+                  onClick={onPrevFile}
+                  size="small"
+                  sx={{ 
+                    '&:hover': {
+                      backgroundColor: 'rgba(255,255,255,0.1)'
+                    }
+                  }}
+                >
+                  <ChevronLeftIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+            
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography variant="h6" component="div" noWrap>
+                {file?.name || file?.path.split('/').pop()}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" noWrap>
+                {file?.path} • {file && formatFileSize(file.size)}
+                {totalFiles > 1 && ` • File ${currentFileIndex + 1} of ${totalFiles}`}
+              </Typography>
+            </Box>
+            
+            {/* Стрелка навигации вправо */}
+            {totalFiles > 1 && onNextFile && (
+              <Tooltip title="Next file (Ctrl/Cmd + →)">
+                <IconButton 
+                  onClick={onNextFile}
+                  size="small"
+                  sx={{ 
+                    '&:hover': {
+                      backgroundColor: 'rgba(255,255,255,0.1)'
+                    }
+                  }}
+                >
+                  <ChevronRightIcon />
+                </IconButton>
+              </Tooltip>
+            )}
           </Box>
+          
           <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, ml: 1 }}>
             {isTextFile && !isEditing && (
               <Tooltip title={copied ? "Copied!" : "Copy content"}>
@@ -452,7 +539,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
         </DialogTitle>
         
         {/* Панель поиска */}
-        {isTextFile && !isEditing && fileContent && (
+        {isTextFile && !isEditing && (
           <Paper 
             elevation={0}
             sx={{
@@ -594,7 +681,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
                 Download File
               </Button>
             </Box>
-          ) : fileContent ? (
+          ) : fileContent && editedContent ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
               <Box sx={{ 
                 position: 'sticky', 
@@ -665,6 +752,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
               ) : (
                 <Box
                   component="pre"
+                  key={`pre-${forceRefreshKey}`}
                   sx={{
                     p: 3,
                     m: 0,
@@ -696,7 +784,17 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
                 </Box>
               )}
             </Box>
-          ) : null}
+          ) : (
+            // Если fileContent еще не загружен
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              alignItems: 'center', 
+              flex: 1 
+            }}>
+              <CircularProgress />
+            </Box>
+          )}
         </DialogContent>
         
         <DialogActions sx={{ 

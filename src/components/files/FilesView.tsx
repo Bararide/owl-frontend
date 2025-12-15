@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useRef } from 'react';
+// FilesView.tsx - Обновляем для поддержки навигации по файлам
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -12,6 +13,7 @@ import {
   Tooltip,
   Alert,
   Snackbar,
+  Paper,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -20,6 +22,8 @@ import {
   Description as DescriptionIcon,
   SmartToy as SemanticSearchIcon,
   Cached as RebuildIndexIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { useFiles, useSemanticSearch } from '../../hooks/useApi';
 import { useNotifications } from '../../hooks/useNotifications';
@@ -46,9 +50,11 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
   const [fileContentDialog, setFileContentDialog] = useState<{
     open: boolean;
     file: ApiFile | null;
+    currentIndex: number;
   }>({
     open: false,
     file: null,
+    currentIndex: 0,
   });
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -74,6 +80,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     file.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
     file.mime_type.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const currentFilesList = (isSemanticSearch ? searchResults : (searchQuery ? filteredFiles : files));
 
   const handleSemanticSearch = useCallback(async (query: string) => {
     if (!query.trim() || !containerId) return;
@@ -242,7 +250,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
         handleDownloadFile(file);
         break;
       case 'view':
-        setFileContentDialog({ open: true, file });
+        const fileIndex = currentFilesList.findIndex(f => f.name === file.name);
+        setFileContentDialog({ 
+          open: true, 
+          file: file,
+          currentIndex: fileIndex
+        });
         break;
       case 'delete':
         apiClient.deleteFile(file.container_id, file.name)
@@ -269,14 +282,16 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
           open: true,
         });
     }
-  }, [addNotification, refetchFiles, handleDownloadFile]);
+  }, [addNotification, refetchFiles, handleDownloadFile, currentFilesList]);
 
   const handleViewContent = useCallback((file: ApiFile) => {
+    const fileIndex = currentFilesList.findIndex(f => f.name === file.name);
     setFileContentDialog({ 
       open: true, 
-      file: file
+      file: file,
+      currentIndex: fileIndex
     });
-  }, []);
+  }, [currentFilesList]);
 
   const handleFileSelect = useCallback((file: ApiFile) => {
     addNotification({
@@ -287,7 +302,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
   }, [addNotification]);
 
   const handleCloseFileContent = useCallback(() => {
-    setFileContentDialog({ open: false, file: null });
+    setFileContentDialog({ open: false, file: null, currentIndex: 0 });
   }, []);
 
   const handleClearSearch = useCallback(() => {
@@ -296,7 +311,59 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     setSearchResults([]);
   }, []);
 
-  const displayFiles = isSemanticSearch ? searchResults : (searchQuery ? filteredFiles : files);
+  // Обработчики навигации по файлам
+  const handleNextFile = useCallback(() => {
+    if (!fileContentDialog.file || currentFilesList.length === 0) return;
+    
+    const currentIndex = fileContentDialog.currentIndex;
+    const nextIndex = (currentIndex + 1) % currentFilesList.length;
+    
+    console.log(`Navigating from index ${currentIndex} to ${nextIndex}, file: ${currentFilesList[nextIndex]?.name}`);
+    
+    setFileContentDialog({
+      open: true,
+      file: currentFilesList[nextIndex],
+      currentIndex: nextIndex,
+    });
+  }, [fileContentDialog, currentFilesList]);
+
+  const handlePrevFile = useCallback(() => {
+    if (!fileContentDialog.file || currentFilesList.length === 0) return;
+    
+    const currentIndex = fileContentDialog.currentIndex;
+    const prevIndex = currentIndex > 0 ? currentIndex - 1 : currentFilesList.length - 1;
+    
+    console.log(`Navigating from index ${currentIndex} to ${prevIndex}, file: ${currentFilesList[prevIndex]?.name}`);
+    
+    setFileContentDialog({
+      open: true,
+      file: currentFilesList[prevIndex],
+      currentIndex: prevIndex,
+    });
+  }, [fileContentDialog, currentFilesList]);
+
+  // Обработка горячих клавиш для навигации
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!fileContentDialog.open) return;
+      
+      // Ctrl/Cmd + стрелка влево/вправо для навигации
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          handlePrevFile();
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          handleNextFile();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [fileContentDialog.open, handleNextFile, handlePrevFile]);
+
+  const displayFiles = currentFilesList.reverse();
 
   if (!containerId) {
     return (
@@ -580,7 +647,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
           gap: 3,
           width: '100%'
         }}>
-          {displayFiles.map((file: SearchResultFile) => (
+          {displayFiles.map((file: SearchResultFile, index: number) => (
             <FileCard
               key={`${file.name}-${file.score || ''}`}
               file={file}
@@ -606,6 +673,10 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
           handleRefreshFiles();
         }}
         searchQuery={searchQuery}
+        currentFileIndex={fileContentDialog.currentIndex}
+        totalFiles={currentFilesList.length}
+        onNextFile={handleNextFile}
+        onPrevFile={handlePrevFile}
       />
     </Box>
   );
