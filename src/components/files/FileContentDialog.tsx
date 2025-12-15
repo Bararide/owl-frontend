@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, JSX } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -16,6 +16,8 @@ import {
   Menu,
   MenuItem,
   Snackbar,
+  InputAdornment,
+  Paper,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -27,6 +29,10 @@ import {
   Save as SaveIcon,
   Delete as DeleteIcon,
   MoreVert as MoreVertIcon,
+  Search as SearchIcon,
+  Clear as ClearIcon,
+  NavigateNext as NavigateNextIcon,
+  NavigateBefore as NavigateBeforeIcon,
 } from '@mui/icons-material';
 import { useFileContent, useDeleteFile, useUploadFile } from '../../hooks/useApi';
 import { ApiFile } from '../../api/client';
@@ -37,8 +43,9 @@ interface FileContentDialogProps {
   onClose: () => void;
   file: ApiFile | null;
   containerId: string;
-  onFileUpdated?: () => void; // Для обновления списка файлов после редактирования
-  onFileDeleted?: () => void; // Для обновления списка файлов после удаления
+  onFileUpdated?: () => void;
+  onFileDeleted?: () => void;
+  searchQuery?: string; // Добавляем пропс для поискового запроса из семантического поиска
 }
 
 export const FileContentDialog: React.FC<FileContentDialogProps> = ({ 
@@ -48,6 +55,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   containerId,
   onFileUpdated,
   onFileDeleted,
+  searchQuery: initialSearchQuery = '', // Значение по умолчанию
 }) => {
   const { data: fileContent, isLoading, error, refetch } = useFileContent(
     containerId, 
@@ -63,6 +71,12 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   const [saveError, setSaveError] = useState('');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  
+  // Новые состояния для поиска по контексту
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [searchMatches, setSearchMatches] = useState<number[]>([]);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
+  const [isSearchActive, setIsSearchActive] = useState(false);
 
   useEffect(() => {
     if (fileContent?.content && !editedContent) {
@@ -77,8 +91,130 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
       setSaveError('');
       setAnchorEl(null);
       setShowDeleteConfirm(false);
+      // Сбрасываем поиск при закрытии диалога
+      setSearchQuery('');
+      setSearchMatches([]);
+      setCurrentMatchIndex(-1);
+      setIsSearchActive(false);
     }
   }, [open]);
+
+  // При открытии диалога устанавливаем начальный поисковый запрос
+  useEffect(() => {
+    if (open && initialSearchQuery) {
+      setSearchQuery(initialSearchQuery);
+      setIsSearchActive(true);
+    }
+  }, [open, initialSearchQuery]);
+
+  // Функция для поиска совпадений в тексте
+  const findSearchMatches = useMemo(() => {
+    if (!searchQuery.trim() || !editedContent) {
+      return [];
+    }
+
+    const matches: number[] = [];
+    const searchTerm = searchQuery.toLowerCase();
+    const content = editedContent.toLowerCase();
+    let position = content.indexOf(searchTerm);
+    
+    while (position !== -1) {
+      matches.push(position);
+      position = content.indexOf(searchTerm, position + 1);
+    }
+    
+    return matches;
+  }, [editedContent, searchQuery]);
+
+  // Обновляем совпадения при изменении поискового запроса или содержимого
+  useEffect(() => {
+    const matches = findSearchMatches;
+    setSearchMatches(matches);
+    
+    if (matches.length > 0) {
+      setCurrentMatchIndex(0);
+    } else {
+      setCurrentMatchIndex(-1);
+    }
+  }, [findSearchMatches]);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    setIsSearchActive(!!e.target.value.trim());
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setSearchMatches([]);
+    setCurrentMatchIndex(-1);
+    setIsSearchActive(false);
+  };
+
+  const handleNextMatch = () => {
+    if (searchMatches.length === 0) return;
+    
+    setCurrentMatchIndex(prev => {
+      const next = prev + 1;
+      return next >= searchMatches.length ? 0 : next;
+    });
+  };
+
+  const handlePrevMatch = () => {
+    if (searchMatches.length === 0) return;
+    
+    setCurrentMatchIndex(prev => {
+      const next = prev - 1;
+      return next < 0 ? searchMatches.length - 1 : next;
+    });
+  };
+
+  // Функция для получения текста с подсветкой
+  const getHighlightedText = () => {
+    if (!searchQuery.trim() || !editedContent || searchMatches.length === 0) {
+      return editedContent;
+    }
+
+    const result: JSX.Element[] = [];
+    let lastIndex = 0;
+    const searchTerm = searchQuery;
+    
+    searchMatches.forEach((matchIndex, index) => {
+      // Текст до совпадения
+      const beforeMatch = editedContent.substring(lastIndex, matchIndex);
+      if (beforeMatch) {
+        result.push(<span key={`before-${index}`}>{beforeMatch}</span>);
+      }
+      
+      // Подсвеченный текст
+      const matchText = editedContent.substring(matchIndex, matchIndex + searchTerm.length);
+      const isCurrent = index === currentMatchIndex;
+      result.push(
+        <mark 
+          key={`match-${index}`}
+          style={{
+            backgroundColor: isCurrent ? '#ffeb3b' : 'rgba(255, 235, 59, 0.3)',
+            color: isCurrent ? '#000' : 'inherit',
+            padding: '0 2px',
+            borderRadius: '2px',
+            fontWeight: isCurrent ? 'bold' : 'normal',
+            border: isCurrent ? '1px solid #ff9800' : 'none',
+          }}
+        >
+          {matchText}
+        </mark>
+      );
+      
+      lastIndex = matchIndex + searchTerm.length;
+    });
+    
+    // Остаток текста после последнего совпадения
+    const afterLastMatch = editedContent.substring(lastIndex);
+    if (afterLastMatch) {
+      result.push(<span key="after-last">{afterLastMatch}</span>);
+    }
+    
+    return result;
+  };
 
   const handleCopyContent = async () => {
     if (editedContent) {
@@ -315,6 +451,89 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
           </Box>
         </DialogTitle>
         
+        {/* Панель поиска */}
+        {isTextFile && !isEditing && fileContent && (
+          <Paper 
+            elevation={0}
+            sx={{
+              p: 1,
+              mx: 3,
+              mt: 1,
+              mb: 1,
+              borderRadius: 1,
+              backgroundColor: 'rgba(0,0,0,0.2)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              flexShrink: 0,
+            }}
+          >
+            <SearchIcon fontSize="small" sx={{ opacity: 0.7 }} />
+            <TextField
+              fullWidth
+              variant="standard"
+              placeholder="Search in file..."
+              value={searchQuery}
+              onChange={handleSearchChange}
+              InputProps={{
+                disableUnderline: true,
+                sx: {
+                  fontSize: '0.875rem',
+                  color: 'text.primary',
+                  '&::placeholder': {
+                    color: 'text.secondary',
+                  },
+                }
+              }}
+              size="small"
+            />
+            
+            {searchQuery && (
+              <>
+                <Typography variant="caption" sx={{ whiteSpace: 'nowrap', opacity: 0.7 }}>
+                  {searchMatches.length > 0 
+                    ? `${currentMatchIndex + 1} of ${searchMatches.length}`
+                    : 'No matches'
+                  }
+                </Typography>
+                
+                <Tooltip title="Previous match">
+                  <span>
+                    <IconButton 
+                      size="small" 
+                      onClick={handlePrevMatch}
+                      disabled={searchMatches.length === 0}
+                      sx={{ opacity: searchMatches.length === 0 ? 0.3 : 0.7 }}
+                    >
+                      <NavigateBeforeIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                
+                <Tooltip title="Next match">
+                  <span>
+                    <IconButton 
+                      size="small" 
+                      onClick={handleNextMatch}
+                      disabled={searchMatches.length === 0}
+                      sx={{ opacity: searchMatches.length === 0 ? 0.3 : 0.7 }}
+                    >
+                      <NavigateNextIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                
+                <Tooltip title="Clear search">
+                  <IconButton size="small" onClick={handleClearSearch} sx={{ opacity: 0.7 }}>
+                    <ClearIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+          </Paper>
+        )}
+        
         <DialogContent sx={{ 
           p: 0, 
           position: 'relative', 
@@ -391,12 +610,22 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
                 zIndex: 1,
                 flexShrink: 0
               }}>
-                <Chip 
-                  label={getLanguageFromMimeType(file ? file.mime_type : "")}
-                  size="small"
-                  color="primary"
-                  variant="outlined"
-                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Chip 
+                    label={getLanguageFromMimeType(file ? file.mime_type : "")}
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                  />
+                  {isSearchActive && searchMatches.length > 0 && (
+                    <Chip 
+                      label={`${searchMatches.length} match${searchMatches.length !== 1 ? 'es' : ''}`}
+                      size="small"
+                      color="secondary"
+                      variant="outlined"
+                    />
+                  )}
+                </Box>
                 <Typography variant="caption" color="text.secondary">
                   {fileContent.encoding} • {formatFileSize(fileContent.size)}
                 </Typography>
@@ -458,9 +687,12 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
                       background: 'rgba(255,255,255,0.2)',
                       borderRadius: 4,
                     },
+                    '& mark': {
+                      transition: 'background-color 0.3s ease',
+                    },
                   }}
                 >
-                  {fileContent.content}
+                  {getHighlightedText()}
                 </Box>
               )}
             </Box>

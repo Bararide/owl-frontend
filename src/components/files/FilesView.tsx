@@ -157,10 +157,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     setIsRebuildingIndex(true);
 
     try {
-      // Используем прямой вызов API метода для перестроения индекса
       const result = await apiClient.getFilesRebuildIndex(containerId);
       
-      // После успешного перестроения индекса, обновляем данные
       refetchFiles();
       
       setRebuildNotification({
@@ -190,24 +188,11 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
         open: true,
       });
       
-      // Все равно пробуем обновить обычным способом
       refetchFiles();
     } finally {
       setIsRebuildingIndex(false);
     }
   }, [containerId, refetchFiles, addNotification]);
-
-  // Если нужен mutation hook, можно создать его:
-  // const useRebuildFilesIndex = () => {
-  //   const queryClient = useQueryClient();
-  //   
-  //   return useMutation({
-  //     mutationFn: (containerId: string) => apiClient.getFilesRebuildIndex(containerId),
-  //     onSuccess: (_, variables) => {
-  //       queryClient.invalidateQueries({ queryKey: ['files', variables] });
-  //     },
-  //   });
-  // };
 
   const handleDownloadFile = useCallback(async (file: ApiFile) => {
     try {
@@ -615,13 +600,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
         file={fileContentDialog.file}
         containerId={containerId}
         onFileUpdated={() => {
-          // После редактирования файла обновляем список
           handleRefreshFiles();
         }}
         onFileDeleted={() => {
-          // После удаления файла обновляем список
           handleRefreshFiles();
         }}
+        searchQuery={searchQuery}
       />
     </Box>
   );
