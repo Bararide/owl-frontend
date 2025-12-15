@@ -12,6 +12,12 @@ import {
   CardContent,
   Tooltip,
   Chip,
+  Menu,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Select,
+  SelectChangeEvent,
 } from '@mui/material';
 import {
   Upload as UploadIcon,
@@ -22,6 +28,8 @@ import {
   Visibility as ViewIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
+  Settings as SettingsIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Container } from '../api/client';
@@ -47,6 +55,26 @@ interface OcrResult {
   visualizedImage?: string;
 }
 
+type OcrModelType = 'deepseek_ocr' | 'hunyuan';
+type OcrModelConfig = {
+  value: number;
+  label: string;
+  description: string;
+};
+
+const OCR_MODEL_CONFIGS: Record<OcrModelType, OcrModelConfig> = {
+  deepseek_ocr: { 
+    value: 0, 
+    label: 'Deepseek-OCR', 
+    description: 'Classical OCR engine, good for clean text' 
+  },
+  hunyuan: { 
+    value: 1, 
+    label: 'hunyuan', 
+    description: 'Deep learning based, supports multiple languages' 
+  },
+};
+
 export const OcrView: React.FC<OcrViewProps> = ({
   selectedContainer,
 }) => {
@@ -58,6 +86,8 @@ export const OcrView: React.FC<OcrViewProps> = ({
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string>('');
   const [previewTitle, setPreviewTitle] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState<OcrModelType>('deepseek_ocr');
+  const [settingsAnchorEl, setSettingsAnchorEl] = useState<null | HTMLElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const ocrProcessMutation = useOcrProcess();
@@ -127,6 +157,7 @@ export const OcrView: React.FC<OcrViewProps> = ({
         file_data: fileData.split(',')[1],
         file_name: selectedFile.name,
         mime_type: selectedFile.type,
+        model: OCR_MODEL_CONFIGS[selectedModel].value, // Добавляем выбранную модель
       };
 
       const result = await ocrProcessMutation.mutateAsync(requestData);
@@ -147,7 +178,7 @@ export const OcrView: React.FC<OcrViewProps> = ({
       ));
 
       addNotification({
-        message: `OCR processing completed for ${selectedFile.name}`,
+        message: `OCR processing completed for ${selectedFile.name} using ${OCR_MODEL_CONFIGS[selectedModel].label}`,
         severity: 'success',
         open: true,
       });
@@ -219,6 +250,19 @@ export const OcrView: React.FC<OcrViewProps> = ({
     }
   };
 
+  const handleSettingsOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setSettingsAnchorEl(event.currentTarget);
+  };
+
+  const handleSettingsClose = () => {
+    setSettingsAnchorEl(null);
+  };
+
+  const handleModelChange = (model: OcrModelType) => {
+    setSelectedModel(model);
+    handleSettingsClose();
+  };
+
   if (!selectedContainer) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
@@ -231,46 +275,77 @@ export const OcrView: React.FC<OcrViewProps> = ({
 
   return (
     <Box sx={{ height: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
+      {/* Панель настроек */}
       <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-        <Button
-          variant="contained"
-          component="label"
-          startIcon={<UploadIcon />}
-          disabled={!selectedContainer}
-          sx={{ mr: 2 }}
-        >
-          Upload File
-          <input
-            type="file"
-            hidden
-            ref={fileInputRef}
-            onChange={handleFileSelect}
-            accept=".png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.pdf"
-          />
-        </Button>
-        
-        {selectedFile && (
-          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body2" sx={{ ml: 2 }}>
-              {selectedFile.name}
-            </Typography>
-            <IconButton
-              size="small"
-              onClick={handleRemoveFile}
-              disabled={isProcessing}
-            >
-              <DeleteIcon fontSize="small" />
-            </IconButton>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ImageIcon />
+            OCR Processing
+          </Typography>
+          
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            {/* Кнопка выбора модели OCR */}
             <Button
               variant="outlined"
-              onClick={handleProcessOcr}
-              disabled={isProcessing}
-              startIcon={isProcessing ? <CircularProgress size={16} /> : <ImageIcon />}
+              onClick={handleSettingsOpen}
+              startIcon={<SettingsIcon />}
+              endIcon={<ExpandMoreIcon />}
+              size="small"
             >
-              {isProcessing ? 'Processing...' : 'Process OCR'}
+              {OCR_MODEL_CONFIGS[selectedModel].label}
             </Button>
+
+            {/* Информация о выбранной модели */}
+            <Typography variant="caption" color="text.secondary">
+              {OCR_MODEL_CONFIGS[selectedModel].description}
+            </Typography>
           </Box>
-        )}
+        </Box>
+
+        {/* Область загрузки файла */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1 }}>
+          <Button
+            variant="contained"
+            component="label"
+            startIcon={<UploadIcon />}
+            disabled={!selectedContainer}
+            size="small"
+          >
+            Upload File
+            <input
+              type="file"
+              hidden
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              accept=".png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.pdf"
+            />
+          </Button>
+          
+          {selectedFile && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+              <Typography variant="body2">
+                {selectedFile.name}
+              </Typography>
+              <IconButton
+                size="small"
+                onClick={handleRemoveFile}
+                disabled={isProcessing}
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+              <Button
+                variant="outlined"
+                onClick={handleProcessOcr}
+                disabled={isProcessing}
+                startIcon={isProcessing ? <CircularProgress size={16} /> : <ImageIcon />}
+                size="small"
+                sx={{ ml: 'auto' }}
+              >
+                {isProcessing ? 'Processing...' : 'Process OCR'}
+              </Button>
+            </Box>
+          )}
+        </Box>
       </Box>
 
       <Grid container spacing={3} sx={{ flex: 1, minHeight: 0, p: 2 }}>
@@ -304,6 +379,14 @@ export const OcrView: React.FC<OcrViewProps> = ({
                     <Typography variant="body2">
                       Process a file to see original and visualized images
                     </Typography>
+                    <Box sx={{ mt: 2, p: 2, background: 'rgba(255, 255, 255, 0.05)', borderRadius: 1 }}>
+                      <Typography variant="caption" display="block">
+                        Current model: {OCR_MODEL_CONFIGS[selectedModel].label}
+                      </Typography>
+                      <Typography variant="caption" display="block">
+                        {OCR_MODEL_CONFIGS[selectedModel].description}
+                      </Typography>
+                    </Box>
                   </Box>
                 ) : (
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -460,6 +543,12 @@ export const OcrView: React.FC<OcrViewProps> = ({
                               </Typography>
                             )}
 
+                            {result.processingTime && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                Time: {result.processingTime.toFixed(2)}s
+                              </Typography>
+                            )}
+
                             {result.text && (
                               <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                                 <Tooltip title="Preview text">
@@ -494,6 +583,35 @@ export const OcrView: React.FC<OcrViewProps> = ({
           </Paper>
         </Grid>
       </Grid>
+
+      <Menu
+        anchorEl={settingsAnchorEl}
+        open={Boolean(settingsAnchorEl)}
+        onClose={handleSettingsClose}
+      >
+        <MenuItem 
+          onClick={() => handleModelChange('deepseek_ocr')}
+          selected={selectedModel === 'deepseek_ocr'}
+        >
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+            <Typography variant="body2">Tesseract</Typography>
+            <Typography variant="caption" color="text.secondary">
+              Classical OCR engine, good for clean text
+            </Typography>
+          </Box>
+        </MenuItem>
+        <MenuItem 
+          onClick={() => handleModelChange('hunyuan')}
+          selected={selectedModel === 'hunyuan'}
+        >
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+            <Typography variant="body2">EasyOCR</Typography>
+            <Typography variant="caption" color="text.secondary">
+              Deep learning based, supports multiple languages
+            </Typography>
+          </Box>
+        </MenuItem>
+      </Menu>
 
       <AnimatePresence>
         {previewOpen && (

@@ -101,6 +101,7 @@ export interface OcrProcessRequest {
   file_data: string;
   file_name: string;
   mime_type: string;
+  model?: number;
 }
 
 export interface User {
