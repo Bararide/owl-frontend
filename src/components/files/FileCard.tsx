@@ -11,6 +11,7 @@ import {
   ListItemText,
   Divider,
   CardContent,
+  Badge,
 } from '@mui/material';
 import {
   MoreVert as MoreVertIcon,
@@ -32,7 +33,7 @@ interface FileCardProps {
   contentPreview?: string;
 }
 
-export const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction, onViewContent }) => {
+export const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction, onViewContent, searchScore }) => {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -52,6 +53,10 @@ export const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction, on
   const handleViewContent = () => {
     onViewContent(file);
     handleMenuClose();
+  };
+
+  const formatScore = (score: number) => {
+    return `${Math.round(score * 100)}%`;
   };
 
   const getFileIcon = (mimeType: string) => {
@@ -91,6 +96,26 @@ export const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onAction, on
             overflow: 'visible',
           }}
         >
+          {searchScore !== undefined && (
+            <Badge
+              badgeContent={formatScore(searchScore)}
+              color="secondary"
+              sx={{
+                position: 'absolute',
+                top: -8,
+                right: -8,
+                '& .MuiBadge-badge': {
+                  fontSize: '0.65rem',
+                  fontWeight: 'bold',
+                  padding: '0 4px',
+                  minWidth: 36,
+                  height: 20,
+                  borderRadius: 10,
+                  background: 'linear-gradient(45deg, #FE6B8B 30%, #FF8E53 90%)',
+                }
+              }}
+            />
+          )}
           <CardContent sx={{ p: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0, flex: 1 }}>

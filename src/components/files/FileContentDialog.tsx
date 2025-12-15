@@ -481,6 +481,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
               <Typography variant="h6" component="div" noWrap>
                 {file?.name || file?.path.split('/').pop()}
               </Typography>
+              
               <Typography variant="caption" color="text.secondary" noWrap>
                 {file?.path} • {file && formatFileSize(file.size)}
                 {totalFiles > 1 && ` • File ${currentFileIndex + 1} of ${totalFiles}`}

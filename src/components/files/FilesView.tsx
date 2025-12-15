@@ -30,7 +30,7 @@ import { useNotifications } from '../../hooks/useNotifications';
 import { FileCard } from './FileCard';
 import { FileContentDialog } from './FileContentDialog';
 import { LoadingSkeleton } from '../common/LoadingSkeleton';
-import { ApiFile, SearchResult } from '../../api/client';
+import { ApiFile } from '../../api/client';
 import { apiClient } from '../../api/client';
 
 interface FilesViewProps {
@@ -81,7 +81,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     file.mime_type.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const currentFilesList = (isSemanticSearch ? searchResults : (searchQuery ? filteredFiles : files));
+  const currentFilesList = (isSemanticSearch ? searchResults : (searchQuery ? filteredFiles : files)).reverse();
 
   const handleSemanticSearch = useCallback(async (query: string) => {
     if (!query.trim() || !containerId) return;
@@ -96,22 +96,23 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
         limit: 50
       });
 
-      const resultFiles: SearchResultFile[] = result.results.map(searchResult => {
-        const originalFile = files.find(f => f.name === searchResult.file_id || f.path === searchResult.path);
-        return {
-          ...(originalFile || {
-            path: searchResult.path,
-            name: searchResult.file_id,
-            size: 0,
-            container_id: containerId,
-            user_id: '',
-            created_at: '',
-            mime_type: 'text/plain'
-          }),
-          score: searchResult.score,
-          content_preview: searchResult.content_preview
-        };
-      });
+    const resultFiles: SearchResultFile[] = result.results
+      .reduce((acc: SearchResultFile[], searchResult) => {
+        const originalFile = files.find(f => 
+          (f.name === searchResult.file_id || f.path === searchResult.path) && f.size > 100 && (f.name != "container_config.json" && f.name != "access_policy.json")
+        );
+        
+        if (originalFile) {
+          acc.push({
+            ...originalFile,
+            score: searchResult.score,
+            content_preview: searchResult.content_preview
+          });
+        }
+        
+        return acc;
+      }, [])
+      .reverse();
 
       setSearchResults(resultFiles);
 
@@ -363,7 +364,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [fileContentDialog.open, handleNextFile, handlePrevFile]);
 
-  const displayFiles = currentFilesList.reverse();
+  const displayFiles = currentFilesList;
 
   if (!containerId) {
     return (
