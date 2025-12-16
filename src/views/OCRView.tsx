@@ -66,12 +66,12 @@ const OCR_MODEL_CONFIGS: Record<OcrModelType, OcrModelConfig> = {
   deepseek_ocr: { 
     value: 0, 
     label: 'Deepseek-OCR', 
-    description: 'Classical OCR engine, good for clean text' 
+    description: '' 
   },
   hunyuan: { 
     value: 1, 
     label: 'hunyuan', 
-    description: 'Deep learning based, supports multiple languages' 
+    description: '' 
   },
 };
 
@@ -157,7 +157,7 @@ export const OcrView: React.FC<OcrViewProps> = ({
         file_data: fileData.split(',')[1],
         file_name: selectedFile.name,
         mime_type: selectedFile.type,
-        model: OCR_MODEL_CONFIGS[selectedModel].value, // Добавляем выбранную модель
+        model: OCR_MODEL_CONFIGS[selectedModel].value,
       };
 
       const result = await ocrProcessMutation.mutateAsync(requestData);
@@ -275,7 +275,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
 
   return (
     <Box sx={{ height: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
-      {/* Панель настроек */}
       <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -284,7 +283,6 @@ export const OcrView: React.FC<OcrViewProps> = ({
           </Typography>
           
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            {/* Кнопка выбора модели OCR */}
             <Button
               variant="outlined"
               onClick={handleSettingsOpen}
@@ -295,14 +293,12 @@ export const OcrView: React.FC<OcrViewProps> = ({
               {OCR_MODEL_CONFIGS[selectedModel].label}
             </Button>
 
-            {/* Информация о выбранной модели */}
             <Typography variant="caption" color="text.secondary">
               {OCR_MODEL_CONFIGS[selectedModel].description}
             </Typography>
           </Box>
         </Box>
 
-        {/* Область загрузки файла */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1 }}>
           <Button
             variant="contained"
@@ -594,10 +590,7 @@ export const OcrView: React.FC<OcrViewProps> = ({
           selected={selectedModel === 'deepseek_ocr'}
         >
           <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-            <Typography variant="body2">Tesseract</Typography>
-            <Typography variant="caption" color="text.secondary">
-              Classical OCR engine, good for clean text
-            </Typography>
+            <Typography variant="body2">Deepseec OCR</Typography>
           </Box>
         </MenuItem>
         <MenuItem 
@@ -605,10 +598,7 @@ export const OcrView: React.FC<OcrViewProps> = ({
           selected={selectedModel === 'hunyuan'}
         >
           <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-            <Typography variant="body2">EasyOCR</Typography>
-            <Typography variant="caption" color="text.secondary">
-              Deep learning based, supports multiple languages
-            </Typography>
+            <Typography variant="body2">hunyuan</Typography>
           </Box>
         </MenuItem>
       </Menu>
