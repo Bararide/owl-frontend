@@ -176,6 +176,12 @@ export const useRecommendationsStream = (
   const [isConnected, setIsConnected] = useState(false);
   const [streamId, setStreamId] = useState<string | null>(null);
   const disconnectRef = useRef<(() => void) | null>(null);
+  
+  const callbacksRef = useRef({ onPathsUpdate, onComplete, onError });
+  
+  useEffect(() => {
+    callbacksRef.current = { onPathsUpdate, onComplete, onError };
+  }, [onPathsUpdate, onComplete, onError]);
 
   useEffect(() => {
     if (!containerId) return;
@@ -198,20 +204,20 @@ export const useRecommendationsStream = (
             return unique;
           });
           
-          if (onPathsUpdate) {
-            onPathsUpdate(newPaths, event);
+          if (callbacksRef.current.onPathsUpdate) {
+            callbacksRef.current.onPathsUpdate(newPaths, event);
           }
         },
         onComplete: (finalPaths, event) => {
           setIsConnected(false);
-          if (onComplete) {
-            onComplete(finalPaths, event);
+          if (callbacksRef.current.onComplete) {
+            callbacksRef.current.onComplete(finalPaths, event);
           }
         },
         onError: (error) => {
           setIsConnected(false);
-          if (onError) {
-            onError(error);
+          if (callbacksRef.current.onError) {
+            callbacksRef.current.onError(error);
           }
         },
         onConnected: (id) => {
@@ -226,13 +232,9 @@ export const useRecommendationsStream = (
         disconnectRef.current();
       }
     };
-  }, [containerId]);
+  }, [containerId]); // ТОЛЬКО containerId вызывает пересоздание!
 
-  return {
-    paths,
-    isConnected,
-    streamId
-  };
+  return { paths, isConnected, streamId };
 };
 
 export const useRecommendationsBlocking = () => {

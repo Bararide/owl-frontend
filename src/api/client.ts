@@ -186,66 +186,66 @@ connectToRecommendationsStream(
   }
 
   const url = `${API_BASE_URL}/recommendations/stream?container_id=${containerId}`;
-  
-  const eventSource = new EventSourcePolyfill(url, {
+  const controller = new AbortController();
+
+  // НЕ ЖДЕМ, ЗАПУСКАЕМ АСИНХРОННО
+  fetch(url, {
     headers: {
       'Authorization': `Bearer ${this.token}`,
       'Accept': 'text/event-stream',
     },
-    withCredentials: true,
-  });
+    signal: controller.signal,
+  })
+    .then(response => {
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-  eventSource.onmessage = (event: { data: string }) => {
-    try {
-      const data = JSON.parse(event.data) as RecommendationEvent;
-      if (data.paths && callbacks.onPathsUpdate) {
-        callbacks.onPathsUpdate(data.paths, data);
-      }
-    } catch (e) {
-      console.error('Error parsing SSE data:', e);
-    }
-  };
+      const read = async () => {
+        while (true) {
+          const { done, value } = await reader!.read();
+          if (done) break;
 
-  eventSource.addEventListener('connected', (event: any) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (callbacks.onConnected) {
-        callbacks.onConnected(data.stream_id);
-      }
-      console.log('Connected to recommendations stream:', data);
-    } catch (e) {
-      console.error('Error parsing connected event:', e);
-    }
-  });
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
 
-  eventSource.addEventListener('end', (event: any) => {
-    console.log('Recommendations stream ended');
-    if (callbacks.onComplete) {
-      try {
-        const data = JSON.parse(event.data) as RecommendationEvent;
-        if (data.paths && callbacks.onComplete) {
-          callbacks.onComplete(data.paths, data);
+          for (const line of lines) {
+            if (line.startsWith('data:')) {
+              try {
+                const data = JSON.parse(line.slice(5));
+                if (data.paths && callbacks.onPathsUpdate) {
+                  callbacks.onPathsUpdate(data.paths, data);
+                }
+              } catch (e) {
+                console.error('Error parsing SSE data:', e);
+              }
+            } else if (line.startsWith('event: connected')) {
+              try {
+                const data = JSON.parse(line.slice(14));
+                if (callbacks.onConnected) {
+                  callbacks.onConnected(data.stream_id);
+                }
+              } catch (e) {
+                console.error('Error parsing connected event:', e);
+              }
+            } else if (line.startsWith('event: end')) {
+              callbacks.onComplete?.([], {} as RecommendationEvent);
+              controller.abort();
+            }
+          }
         }
-      } catch (e) {
-        console.error('Error parsing end event:', e);
-      }
-    }
-    eventSource.close();
-  });
+      };
 
-  eventSource.onerror = (error: any) => {
-    console.error('SSE Error:', error);
-    console.error('EventSource readyState:', eventSource.readyState);
-    console.error('EventSource URL:', eventSource.url);
-    
-    if (callbacks.onError) {
-      callbacks.onError(error);
-    }
-  };
+      read();
+    })
+    .catch(error => {
+      callbacks.onError?.(error);
+    });
 
+  // ВОЗВРАЩАЕМ СИНХРОННО функцию отмены
   return () => {
-    console.log('Closing EventSource connection');
-    eventSource.close();
+    controller.abort();
   };
 }
 

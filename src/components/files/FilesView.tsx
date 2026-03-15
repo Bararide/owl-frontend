@@ -69,12 +69,10 @@ const SEARCH_SUGGESTIONS = [
 const DRAWER_WIDTH = 320;
 
 export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
-  // API hooks
   const { data: files = [], isLoading: isLoadingFiles, refetch: refetchFiles } = useFiles(containerId);
   const { addNotification } = useNotifications();
   const semanticSearchMutation = useSemanticSearch();
   
-  // Recommendations stream
   const { paths: recommendedPaths, isConnected: isRecommendationsConnected } = useRecommendationsStream(
     containerId,
     (newPaths) => {
