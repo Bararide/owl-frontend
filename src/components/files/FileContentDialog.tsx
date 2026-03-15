@@ -94,45 +94,39 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
-  // Новые состояния для поиска по контексту
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [searchMatches, setSearchMatches] = useState<number[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [forceRefreshKey, setForceRefreshKey] = useState(0);
 
-  // Сбрасываем состояние при изменении файла
   useEffect(() => {
     if (file?.name && open) {
       console.log(`Loading file: ${file.name}, forceRefreshKey: ${forceRefreshKey}`);
       
-      // Сбрасываем редактирование
       setIsEditing(false);
       setEditedContent('');
       setSaveError('');
       
-      // Сбрасываем поиск
       setSearchQuery(initialSearchQuery);
       setSearchMatches([]);
       setCurrentMatchIndex(-1);
       setIsSearchActive(!!initialSearchQuery);
       
-      // Увеличиваем ключ принудительного обновления
       setForceRefreshKey(prev => prev + 1);
-      
-      // Форсируем перезагрузку содержимого с небольшой задержкой
       setTimeout(() => {
         refetch();
       }, 100);
     }
   }, [file?.name, initialSearchQuery, open, refetch]);
 
-  useEffect(() => {
-    if (fileContent?.content && !editedContent) {
-      console.log(`Setting edited content for file: ${file?.name}`);
-      setEditedContent(fileContent.content);
-    }
-  }, [fileContent, editedContent, file?.name]);
+useEffect(() => {
+  if (fileContent?.content && !editedContent) {
+    console.log(`Setting edited content for file: ${file?.name}`);
+    console.log(`Content: ${fileContent.content}`);
+    setEditedContent(fileContent.content);
+  }
+}, [fileContent, editedContent, file?.name]);
 
   useEffect(() => {
     if (!open) {

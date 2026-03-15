@@ -63,7 +63,7 @@ export interface SearchResult {
     file_id?: string; // Сделаем опциональным
     path: string;
     score?: number; // Опционально
-    scope: number; // Добавим поле из бэкенда
+    scope?: number; // Добавим поле из бэкенда
     content_preview?: string;
   }>;
 }

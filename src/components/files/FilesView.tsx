@@ -1,4 +1,3 @@
-// FilesView.tsx - Обновляем для поддержки навигации по файлам
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Box,
@@ -96,42 +95,28 @@ const handleSemanticSearch = useCallback(async (query: string) => {
       limit: 50
     });
 
-    console.log('Search result from backend:', result); // Добавьте для отладки
+    console.log('Search result from backend:', result);
 
+    // Просто преобразуем результаты поиска в формат для отображения
     const resultFiles: SearchResultFile[] = result.results
-      .reduce((acc: SearchResultFile[], searchResult) => {
-        // Извлекаем имя файла из path (убираем _число в конце если нужно)
-        const fileName = searchResult.path.split('/').pop() || '';
-        const baseFileName = fileName.includes('_') 
-          ? fileName.substring(0, fileName.lastIndexOf('_')) 
-          : fileName;
-        
-        // Ищем соответствующий файл
-        const originalFile = files.find(f => 
-          f.name === fileName || 
-          f.name === baseFileName ||
-          f.path.endsWith(fileName) ||
-          f.path.endsWith(baseFileName)
-        );
-        
-        if (originalFile && originalFile.size > 100) {
-          // Исключаем системные файлы
-          const systemFiles = ['container_config.json', 'access_policy.json'];
-          if (!systemFiles.includes(originalFile.name)) {
-            acc.push({
-              ...originalFile,
-              score: searchResult.scope, // Используем scope из бэкенда
-              content_preview: `Score: ${searchResult.scope.toFixed(2)}` // Временный preview
-            });
-          }
-        } else {
-          // Если файл не найден в списке, создаем временный объект
-          // (на случай если файл есть но еще не загружен в список)
-          console.log('File not found in files list:', searchResult.path);
-        }
-        
-        return acc;
-      }, []);
+      .filter((searchResult): searchResult is { path: string; scope: number } => 
+        searchResult.scope !== undefined
+      )
+      .map(searchResult => ({
+        path: searchResult.path,
+        name: searchResult.path.split('/').pop() || 'unknown',
+        size: 0, // Размер будет получен при клике на файл
+        container_id: containerId,
+        user_id: '',
+        created_at: new Date().toISOString(),
+        mime_type: 'text/plain',
+        score: searchResult.scope,
+        content_preview: `Score: ${searchResult.scope.toFixed(2)}`
+      }))
+      .filter(file => {
+        const systemFiles = ['container_config.json', 'access_policy.json'];
+        return !systemFiles.includes(file.name);
+      });
 
     console.log('Processed result files:', resultFiles);
     setSearchResults(resultFiles);
@@ -153,7 +138,7 @@ const handleSemanticSearch = useCallback(async (query: string) => {
   } finally {
     setIsSearching(false);
   }
-}, [containerId, files, semanticSearchMutation, addNotification]);
+}, [containerId, semanticSearchMutation, addNotification]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
