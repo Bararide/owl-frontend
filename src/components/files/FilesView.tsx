@@ -83,56 +83,77 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
 
   const currentFilesList = (isSemanticSearch ? searchResults : (searchQuery ? filteredFiles : files)).reverse();
 
-  const handleSemanticSearch = useCallback(async (query: string) => {
-    if (!query.trim() || !containerId) return;
+const handleSemanticSearch = useCallback(async (query: string) => {
+  if (!query.trim() || !containerId) return;
 
-    setIsSearching(true);
-    setIsSemanticSearch(true);
+  setIsSearching(true);
+  setIsSemanticSearch(true);
 
-    try {
-      const result = await semanticSearchMutation.mutateAsync({
-        query: query,
-        container_id: containerId,
-        limit: 50
-      });
+  try {
+    const result = await semanticSearchMutation.mutateAsync({
+      query: query,
+      container_id: containerId,
+      limit: 50
+    });
+
+    console.log('Search result from backend:', result); // Добавьте для отладки
 
     const resultFiles: SearchResultFile[] = result.results
       .reduce((acc: SearchResultFile[], searchResult) => {
+        // Извлекаем имя файла из path (убираем _число в конце если нужно)
+        const fileName = searchResult.path.split('/').pop() || '';
+        const baseFileName = fileName.includes('_') 
+          ? fileName.substring(0, fileName.lastIndexOf('_')) 
+          : fileName;
+        
+        // Ищем соответствующий файл
         const originalFile = files.find(f => 
-          (f.name === searchResult.file_id || f.path === searchResult.path) && f.size > 100 && (f.name != "container_config.json" && f.name != "access_policy.json")
+          f.name === fileName || 
+          f.name === baseFileName ||
+          f.path.endsWith(fileName) ||
+          f.path.endsWith(baseFileName)
         );
         
-        if (originalFile) {
-          acc.push({
-            ...originalFile,
-            score: searchResult.score,
-            content_preview: searchResult.content_preview
-          });
+        if (originalFile && originalFile.size > 100) {
+          // Исключаем системные файлы
+          const systemFiles = ['container_config.json', 'access_policy.json'];
+          if (!systemFiles.includes(originalFile.name)) {
+            acc.push({
+              ...originalFile,
+              score: searchResult.scope, // Используем scope из бэкенда
+              content_preview: `Score: ${searchResult.scope.toFixed(2)}` // Временный preview
+            });
+          }
+        } else {
+          // Если файл не найден в списке, создаем временный объект
+          // (на случай если файл есть но еще не загружен в список)
+          console.log('File not found in files list:', searchResult.path);
         }
         
         return acc;
       }, []);
 
-      setSearchResults(resultFiles);
+    console.log('Processed result files:', resultFiles);
+    setSearchResults(resultFiles);
 
-      addNotification({
-        message: `Found ${resultFiles.length} semantically relevant files`,
-        severity: 'success',
-        open: true,
-      });
+    addNotification({
+      message: `Found ${resultFiles.length} semantically relevant files`,
+      severity: 'success',
+      open: true,
+    });
 
-    } catch (error) {
-      console.error('Semantic search error:', error);
-      addNotification({
-        message: `Semantic search failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error',
-        open: true,
-      });
-      setIsSemanticSearch(false);
-    } finally {
-      setIsSearching(false);
-    }
-  }, [containerId, files, semanticSearchMutation, addNotification]);
+  } catch (error) {
+    console.error('Semantic search error:', error);
+    addNotification({
+      message: `Semantic search failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      severity: 'error',
+      open: true,
+    });
+    setIsSemanticSearch(false);
+  } finally {
+    setIsSearching(false);
+  }
+}, [containerId, files, semanticSearchMutation, addNotification]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);

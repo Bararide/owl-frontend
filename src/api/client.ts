@@ -60,10 +60,11 @@ export interface CreateFileRequest {
 
 export interface SearchResult {
   results: Array<{
-    file_id: string;
+    file_id?: string; // Сделаем опциональным
     path: string;
-    score: number;
-    content_preview: string;
+    score?: number; // Опционально
+    scope: number; // Добавим поле из бэкенда
+    content_preview?: string;
   }>;
 }
 
