@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient, ApiFile, ChatRequest, CreateContainerRequest, OcrProcessRequest, SearchRequest, User } from '../api/client';
+import { apiClient, ApiFile, ChatRequest, CreateContainerRequest, OcrProcessRequest, RecommendationEvent, SearchRequest, User } from '../api/client';
+import { useEffect, useRef, useState } from 'react';
 
 export const useContainers = () => {
   return useQuery({
@@ -163,4 +164,105 @@ export const useRebuildIndex = () => {
   return useMutation({
     mutationFn: () => apiClient.rebuildIndex(),
   });
+};
+
+export const useRecommendationsStream = (
+  containerId: string | undefined,
+  onPathsUpdate?: (paths: string[], event: RecommendationEvent) => void,
+  onComplete?: (paths: string[], event: RecommendationEvent) => void,
+  onError?: (error: Event) => void
+) => {
+  const [paths, setPaths] = useState<string[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [streamId, setStreamId] = useState<string | null>(null);
+  const disconnectRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (!containerId) return;
+
+    setPaths([]);
+    setIsConnected(false);
+    setStreamId(null);
+
+    if (disconnectRef.current) {
+      disconnectRef.current();
+    }
+
+    disconnectRef.current = apiClient.connectToRecommendationsStream(
+      containerId,
+      {
+        onPathsUpdate: (newPaths, event) => {
+          setPaths(prev => {
+            const combined = [...prev, ...newPaths];
+            const unique = Array.from(new Set(combined));
+            return unique;
+          });
+          
+          if (onPathsUpdate) {
+            onPathsUpdate(newPaths, event);
+          }
+        },
+        onComplete: (finalPaths, event) => {
+          setIsConnected(false);
+          if (onComplete) {
+            onComplete(finalPaths, event);
+          }
+        },
+        onError: (error) => {
+          setIsConnected(false);
+          if (onError) {
+            onError(error);
+          }
+        },
+        onConnected: (id) => {
+          setIsConnected(true);
+          setStreamId(id);
+        }
+      }
+    );
+
+    return () => {
+      if (disconnectRef.current) {
+        disconnectRef.current();
+      }
+    };
+  }, [containerId]);
+
+  return {
+    paths,
+    isConnected,
+    streamId
+  };
+};
+
+export const useRecommendationsBlocking = () => {
+  return useMutation({
+    mutationFn: ({ containerId, timeout }: { containerId: string; timeout?: number }) =>
+      apiClient.getRecommendationsBlocking(containerId, timeout)
+  });
+};
+
+export const useCloseRecommendationsStream = () => {
+  return useMutation({
+    mutationFn: (streamId: string) => apiClient.closeRecommendationsStream(streamId)
+  });
+};
+
+export const useAutoRefreshFiles = (containerId: string | undefined) => {
+  const queryClient = useQueryClient();
+  const [paths, setPaths] = useState<string[]>([]);
+
+  const { paths: streamPaths, isConnected } = useRecommendationsStream(
+    containerId,
+    (newPaths) => {
+      setPaths(prev => [...prev, ...newPaths]);
+      queryClient.invalidateQueries({ queryKey: ['files', containerId] });
+    }
+  );
+
+  return {
+    paths: streamPaths,
+    isConnected,
+    refresh: () => queryClient.invalidateQueries({ queryKey: ['files', containerId] })
+  };
 };

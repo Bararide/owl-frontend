@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { EventSourcePolyfill } from 'event-source-polyfill';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -6,7 +7,6 @@ export interface LabelOption {
   key: string;
   value: string;
 }
-
 
 export interface Container {
   id: string;
@@ -52,7 +52,6 @@ export interface SearchRequest {
   limit?: number;
 }
 
-
 export interface CreateFileRequest {
   file: ApiFile;
   content: string;
@@ -60,10 +59,10 @@ export interface CreateFileRequest {
 
 export interface SearchResult {
   results: Array<{
-    file_id?: string; // Сделаем опциональным
+    file_id?: string;
     path: string;
-    score?: number; // Опционально
-    scope?: number; // Добавим поле из бэкенда
+    score?: number;
+    scope?: number;
     content_preview?: string;
   }>;
 }
@@ -125,6 +124,29 @@ export interface OcrProcessResponse {
   visualization_format?: string;
 }
 
+export interface RecommendationEvent {
+  container_id: string;
+  user_id: string;
+  paths: string[];
+  type?: 'paths_update' | 'complete';
+  total_paths?: string[];
+  count?: number;
+}
+
+export interface RecommendationStreamCallbacks {
+  onPathsUpdate?: (paths: string[], event: RecommendationEvent) => void;
+  onComplete?: (paths: string[], event: RecommendationEvent) => void;
+  onError?: (error: Event) => void;
+  onConnected?: (streamId: string) => void;
+}
+
+export interface RecommendationsBlockingResponse {
+  container_id: string;
+  user_id: string;
+  paths: string[];
+  count: number;
+}
+
 class ApiClient {
   private token: string | null = null;
   private client = axios.create({
@@ -153,6 +175,101 @@ class ApiClient {
     }
     
     return headers;
+  }
+
+connectToRecommendationsStream(
+  containerId: string,
+  callbacks: RecommendationStreamCallbacks
+): () => void {
+  if (!this.token) {
+    throw new Error('No token set');
+  }
+
+  const url = `${API_BASE_URL}/recommendations/stream?container_id=${containerId}`;
+  
+  const eventSource = new EventSourcePolyfill(url, {
+    headers: {
+      'Authorization': `Bearer ${this.token}`,
+      'Accept': 'text/event-stream',
+    },
+    withCredentials: true,
+  });
+
+  eventSource.onmessage = (event: { data: string }) => {
+    try {
+      const data = JSON.parse(event.data) as RecommendationEvent;
+      if (data.paths && callbacks.onPathsUpdate) {
+        callbacks.onPathsUpdate(data.paths, data);
+      }
+    } catch (e) {
+      console.error('Error parsing SSE data:', e);
+    }
+  };
+
+  eventSource.addEventListener('connected', (event: any) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (callbacks.onConnected) {
+        callbacks.onConnected(data.stream_id);
+      }
+      console.log('Connected to recommendations stream:', data);
+    } catch (e) {
+      console.error('Error parsing connected event:', e);
+    }
+  });
+
+  eventSource.addEventListener('end', (event: any) => {
+    console.log('Recommendations stream ended');
+    if (callbacks.onComplete) {
+      try {
+        const data = JSON.parse(event.data) as RecommendationEvent;
+        if (data.paths && callbacks.onComplete) {
+          callbacks.onComplete(data.paths, data);
+        }
+      } catch (e) {
+        console.error('Error parsing end event:', e);
+      }
+    }
+    eventSource.close();
+  });
+
+  eventSource.onerror = (error: any) => {
+    console.error('SSE Error:', error);
+    console.error('EventSource readyState:', eventSource.readyState);
+    console.error('EventSource URL:', eventSource.url);
+    
+    if (callbacks.onError) {
+      callbacks.onError(error);
+    }
+  };
+
+  return () => {
+    console.log('Closing EventSource connection');
+    eventSource.close();
+  };
+}
+
+  async getRecommendationsBlocking(
+    containerId: string,
+    timeout: number = 30
+  ): Promise<RecommendationsBlockingResponse> {
+    const response = await this.client.get<{ data: RecommendationsBlockingResponse }>(
+      `/recommendations/blocking`,
+      {
+        params: { container_id: containerId, timeout },
+        headers: this.getAuthHeaders()
+      }
+    );
+    return response.data.data;
+  }
+
+  async closeRecommendationsStream(streamId: string): Promise<{ stream_id: string; closed: boolean }> {
+    const response = await this.client.post<{ data: { stream_id: string; closed: boolean } }>(
+      `/recommendations/stream/${streamId}/close`,
+      {},
+      { headers: this.getAuthHeaders() }
+    );
+    return response.data.data;
   }
 
   async chatWithBot(data: ChatRequest): Promise<ChatResponse> {

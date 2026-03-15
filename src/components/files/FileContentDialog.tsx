@@ -1,5 +1,4 @@
-// FileContentDialog.tsx - Улучшаем обновление содержимого
-import React, { useState, useEffect, useMemo, JSX } from 'react';
+import React, { useState, useEffect, useMemo, JSX, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -16,16 +15,12 @@ import {
   Alert,
   Menu,
   MenuItem,
-  Snackbar,
-  InputAdornment,
   Paper,
 } from '@mui/material';
 import {
   Close as CloseIcon,
   ContentCopy as ContentCopyIcon,
   Download as DownloadIcon,
-  Code as CodeIcon,
-  Description as DescriptionIcon,
   Edit as EditIcon,
   Save as SaveIcon,
   Delete as DeleteIcon,
@@ -36,6 +31,8 @@ import {
   NavigateBefore as NavigateBeforeIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
+  Code as CodeIcon,
+  Description as DescriptionIcon,
 } from '@mui/icons-material';
 import { useFileContent, useDeleteFile, useUploadFile } from '../../hooks/useApi';
 import { ApiFile } from '../../api/client';
@@ -55,6 +52,25 @@ interface FileContentDialogProps {
   onPrevFile?: () => void;
 }
 
+const MIME_TO_LANGUAGE: Record<string, string> = {
+  'text/javascript': 'javascript',
+  'application/json': 'json',
+  'text/html': 'html',
+  'text/css': 'css',
+  'text/x-python': 'python',
+  'text/x-java': 'java',
+  'text/x-c++': 'cpp',
+  'text/x-c': 'c',
+  'text/x-ruby': 'ruby',
+  'text/x-php': 'php',
+  'text/x-go': 'go',
+  'text/x-rust': 'rust',
+  'text/x-typescript': 'typescript',
+  'text/x-yaml': 'yaml',
+  'text/x-markdown': 'markdown',
+  'text/plain': 'text',
+};
+
 export const FileContentDialog: React.FC<FileContentDialogProps> = ({ 
   open, 
   onClose, 
@@ -68,25 +84,19 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   onNextFile,
   onPrevFile,
 }) => {
-  // Используем ключ, который меняется при каждом открытии нового файла
-  const fileContentKey = useMemo(() => {
-    return `fileContent-${containerId}-${file?.name || ''}-${Date.now()}`;
-  }, [containerId, file?.name]);
-
+  // Hooks
   const { 
     data: fileContent, 
     isLoading, 
     error, 
     refetch 
-  } = useFileContent(
-    containerId, 
-    file?.name || '',
-  );
+  } = useFileContent(containerId, file?.name || '');
   
   const deleteFileMutation = useDeleteFile();
   const uploadFileMutation = useUploadFile();
   const { addNotification } = useNotifications();
 
+  // State
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState('');
@@ -94,61 +104,18 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
+  // Search state
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [searchMatches, setSearchMatches] = useState<number[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
   const [isSearchActive, setIsSearchActive] = useState(false);
-  const [forceRefreshKey, setForceRefreshKey] = useState(0);
 
-  useEffect(() => {
-    if (file?.name && open) {
-      console.log(`Loading file: ${file.name}, forceRefreshKey: ${forceRefreshKey}`);
-      
-      setIsEditing(false);
-      setEditedContent('');
-      setSaveError('');
-      
-      setSearchQuery(initialSearchQuery);
-      setSearchMatches([]);
-      setCurrentMatchIndex(-1);
-      setIsSearchActive(!!initialSearchQuery);
-      
-      setForceRefreshKey(prev => prev + 1);
-      setTimeout(() => {
-        refetch();
-      }, 100);
-    }
-  }, [file?.name, initialSearchQuery, open, refetch]);
+  // Computed values
+  const fileContentKey = useMemo(() => {
+    return `fileContent-${containerId}-${file?.name || ''}-${Date.now()}`;
+  }, [containerId, file?.name]);
 
-useEffect(() => {
-  if (fileContent?.content && !editedContent) {
-    console.log(`Setting edited content for file: ${file?.name}`);
-    console.log(`Content: ${fileContent.content}`);
-    setEditedContent(fileContent.content);
-  }
-}, [fileContent, editedContent, file?.name]);
-
-  useEffect(() => {
-    if (!open) {
-      setIsEditing(false);
-      setEditedContent('');
-      setSaveError('');
-      setAnchorEl(null);
-      setShowDeleteConfirm(false);
-      setSearchQuery('');
-      setSearchMatches([]);
-      setCurrentMatchIndex(-1);
-      setIsSearchActive(false);
-      setForceRefreshKey(0);
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (open && initialSearchQuery) {
-      setSearchQuery(initialSearchQuery);
-      setIsSearchActive(true);
-    }
-  }, [open, initialSearchQuery]);
+  const isTextFile = file?.mime_type?.startsWith('text/') || file?.mime_type === 'application/json';
 
   const findSearchMatches = useMemo(() => {
     if (!searchQuery.trim() || !editedContent) {
@@ -168,18 +135,60 @@ useEffect(() => {
     return matches;
   }, [editedContent, searchQuery]);
 
-  // Обновляем совпадения при изменении поискового запроса или содержимого
+  // Effects
+  useEffect(() => {
+    if (file?.name && open) {
+      resetState();
+      setSearchQuery(initialSearchQuery);
+      setIsSearchActive(!!initialSearchQuery);
+      setTimeout(() => refetch(), 100);
+    }
+  }, [file?.name, initialSearchQuery, open, refetch]);
+
+  useEffect(() => {
+    if (fileContent?.content && !editedContent) {
+      setEditedContent(fileContent.content);
+    }
+  }, [fileContent, editedContent, file?.name]);
+
+  useEffect(() => {
+    if (!open) {
+      resetState();
+    }
+  }, [open]);
+
   useEffect(() => {
     const matches = findSearchMatches;
     setSearchMatches(matches);
-    
-    if (matches.length > 0) {
-      setCurrentMatchIndex(0);
-    } else {
-      setCurrentMatchIndex(-1);
-    }
+    setCurrentMatchIndex(matches.length > 0 ? 0 : -1);
   }, [findSearchMatches]);
 
+  // Helper functions
+  const resetState = () => {
+    setIsEditing(false);
+    setEditedContent('');
+    setSaveError('');
+    setAnchorEl(null);
+    setShowDeleteConfirm(false);
+    setSearchQuery('');
+    setSearchMatches([]);
+    setCurrentMatchIndex(-1);
+    setIsSearchActive(false);
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const getLanguageFromMimeType = (mimeType: string): string => {
+    return MIME_TO_LANGUAGE[mimeType] || 'text';
+  };
+
+  // Event handlers
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
     setIsSearchActive(!!e.target.value.trim());
@@ -194,7 +203,6 @@ useEffect(() => {
 
   const handleNextMatch = () => {
     if (searchMatches.length === 0) return;
-    
     setCurrentMatchIndex(prev => {
       const next = prev + 1;
       return next >= searchMatches.length ? 0 : next;
@@ -203,62 +211,13 @@ useEffect(() => {
 
   const handlePrevMatch = () => {
     if (searchMatches.length === 0) return;
-    
     setCurrentMatchIndex(prev => {
       const next = prev - 1;
       return next < 0 ? searchMatches.length - 1 : next;
     });
   };
 
-  // Функция для получения текста с подсветкой
-  const getHighlightedText = () => {
-    if (!searchQuery.trim() || !editedContent || searchMatches.length === 0) {
-      return editedContent;
-    }
-
-    const result: JSX.Element[] = [];
-    let lastIndex = 0;
-    const searchTerm = searchQuery;
-    
-    searchMatches.forEach((matchIndex, index) => {
-      // Текст до совпадения
-      const beforeMatch = editedContent.substring(lastIndex, matchIndex);
-      if (beforeMatch) {
-        result.push(<span key={`before-${index}-${forceRefreshKey}`}>{beforeMatch}</span>);
-      }
-      
-      // Подсвеченный текст
-      const matchText = editedContent.substring(matchIndex, matchIndex + searchTerm.length);
-      const isCurrent = index === currentMatchIndex;
-      result.push(
-        <mark 
-          key={`match-${index}-${forceRefreshKey}`}
-          style={{
-            backgroundColor: isCurrent ? '#ffeb3b' : 'rgba(255, 235, 59, 0.3)',
-            color: isCurrent ? '#000' : 'inherit',
-            padding: '0 2px',
-            borderRadius: '2px',
-            fontWeight: isCurrent ? 'bold' : 'normal',
-            border: isCurrent ? '1px solid #ff9800' : 'none',
-          }}
-        >
-          {matchText}
-        </mark>
-      );
-      
-      lastIndex = matchIndex + searchTerm.length;
-    });
-    
-    // Остаток текста после последнего совпадения
-    const afterLastMatch = editedContent.substring(lastIndex);
-    if (afterLastMatch) {
-      result.push(<span key={`after-last-${forceRefreshKey}`}>{afterLastMatch}</span>);
-    }
-    
-    return result;
-  };
-
-  const handleCopyContent = async () => {
+  const handleCopyContent = useCallback(async () => {
     if (editedContent) {
       try {
         await navigator.clipboard.writeText(editedContent);
@@ -268,21 +227,20 @@ useEffect(() => {
         console.error('Failed to copy content:', err);
       }
     }
-  };
+  }, [editedContent]);
 
   const handleEditToggle = () => {
     setIsEditing(!isEditing);
     setSaveError('');
   };
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!file || !containerId) return;
 
     setSaveError('');
 
     try {
       const blob = new Blob([editedContent], { type: file.mime_type || 'text/plain' });
-      
       const newFile = new File([blob], file.name, { 
         type: file.mime_type || 'text/plain',
         lastModified: Date.now()
@@ -305,12 +263,9 @@ useEffect(() => {
       });
 
       setIsEditing(false);
+      onFileUpdated?.();
+      onClose();
 
-      if (onFileUpdated) {
-        onFileUpdated();
-      }
-
-      onClose()
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to save file';
       setSaveError(errorMessage);
@@ -320,9 +275,9 @@ useEffect(() => {
         open: true,
       });
     }
-  };
+  }, [file, containerId, editedContent, deleteFileMutation, uploadFileMutation, addNotification, onFileUpdated, onClose]);
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!file || !containerId) return;
 
     try {
@@ -338,10 +293,7 @@ useEffect(() => {
       });
 
       onClose();
-      
-      if (onFileDeleted) {
-        onFileDeleted();
-      }
+      onFileDeleted?.();
     } catch (error) {
       addNotification({
         message: `Failed to delete file: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -349,17 +301,9 @@ useEffect(() => {
         open: true,
       });
     }
-  };
+  }, [file, containerId, deleteFileMutation, addNotification, onClose, onFileDeleted]);
 
-  const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
-
-  const handleDownload = async () => {
+  const handleDownload = useCallback(async () => {
     if (!file) return;
     
     try {
@@ -389,41 +333,51 @@ useEffect(() => {
         open: true,
       });
     }
-  };
+  }, [file, containerId, addNotification]);
 
-  const getLanguageFromMimeType = (mimeType: string): string => {
-    const mimeToLang: Record<string, string> = {
-      'text/javascript': 'javascript',
-      'application/json': 'json',
-      'text/html': 'html',
-      'text/css': 'css',
-      'text/x-python': 'python',
-      'text/x-java': 'java',
-      'text/x-c++': 'cpp',
-      'text/x-c': 'c',
-      'text/x-ruby': 'ruby',
-      'text/x-php': 'php',
-      'text/x-go': 'go',
-      'text/x-rust': 'rust',
-      'text/x-typescript': 'typescript',
-      'text/x-yaml': 'yaml',
-      'text/x-markdown': 'markdown',
-      'text/plain': 'text',
-    };
+  const getHighlightedText = () => {
+    if (!searchQuery.trim() || !editedContent || searchMatches.length === 0) {
+      return editedContent;
+    }
+
+    const result: JSX.Element[] = [];
+    let lastIndex = 0;
+    const searchTerm = searchQuery;
     
-    return mimeToLang[mimeType] || 'text';
+    searchMatches.forEach((matchIndex, index) => {
+      const beforeMatch = editedContent.substring(lastIndex, matchIndex);
+      if (beforeMatch) {
+        result.push(<span key={`before-${index}`}>{beforeMatch}</span>);
+      }
+      
+      const matchText = editedContent.substring(matchIndex, matchIndex + searchTerm.length);
+      const isCurrent = index === currentMatchIndex;
+      result.push(
+        <mark 
+          key={`match-${index}`}
+          style={{
+            backgroundColor: isCurrent ? '#ffeb3b' : 'rgba(255, 235, 59, 0.3)',
+            color: isCurrent ? '#000' : 'inherit',
+            padding: '0 2px',
+            borderRadius: '2px',
+            fontWeight: isCurrent ? 'bold' : 'normal',
+            border: isCurrent ? '1px solid #ff9800' : 'none',
+          }}
+        >
+          {matchText}
+        </mark>
+      );
+      
+      lastIndex = matchIndex + searchTerm.length;
+    });
+    
+    const afterLastMatch = editedContent.substring(lastIndex);
+    if (afterLastMatch) {
+      result.push(<span key="after-last">{afterLastMatch}</span>);
+    }
+    
+    return result;
   };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const isTextFile = file?.mime_type?.startsWith('text/') || 
-                    file?.mime_type === 'application/json';
 
   return (
     <>
@@ -445,6 +399,7 @@ useEffect(() => {
           }
         }}
       >
+        {/* Header */}
         <DialogTitle sx={{ 
           borderBottom: '1px solid rgba(255,255,255,0.1)',
           pb: 2,
@@ -454,17 +409,12 @@ useEffect(() => {
           flexShrink: 0
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
-            {/* Стрелка навигации влево */}
             {totalFiles > 1 && onPrevFile && (
               <Tooltip title="Previous file (Ctrl/Cmd + ←)">
                 <IconButton 
                   onClick={onPrevFile}
                   size="small"
-                  sx={{ 
-                    '&:hover': {
-                      backgroundColor: 'rgba(255,255,255,0.1)'
-                    }
-                  }}
+                  sx={{ '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' } }}
                 >
                   <ChevronLeftIcon />
                 </IconButton>
@@ -475,24 +425,18 @@ useEffect(() => {
               <Typography variant="h6" component="div" noWrap>
                 {file?.name || file?.path.split('/').pop()}
               </Typography>
-              
               <Typography variant="caption" color="text.secondary" noWrap>
                 {file?.path} • {file && formatFileSize(file.size)}
                 {totalFiles > 1 && ` • File ${currentFileIndex + 1} of ${totalFiles}`}
               </Typography>
             </Box>
             
-            {/* Стрелка навигации вправо */}
             {totalFiles > 1 && onNextFile && (
               <Tooltip title="Next file (Ctrl/Cmd + →)">
                 <IconButton 
                   onClick={onNextFile}
                   size="small"
-                  sx={{ 
-                    '&:hover': {
-                      backgroundColor: 'rgba(255,255,255,0.1)'
-                    }
-                  }}
+                  sx={{ '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' } }}
                 >
                   <ChevronRightIcon />
                 </IconButton>
@@ -522,7 +466,7 @@ useEffect(() => {
             )}
             
             <Tooltip title="More actions">
-              <IconButton onClick={handleMenuClick} size="small">
+              <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} size="small">
                 <MoreVertIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -533,7 +477,7 @@ useEffect(() => {
           </Box>
         </DialogTitle>
         
-        {/* Панель поиска */}
+        {/* Search Panel */}
         {isTextFile && !isEditing && (
           <Paper 
             elevation={0}
@@ -563,9 +507,7 @@ useEffect(() => {
                 sx: {
                   fontSize: '0.875rem',
                   color: 'text.primary',
-                  '&::placeholder': {
-                    color: 'text.secondary',
-                  },
+                  '&::placeholder': { color: 'text.secondary' },
                 }
               }}
               size="small"
@@ -616,6 +558,7 @@ useEffect(() => {
           </Paper>
         )}
         
+        {/* Content */}
         <DialogContent sx={{ 
           p: 0, 
           position: 'relative', 
@@ -625,12 +568,7 @@ useEffect(() => {
           minHeight: 0
         }}>
           {isLoading ? (
-            <Box sx={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
-              alignItems: 'center', 
-              flex: 1 
-            }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
               <CircularProgress />
             </Box>
           ) : error ? (
@@ -664,8 +602,7 @@ useEffect(() => {
                 Binary File
               </Typography>
               <Typography variant="body2" sx={{ textAlign: 'center', maxWidth: 400 }}>
-                This file type cannot be displayed in the viewer. 
-                Please download the file to view its contents.
+                This file type cannot be displayed in the viewer. Please download the file to view its contents.
               </Typography>
               <Button 
                 variant="contained" 
@@ -678,6 +615,7 @@ useEffect(() => {
             </Box>
           ) : fileContent && editedContent ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              {/* File Info Bar */}
               <Box sx={{ 
                 position: 'sticky', 
                 top: 0, 
@@ -713,6 +651,7 @@ useEffect(() => {
                 </Typography>
               </Box>
               
+              {/* Content Area */}
               {isEditing ? (
                 <Box sx={{ flex: 1, p: 0, minHeight: 0 }}>
                   {saveError && (
@@ -737,17 +676,12 @@ useEffect(() => {
                         p: 3,
                       },
                     }}
-                    InputProps={{
-                      style: {
-                        height: '100%',
-                      }
-                    }}
+                    InputProps={{ style: { height: '100%' } }}
                   />
                 </Box>
               ) : (
                 <Box
                   component="pre"
-                  key={`pre-${forceRefreshKey}`}
                   sx={{
                     p: 3,
                     m: 0,
@@ -760,19 +694,10 @@ useEffect(() => {
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word',
                     wordWrap: 'break-word',
-                    '&::-webkit-scrollbar': {
-                      width: 8,
-                    },
-                    '&::-webkit-scrollbar-track': {
-                      background: 'rgba(255,255,255,0.05)',
-                    },
-                    '&::-webkit-scrollbar-thumb': {
-                      background: 'rgba(255,255,255,0.2)',
-                      borderRadius: 4,
-                    },
-                    '& mark': {
-                      transition: 'background-color 0.3s ease',
-                    },
+                    '&::-webkit-scrollbar': { width: 8 },
+                    '&::-webkit-scrollbar-track': { background: 'rgba(255,255,255,0.05)' },
+                    '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.2)', borderRadius: 4 },
+                    '& mark': { transition: 'background-color 0.3s ease' },
                   }}
                 >
                   {getHighlightedText()}
@@ -780,18 +705,13 @@ useEffect(() => {
               )}
             </Box>
           ) : (
-            // Если fileContent еще не загружен
-            <Box sx={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
-              alignItems: 'center', 
-              flex: 1 
-            }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
               <CircularProgress />
             </Box>
           )}
         </DialogContent>
         
+        {/* Actions */}
         <DialogActions sx={{ 
           borderTop: '1px solid rgba(255,255,255,0.1)', 
           p: 2,
@@ -799,9 +719,7 @@ useEffect(() => {
         }}>
           {isEditing ? (
             <>
-              <Button onClick={handleEditToggle}>
-                Cancel
-              </Button>
+              <Button onClick={handleEditToggle}>Cancel</Button>
               <Button 
                 variant="contained" 
                 onClick={handleSave}
@@ -817,9 +735,7 @@ useEffect(() => {
             </>
           ) : (
             <>
-              <Button onClick={onClose}>
-                Close
-              </Button>
+              <Button onClick={onClose}>Close</Button>
               <Button 
                 variant="contained" 
                 onClick={handleDownload}
@@ -832,22 +748,21 @@ useEffect(() => {
         </DialogActions>
       </Dialog>
 
-      {/* Меню дополнительных действий */}
+      {/* Context Menu */}
       <Menu
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
-        onClose={handleMenuClose}
+        onClose={() => setAnchorEl(null)}
       >
         <MenuItem onClick={() => {
-          handleMenuClose();
+          setAnchorEl(null);
           handleDownload();
         }}>
           <DownloadIcon fontSize="small" sx={{ mr: 1 }} />
           Download
         </MenuItem>
-        
         <MenuItem onClick={() => {
-          handleMenuClose();
+          setAnchorEl(null);
           setShowDeleteConfirm(true);
         }} sx={{ color: 'error.main' }}>
           <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
@@ -855,11 +770,8 @@ useEffect(() => {
         </MenuItem>
       </Menu>
 
-      {/* Подтверждение удаления */}
-      <Dialog
-        open={showDeleteConfirm}
-        onClose={() => setShowDeleteConfirm(false)}
-      >
+      {/* Delete Confirmation */}
+      <Dialog open={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)}>
         <DialogTitle>Delete File</DialogTitle>
         <DialogContent>
           <Typography>
@@ -867,20 +779,14 @@ useEffect(() => {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowDeleteConfirm(false)}>
-            Cancel
-          </Button>
+          <Button onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
           <Button 
             onClick={handleDelete} 
             color="error"
             variant="contained"
             disabled={deleteFileMutation.isPending}
           >
-            {deleteFileMutation.isPending ? (
-              <CircularProgress size={24} />
-            ) : (
-              'Delete'
-            )}
+            {deleteFileMutation.isPending ? <CircularProgress size={24} /> : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>
