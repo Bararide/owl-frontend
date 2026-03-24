@@ -6,7 +6,7 @@ import {
 } from '@mui/material';
 import { FileCopy as FileCopyIcon } from '@mui/icons-material';
 
-import { FilesView as FilesViewComponent } from '../components/files/FilesView';
+import FilesViewComponent from '../components/files/FilesView'; // Remove the braces
 import { Container } from '../api/client';
 
 interface FilesViewProps {

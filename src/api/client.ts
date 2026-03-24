@@ -112,10 +112,30 @@ export interface User {
   role: string;
 }
 
-export interface SemanticGraph {
-  from: string;
-  to: string;
-  score: number
+// Обновленный интерфейс для семантического графа
+export interface SemanticGraphEdge {
+  source?: string;
+  target?: string;
+  from?: string;
+  to?: string;
+  weight?: number;
+  bidirectional?: boolean;
+  reverse?: boolean;
+  metadata?: Record<string, any>;
+}
+
+export interface SemanticGraphNode {
+  id?: string;
+  path?: string;
+  name?: string;
+  title?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface SemanticGraphData {
+  nodes?: SemanticGraphNode[];
+  edges?: SemanticGraphEdge[];
+  links?: SemanticGraphEdge[];
 }
 
 export interface OcrProcessResponse {
@@ -151,6 +171,18 @@ export interface RecommendationsBlockingResponse {
   user_id: string;
   paths: string[];
   count: number;
+}
+
+export interface RecommendationFile {
+  path: string;
+  name: string;
+  isRecommended: boolean;
+}
+
+// Добавляем интерфейс для SearchResultFile, который используется в FilesView
+export interface SearchResultFile extends ApiFile {
+  score?: number;
+  content_preview?: string;
 }
 
 class ApiClient {
@@ -297,13 +329,14 @@ class ApiClient {
     return response.data.data;
   }
 
-async getSemanticGraph(containerId: string): Promise<SemanticGraph> {
-  const response = await this.client.get<{ data: SemanticGraph }>('/search/graph', {
-    headers: this.getAuthHeaders(),
-    params: { container_id: containerId }
-  });
-  return response.data.data;
-}
+  // Обновляем метод для получения семантического графа с правильным типом возврата
+  async getSemanticGraph(containerId: string): Promise<SemanticGraphData> {
+    const response = await this.client.get<{ data: SemanticGraphData }>('/search/graph', {
+      headers: this.getAuthHeaders(),
+      params: { container_id: containerId }
+    });
+    return response.data.data;
+  }
 
   async getContainers(): Promise<Container[]> {
     const response = await this.client.get<{ data: Container[] }>('/containers', {

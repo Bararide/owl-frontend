@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -13,20 +13,19 @@ import {
   Alert,
   Snackbar,
   Paper,
-  Drawer,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  ListItemButton,
-  Divider,
-  Badge,
   Collapse,
   Menu,
   MenuItem,
   Stack,
   Card,
   CardContent,
+  Badge,
+  Dialog,
+  DialogContent,
+  DialogActions,
+  Divider,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -37,49 +36,1894 @@ import {
   Tune as TuneIcon,
   AutoAwesome as AutoAwesomeIcon,
   InsertDriveFile as FileIcon,
-  Settings as SettingsIcon,
-  FilterList as FilterListIcon,
-  Lightbulb as LightbulbIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
+  ContentCopy as ContentCopyIcon,
+  Download as DownloadIcon,
+  Edit as EditIcon,
+  Save as SaveIcon,
+  Delete as DeleteIcon,
+  MoreVert as MoreVertIcon,
+  Clear as ClearIcon,
+  NavigateNext as NavigateNextIcon,
+  NavigateBefore as NavigateBeforeIcon,
+  Code as CodeIcon,
+  CheckCircle as CheckCircleIcon,
+  TextFields as TextFieldsIcon,
+  OpenInNew as OpenInNewIcon,
+  Hub as HubIcon,
 } from '@mui/icons-material';
-import { useFiles, useSemanticSearch, useRecommendationsStream } from '../../hooks/useApi';
-import { useNotifications } from '../../hooks/useNotifications';
-import { FileCard } from './FileCard';
-import { FileContentDialog } from './FileContentDialog';
-import { LoadingSkeleton } from '../common/LoadingSkeleton';
-import { ApiFile } from '../../api/client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
 import { apiClient } from '../../api/client';
+import type { 
+  ApiFile, 
+  SearchRequest, 
+  SearchResult,
+  SearchResultFile,
+  FileContent,
+  RecommendationEvent,
+  SemanticGraphData,
+  SemanticGraphEdge,
+  SemanticGraphNode,
+  RecommendationFile
+} from '../../api/client';
+import { 
+  useDeleteFile, 
+  useFileContent, 
+  useFiles, 
+  useGetSemanticGraph, 
+  useRecommendationsStream, 
+  useSemanticSearch, 
+  useUploadFile,
+  useNotifications
+} from '../../hooks/useApi';
+
+type Severity = 'success' | 'error' | 'info' | 'warning';
+
+const SEARCH_SUGGESTIONS = ['authentication', 'database', 'error handling', 'API endpoints', 'configuration'];
+
+const MIME_TO_LANGUAGE: Record<string, string> = {
+  'text/javascript': 'JavaScript',
+  'application/json': 'JSON',
+  'text/html': 'HTML',
+  'text/css': 'CSS',
+  'text/x-python': 'Python',
+  'text/x-java': 'Java',
+  'text/x-c++': 'C++',
+  'text/x-c': 'C',
+  'text/x-ruby': 'Ruby',
+  'text/x-php': 'PHP',
+  'text/x-go': 'Go',
+  'text/x-rust': 'Rust',
+  'text/x-typescript': 'TypeScript',
+  'text/x-yaml': 'YAML',
+  'text/x-markdown': 'Markdown',
+  'text/plain': 'Text',
+};
+
+const HIGHLIGHT_COLORS = [
+  'rgba(255, 235, 59, 0.3)',
+  'rgba(76, 175, 80, 0.3)',
+  'rgba(33, 150, 243, 0.3)',
+  'rgba(156, 39, 176, 0.3)',
+  'rgba(255, 87, 34, 0.3)',
+  'rgba(233, 30, 99, 0.3)',
+  'rgba(0, 188, 212, 0.3)',
+  'rgba(139, 195, 74, 0.3)',
+];
+
+interface SearchMatch {
+  word: string;
+  positions: number[];
+  color: string;
+}
+
+interface FileContentDialogProps {
+  open: boolean;
+  onClose: () => void;
+  file: ApiFile | null;
+  containerId: string;
+  allFiles: ApiFile[];
+  onFileUpdated?: () => void;
+  onFileDeleted?: () => void;
+  searchQuery?: string;
+  currentFileIndex?: number;
+  totalFiles?: number;
+  onNextFile?: () => void;
+  onPrevFile?: () => void;
+}
+
+const formatFileSize = (bytes: number): string => {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+};
+
+const getLanguageFromMimeType = (mimeType: string): string => MIME_TO_LANGUAGE[mimeType] || 'Text';
+
+const normalizeGraph = (
+  files: ApiFile[],
+  graphData: SemanticGraphData | undefined
+) => {
+  const fileMap = new Map<string, ApiFile>();
+  files.forEach((f) => {
+    fileMap.set(f.path, f);
+    fileMap.set(f.name, f);
+  });
+
+  const apiNodes = graphData?.nodes || [];
+  const apiEdges = graphData?.edges || graphData?.links || [];
+
+  const nodeIdToPath = new Map<string, string>();
+  const nodePaths = new Set<string>();
+
+  apiNodes.forEach((node) => {
+    const path = node.path || node.name || node.title || node.id || '';
+    const id = node.id || path;
+    if (path) {
+      nodeIdToPath.set(id, path);
+      nodePaths.add(path);
+    }
+  });
+
+  files.forEach((file) => nodePaths.add(file.path));
+
+  const normalizedEdges = apiEdges
+    .map((edge) => {
+      const rawSource = edge.source || edge.from || '';
+      const rawTarget = edge.target || edge.to || '';
+      const source = nodeIdToPath.get(rawSource) || rawSource;
+      const target = nodeIdToPath.get(rawTarget) || rawTarget;
+      if (!source || !target) return null;
+      return {
+        source,
+        target,
+        weight: edge.weight || 1,
+        bidirectional:
+          edge.bidirectional === true ||
+          edge.reverse === true ||
+          edge.metadata?.bidirectional === true,
+      };
+    })
+    .filter(Boolean) as Array<{
+    source: string;
+    target: string;
+    weight: number;
+    bidirectional: boolean;
+  }>;
+
+  const degreeMap = new Map<string, number>();
+  nodePaths.forEach((p) => degreeMap.set(p, 0));
+  normalizedEdges.forEach((edge) => {
+    degreeMap.set(edge.source, (degreeMap.get(edge.source) || 0) + 1);
+    degreeMap.set(edge.target, (degreeMap.get(edge.target) || 0) + 1);
+  });
+
+  const nodes = Array.from(nodePaths).map((path) => {
+    const file = fileMap.get(path) || files.find((f) => f.name === path);
+    const degree = degreeMap.get(path) || 0;
+    return {
+      id: path,
+      path,
+      name: file?.name || path.split('/').pop() || path,
+      file: file || null,
+      degree,
+      radius: 10 + Math.min(28, degree * 2.2),
+    };
+  });
+
+  return { nodes, edges: normalizedEdges };
+};
+
+const findReferencedFilesInText = (content: string, files: ApiFile[]) => {
+  const result: Array<{
+    label: string;
+    file: ApiFile;
+    start: number;
+    end: number;
+  }> = [];
+
+  const used = new Set<string>();
+
+  files.forEach((file) => {
+    const candidates = Array.from(new Set([file.path, file.name].filter(Boolean))).sort(
+      (a, b) => b.length - a.length
+    );
+
+    candidates.forEach((candidate) => {
+      const escaped = candidate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(^|[^\\w./-])(${escaped})(?=$|[^\\w./-])`, 'g');
+      let match;
+      while ((match = regex.exec(content)) !== null) {
+        const full = match[2];
+        const start = match.index + match[1].length;
+        const end = start + full.length;
+        const key = `${file.path}:${start}:${end}`;
+        if (!used.has(key)) {
+          used.add(key);
+          result.push({
+            label: full,
+            file,
+            start,
+            end,
+          });
+        }
+      }
+    });
+  });
+
+  return result.sort((a, b) => a.start - b.start);
+};
+
+const LinkedFileTextPanel: React.FC<{
+  file: ApiFile | null;
+  containerId: string;
+  allFiles: ApiFile[];
+  title: string;
+}> = ({ file, containerId, allFiles, title }) => {
+  const { data, isLoading, error } = useFileContent(containerId, file?.name || '');
+
+  const content = data?.content || '';
+
+  const linkedContent = useMemo(() => {
+    if (!content || !file) return content;
+    const refs = findReferencedFilesInText(content, allFiles).filter((r) => r.file.path !== file.path);
+    if (!refs.length) return content;
+
+    const nodes: React.ReactNode[] = [];
+    let lastIndex = 0;
+
+    refs.forEach((ref, index) => {
+      if (ref.start > lastIndex) {
+        nodes.push(<span key={`t-${index}`}>{content.slice(lastIndex, ref.start)}</span>);
+      }
+      nodes.push(
+        <Box
+          key={`l-${index}`}
+          component="span"
+          sx={{
+            color: '#90caf9',
+            textDecoration: 'underline',
+            textDecorationColor: 'rgba(144,202,249,0.55)',
+            cursor: 'default',
+          }}
+        >
+          {content.slice(ref.start, ref.end)}
+        </Box>
+      );
+      lastIndex = ref.end;
+    });
+
+    if (lastIndex < content.length) {
+      nodes.push(<span key="t-last">{content.slice(lastIndex)}</span>);
+    }
+
+    return nodes;
+  }, [content, allFiles, file]);
+
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        width: { xs: '100%', lg: 360 },
+        minWidth: { xs: '100%', lg: 320 },
+        maxWidth: { xs: '100%', lg: 420 },
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'rgba(0,0,0,0.32)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: 2,
+        overflow: 'hidden',
+      }}
+    >
+      <Box
+        sx={{
+          px: 2,
+          py: 1.5,
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          background: 'rgba(255,255,255,0.03)',
+        }}
+      >
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          {title}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" noWrap>
+          {file?.path || 'No linked file selected'}
+        </Typography>
+      </Box>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 2 }}>
+        {!file ? (
+          <Typography variant="body2" color="text.secondary">
+            Click a file reference in the main text to open it here.
+          </Typography>
+        ) : isLoading ? (
+          <Stack alignItems="center" justifyContent="center" sx={{ height: '100%' }} spacing={2}>
+            <CircularProgress size={24} />
+            <Typography variant="body2" color="text.secondary">
+              Loading linked file...
+            </Typography>
+          </Stack>
+        ) : error ? (
+          <Typography variant="body2" color="error.main">
+            {error instanceof Error ? error.message : 'Failed to load linked file'}
+          </Typography>
+        ) : (
+          <Box
+            sx={{
+              fontFamily: '"Fira Code", "Monaco", "Cascadia Code", monospace',
+              fontSize: '0.82rem',
+              lineHeight: 1.65,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              color: 'rgba(255,255,255,0.92)',
+            }}
+          >
+            {linkedContent}
+          </Box>
+        )}
+      </Box>
+    </Paper>
+  );
+};
+
+const FileContentDialog: React.FC<FileContentDialogProps> = ({
+  open,
+  onClose,
+  file,
+  containerId,
+  allFiles,
+  onFileUpdated,
+  onFileDeleted,
+  searchQuery: initialSearchQuery = '',
+  currentFileIndex = 0,
+  totalFiles = 0,
+  onNextFile,
+  onPrevFile,
+}) => {
+  const { data: fileContent, isLoading, error, refetch } = useFileContent(containerId, file?.name || '');
+  const deleteFileMutation = useDeleteFile();
+  const uploadFileMutation = useUploadFile();
+  const { addNotification } = useNotifications();
+
+  const [copied, setCopied] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedContent, setEditedContent] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [actionMenuAnchor, setActionMenuAnchor] = useState<null | HTMLElement>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([]);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [matchCase, setMatchCase] = useState(false);
+  const [wholeWord, setWholeWord] = useState(false);
+  const [linkedFile, setLinkedFile] = useState<ApiFile | null>(null);
+  const contentScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const isTextFile = file?.mime_type?.startsWith('text/') || file?.mime_type === 'application/json';
+
+  const parseSearchQuery = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    return searchQuery.trim().split(/\s+/).filter(Boolean);
+  }, [searchQuery]);
+
+  const findSearchMatches = useMemo(() => {
+    if (!searchQuery.trim() || !editedContent || parseSearchQuery.length === 0) return [];
+    const words = parseSearchQuery;
+    const matches: SearchMatch[] = [];
+    const content = matchCase ? editedContent : editedContent.toLowerCase();
+
+    words.forEach((word, wordIndex) => {
+      const searchTerm = matchCase ? word : word.toLowerCase();
+      const positions: number[] = [];
+
+      if (wholeWord) {
+        const regex = new RegExp(
+          `\\b${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+          matchCase ? 'g' : 'gi'
+        );
+        let match;
+        while ((match = regex.exec(editedContent)) !== null) {
+          positions.push(match.index);
+        }
+      } else {
+        let position = content.indexOf(searchTerm);
+        while (position !== -1) {
+          positions.push(position);
+          position = content.indexOf(searchTerm, position + 1);
+        }
+      }
+
+      if (positions.length > 0) {
+        matches.push({
+          word,
+          positions,
+          color: HIGHLIGHT_COLORS[wordIndex % HIGHLIGHT_COLORS.length],
+        });
+      }
+    });
+
+    return matches;
+  }, [editedContent, searchQuery, parseSearchQuery, matchCase, wholeWord]);
+
+  const totalMatches = useMemo(
+    () => searchMatches.reduce((sum, match) => sum + match.positions.length, 0),
+    [searchMatches]
+  );
+
+  useEffect(() => {
+    if (file?.name && open) {
+      setIsEditing(false);
+      setEditedContent('');
+      setSaveError('');
+      setActionMenuAnchor(null);
+      setShowDeleteConfirm(false);
+      setSearchQuery(initialSearchQuery);
+      setSearchMatches([]);
+      setCurrentMatchIndex(-1);
+      setIsSearchActive(!!initialSearchQuery);
+      setCopied(false);
+      setMatchCase(false);
+      setWholeWord(false);
+      setLinkedFile(null);
+      setTimeout(() => refetch(), 100);
+    }
+  }, [file?.name, initialSearchQuery, open, refetch]);
+
+  useEffect(() => {
+    if (fileContent?.content && !editedContent) {
+      setEditedContent(fileContent.content);
+    }
+  }, [fileContent, editedContent]);
+
+  useEffect(() => {
+    if (!open) {
+      setIsEditing(false);
+      setEditedContent('');
+      setSaveError('');
+      setActionMenuAnchor(null);
+      setShowDeleteConfirm(false);
+      setSearchQuery('');
+      setSearchMatches([]);
+      setCurrentMatchIndex(-1);
+      setIsSearchActive(false);
+      setCopied(false);
+      setMatchCase(false);
+      setWholeWord(false);
+      setLinkedFile(null);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    const matches = findSearchMatches;
+    setSearchMatches(matches);
+    setCurrentMatchIndex(matches.length > 0 && matches[0].positions.length > 0 ? 0 : -1);
+  }, [findSearchMatches]);
+
+  const flattenRanges = useMemo(() => {
+    const ranges: Array<{
+      start: number;
+      end: number;
+      color: string;
+      word: string;
+      isCurrent: boolean;
+    }> = [];
+
+    searchMatches.forEach((match) => {
+      match.positions.forEach((pos) => {
+        ranges.push({
+          start: pos,
+          end: pos + match.word.length,
+          color: match.color,
+          word: match.word,
+          isCurrent: false,
+        });
+      });
+    });
+
+    ranges.sort((a, b) => a.start - b.start);
+
+    if (currentMatchIndex >= 0 && currentMatchIndex < ranges.length) {
+      ranges[currentMatchIndex].isCurrent = true;
+    }
+
+    return ranges;
+  }, [searchMatches, currentMatchIndex]);
+
+  useEffect(() => {
+    if (currentMatchIndex < 0 || !contentScrollRef.current) return;
+    const marks = contentScrollRef.current.querySelectorAll('[data-current-match="true"]');
+    const current = marks[0] as HTMLElement | undefined;
+    if (current) {
+      current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [currentMatchIndex, flattenRanges]);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    setIsSearchActive(!!e.target.value.trim());
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setSearchMatches([]);
+    setCurrentMatchIndex(-1);
+    setIsSearchActive(false);
+  };
+
+  const handleNextMatch = () => {
+    if (totalMatches === 0) return;
+    setCurrentMatchIndex((prev) => {
+      const next = prev + 1;
+      return next >= totalMatches ? 0 : next;
+    });
+  };
+
+  const handlePrevMatch = () => {
+    if (totalMatches === 0) return;
+    setCurrentMatchIndex((prev) => {
+      const next = prev - 1;
+      return next < 0 ? totalMatches - 1 : next;
+    });
+  };
+
+  const handleCopyContent = useCallback(async () => {
+    if (!editedContent) return;
+    try {
+      await navigator.clipboard.writeText(editedContent);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      addNotification({
+        message: 'Content copied to clipboard',
+        severity: 'success',
+        open: true,
+      });
+    } catch (_err) {
+      addNotification({
+        message: 'Failed to copy content',
+        severity: 'error',
+        open: true,
+      });
+    }
+  }, [editedContent, addNotification]);
+
+  const handleEditToggle = () => {
+    setIsEditing((prev) => !prev);
+    setSaveError('');
+  };
+
+  const handleSave = useCallback(async () => {
+    if (!file || !containerId) return;
+    setSaveError('');
+    try {
+      const blob = new Blob([editedContent], { type: file.mime_type || 'text/plain' });
+      const newFile = new File([blob], file.name, {
+        type: file.mime_type || 'text/plain',
+        lastModified: Date.now(),
+      });
+
+      await deleteFileMutation.mutateAsync({
+        fileId: file.name,
+        containerId,
+      });
+
+      await uploadFileMutation.mutateAsync({
+        containerId,
+        file: newFile,
+      });
+
+      addNotification({
+        message: `File "${file.name}" updated successfully`,
+        severity: 'success',
+        open: true,
+      });
+
+      setIsEditing(false);
+      onFileUpdated?.();
+      onClose();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save file';
+      setSaveError(errorMessage);
+      addNotification({
+        message: errorMessage,
+        severity: 'error',
+        open: true,
+      });
+    }
+  }, [file, containerId, editedContent, deleteFileMutation, uploadFileMutation, addNotification, onFileUpdated, onClose]);
+
+  const handleDelete = useCallback(async () => {
+    if (!file || !containerId) return;
+    try {
+      await deleteFileMutation.mutateAsync({
+        fileId: file.name,
+        containerId,
+      });
+      addNotification({
+        message: `File "${file.name}" deleted successfully`,
+        severity: 'success',
+        open: true,
+      });
+      onClose();
+      onFileDeleted?.();
+    } catch (error) {
+      addNotification({
+        message: `Failed to delete file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error',
+        open: true,
+      });
+    }
+  }, [file, containerId, deleteFileMutation, addNotification, onClose, onFileDeleted]);
+
+  const handleDownload = useCallback(async () => {
+    if (!file) return;
+    try {
+      const blob = await apiClient.downloadFile(file.name, containerId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      addNotification({
+        message: `File "${file.name}" downloaded`,
+        severity: 'success',
+        open: true,
+      });
+    } catch (error) {
+      addNotification({
+        message: `Download failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error',
+        open: true,
+      });
+    }
+  }, [file, containerId, addNotification]);
+
+  const renderTextWithLinksAndHighlights = () => {
+    if (!editedContent) return null;
+
+    const references = findReferencedFilesInText(editedContent, allFiles).filter(
+      (ref) => ref.file.path !== file?.path
+    );
+
+    const breakpoints = new Set<number>([0, editedContent.length]);
+    flattenRanges.forEach((r) => {
+      breakpoints.add(r.start);
+      breakpoints.add(r.end);
+    });
+    references.forEach((r) => {
+      breakpoints.add(r.start);
+      breakpoints.add(r.end);
+    });
+
+    const sortedPoints = Array.from(breakpoints).sort((a, b) => a - b);
+    const parts: React.ReactNode[] = [];
+
+    for (let i = 0; i < sortedPoints.length - 1; i++) {
+      const start = sortedPoints[i];
+      const end = sortedPoints[i + 1];
+      if (start === end) continue;
+
+      const text = editedContent.slice(start, end);
+      const highlight = flattenRanges.find((r) => start >= r.start && end <= r.end);
+      const reference = references.find((r) => start >= r.start && end <= r.end);
+
+      let node: React.ReactNode = text;
+
+      if (reference) {
+        node = (
+          <Box
+            component="span"
+            onClick={() => setLinkedFile(reference.file)}
+            sx={{
+              color: '#90caf9',
+              textDecoration: 'underline',
+              textDecorationColor: 'rgba(144,202,249,0.55)',
+              cursor: 'pointer',
+              '&:hover': {
+                color: '#bbdefb',
+                backgroundColor: 'rgba(144,202,249,0.08)',
+              },
+            }}
+          >
+            {text}
+          </Box>
+        );
+      }
+
+      if (highlight) {
+        node = (
+          <mark
+            data-current-match={highlight.isCurrent ? 'true' : 'false'}
+            style={{
+              backgroundColor: highlight.color,
+              color: 'inherit',
+              padding: '0 2px',
+              borderRadius: '3px',
+              fontWeight: highlight.isCurrent ? 'bold' : 'normal',
+              border: highlight.isCurrent ? '2px solid #ff9800' : 'none',
+              boxShadow: highlight.isCurrent ? '0 0 8px rgba(255, 152, 0, 0.5)' : 'none',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {node}
+          </mark>
+        );
+      }
+
+      parts.push(<React.Fragment key={`${start}-${end}`}>{node}</React.Fragment>);
+    }
+
+    return parts;
+  };
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!open) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && isEditing) {
+        e.preventDefault();
+        handleSave();
+      }
+
+      if (e.key === 'Escape' && isEditing) {
+        e.preventDefault();
+        setIsEditing(false);
+        setEditedContent(fileContent?.content || '');
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [open, isEditing, handleSave, fileContent]);
+
+  return (
+    <>
+      <Dialog
+        open={open}
+        onClose={onClose}
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            background: 'linear-gradient(135deg, rgba(26, 31, 54, 0.98) 0%, rgba(26, 31, 54, 0.95) 100%)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            width: '96vw',
+            height: '92vh',
+            maxWidth: '96vw',
+            maxHeight: '92vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          },
+        }}
+      >
+        <DialogContent
+          sx={{
+            p: 0,
+            flex: 1,
+            display: 'flex',
+            minHeight: 0,
+            overflow: 'hidden',
+          }}
+        >
+          <Paper
+            elevation={0}
+            sx={{
+              width: 260,
+              minWidth: 260,
+              maxWidth: 260,
+              borderRight: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(0,0,0,0.22)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <Box sx={{ p: 2, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <Stack spacing={1}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                  {file?.name || file?.path.split('/').pop()}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
+                  {file?.path}
+                </Typography>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Chip label={getLanguageFromMimeType(file?.mime_type || '')} size="small" color="primary" />
+                  <Chip label={formatFileSize(file?.size || 0)} size="small" variant="outlined" />
+                </Stack>
+                {totalFiles > 1 && (
+                  <Typography variant="caption" color="text.secondary">
+                    File {currentFileIndex + 1} of {totalFiles}
+                  </Typography>
+                )}
+              </Stack>
+            </Box>
+
+            <Box sx={{ p: 2, overflow: 'auto' }}>
+              <Stack spacing={1.2}>
+                {totalFiles > 1 && (
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      size="small"
+                      startIcon={<ChevronLeftIcon />}
+                      onClick={onPrevFile}
+                    >
+                      Prev
+                    </Button>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      size="small"
+                      endIcon={<ChevronRightIcon />}
+                      onClick={onNextFile}
+                    >
+                      Next
+                    </Button>
+                  </Stack>
+                )}
+
+                {isTextFile && (
+                  <>
+                    <Button
+                      fullWidth
+                      variant={copied ? 'contained' : 'outlined'}
+                      size="small"
+                      startIcon={copied ? <CheckCircleIcon /> : <ContentCopyIcon />}
+                      onClick={handleCopyContent}
+                      color={copied ? 'success' : 'primary'}
+                    >
+                      {copied ? 'Copied' : 'Copy'}
+                    </Button>
+                    <Button
+                      fullWidth
+                      variant={isEditing ? 'contained' : 'outlined'}
+                      size="small"
+                      startIcon={<EditIcon />}
+                      color={isEditing ? 'warning' : 'primary'}
+                      onClick={handleEditToggle}
+                    >
+                      {isEditing ? 'Cancel Edit' : 'Edit'}
+                    </Button>
+                  </>
+                )}
+
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  startIcon={<DownloadIcon />}
+                  onClick={handleDownload}
+                >
+                  Download
+                </Button>
+
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  startIcon={<DeleteIcon />}
+                  color="error"
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
+                  Delete
+                </Button>
+
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  startIcon={<MoreVertIcon />}
+                  onClick={(e) => setActionMenuAnchor(e.currentTarget)}
+                >
+                  More
+                </Button>
+
+                <Divider sx={{ my: 1 }} />
+
+                {isSearchActive && searchMatches.length > 0 && (
+                  <Chip
+                    icon={<SearchIcon />}
+                    label={`${totalMatches} matches`}
+                    size="small"
+                    color="secondary"
+                    variant="outlined"
+                  />
+                )}
+
+                {isEditing && (
+                  <Alert severity="warning" sx={{ mt: 1 }}>
+                    Ctrl/Cmd + S to save
+                  </Alert>
+                )}
+
+                {saveError && (
+                  <Alert severity="error" onClose={() => setSaveError('')}>
+                    {saveError}
+                  </Alert>
+                )}
+              </Stack>
+            </Box>
+          </Paper>
+
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              overflow: 'hidden',
+            }}
+          >
+            <Box
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
+                overflow: 'hidden',
+              }}
+            >
+              {isTextFile && !isEditing && (
+                <Paper
+                  elevation={0}
+                  sx={{
+                    mx: 2,
+                    mt: 2,
+                    mb: 1,
+                    borderRadius: 2,
+                    backgroundColor: 'rgba(0,0,0,0.2)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Stack sx={{ p: 1.5 }}>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <TextField
+                        fullWidth
+                        variant="standard"
+                        placeholder="Search within file (separate words with spaces)..."
+                        value={searchQuery}
+                        onChange={handleSearchChange}
+                        InputProps={{
+                          disableUnderline: true,
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <SearchIcon fontSize="small" sx={{ opacity: 0.7, mr: 1 }} />
+                            </InputAdornment>
+                          ),
+                          sx: {
+                            fontSize: '0.875rem',
+                            '& input::placeholder': {
+                              color: 'text.secondary',
+                              opacity: 0.7,
+                            },
+                          },
+                        }}
+                        size="small"
+                      />
+
+                      {searchQuery && (
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ flexShrink: 0 }}>
+                          <Badge
+                            badgeContent={parseSearchQuery.length}
+                            color="primary"
+                            sx={{ '& .MuiBadge-badge': { fontSize: '0.6rem', height: 16, minWidth: 16 } }}
+                          >
+                            <TextFieldsIcon fontSize="small" sx={{ opacity: 0.7 }} />
+                          </Badge>
+
+                          <Typography variant="caption" sx={{ whiteSpace: 'nowrap', opacity: 0.8 }}>
+                            {totalMatches > 0 ? `${currentMatchIndex + 1}/${totalMatches}` : 'No matches'}
+                          </Typography>
+
+                          <Stack direction="row" spacing={0.5}>
+                            <Tooltip title="Previous match">
+                              <span>
+                                <IconButton size="small" onClick={handlePrevMatch} disabled={totalMatches === 0}>
+                                  <NavigateBeforeIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Next match">
+                              <span>
+                                <IconButton size="small" onClick={handleNextMatch} disabled={totalMatches === 0}>
+                                  <NavigateNextIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Clear search">
+                              <IconButton size="small" onClick={handleClearSearch}>
+                                <ClearIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        </Stack>
+                      )}
+                    </Stack>
+
+                    {searchQuery && (
+                      <Fade in={!!searchQuery}>
+                        <Stack direction="row" spacing={2} sx={{ mt: 1, ml: 4 }}>
+                          <FormControlLabel
+                            control={
+                              <Switch size="small" checked={matchCase} onChange={(e) => setMatchCase(e.target.checked)} />
+                            }
+                            label={<Typography variant="caption">Match case</Typography>}
+                          />
+                          <FormControlLabel
+                            control={
+                              <Switch size="small" checked={wholeWord} onChange={(e) => setWholeWord(e.target.checked)} />
+                            }
+                            label={<Typography variant="caption">Whole word</Typography>}
+                          />
+                        </Stack>
+                      </Fade>
+                    )}
+
+                    {searchQuery && parseSearchQuery.length > 0 && (
+                      <Fade in={parseSearchQuery.length > 0}>
+                        <Stack direction="row" spacing={1} sx={{ mt: 1, ml: 4, flexWrap: 'wrap', gap: 1 }}>
+                          {parseSearchQuery.map((word, index) => {
+                            const match = searchMatches.find((m) => m.word === word);
+                            return (
+                              <Chip
+                                key={`${word}-${index}`}
+                                label={word}
+                                size="small"
+                                sx={{
+                                  backgroundColor: match ? match.color : 'rgba(255,255,255,0.1)',
+                                  color: 'white',
+                                  fontSize: '0.7rem',
+                                  fontWeight: match ? 500 : 400,
+                                  '& .MuiChip-label': { px: 1 },
+                                }}
+                              />
+                            );
+                          })}
+                        </Stack>
+                      </Fade>
+                    )}
+                  </Stack>
+                </Paper>
+              )}
+
+              <Box
+                sx={{
+                  flex: 1,
+                  minHeight: 0,
+                  p: 2,
+                  pt: isTextFile && !isEditing ? 0 : 2,
+                  overflow: 'hidden',
+                }}
+              >
+                {isLoading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                    <Stack alignItems="center" spacing={2}>
+                      <CircularProgress />
+                      <Typography variant="body2" color="text.secondary">
+                        Loading file content...
+                      </Typography>
+                    </Stack>
+                  </Box>
+                ) : error ? (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center', p: 4 }}>
+                    <CodeIcon sx={{ fontSize: 96, mb: 2, opacity: 0.3 }} />
+                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 300 }}>
+                      Unable to Load File
+                    </Typography>
+                    <Typography variant="body1" sx={{ maxWidth: 400 }}>
+                      {error instanceof Error ? error.message : 'An unknown error occurred while loading the file'}
+                    </Typography>
+                  </Box>
+                ) : !isTextFile ? (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center', p: 4 }}>
+                    <DescriptionIcon sx={{ fontSize: 96, mb: 3, opacity: 0.3 }} />
+                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 300 }}>
+                      Binary File Preview
+                    </Typography>
+                    <Typography variant="body1" sx={{ mb: 3, maxWidth: 400 }}>
+                      This file type cannot be displayed in the text viewer. Download the file to view its contents with an appropriate application.
+                    </Typography>
+                    <Button variant="contained" size="large" startIcon={<DownloadIcon />} onClick={handleDownload}>
+                      Download File
+                    </Button>
+                  </Box>
+                ) : fileContent && editedContent !== undefined ? (
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      background: 'rgba(0,0,0,0.3)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: 2,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        px: 2,
+                        py: 1.25,
+                        borderBottom: '1px solid rgba(255,255,255,0.08)',
+                        background: 'rgba(255,255,255,0.03)',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                          <Chip label={getLanguageFromMimeType(file?.mime_type || '')} size="small" color="primary" />
+                          {linkedFile && (
+                            <Chip
+                              icon={<OpenInNewIcon />}
+                              label={`Linked: ${linkedFile.name}`}
+                              size="small"
+                              variant="outlined"
+                            />
+                          )}
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary">
+                          {fileContent.encoding} • {formatFileSize(fileContent.size)} • {editedContent.split('\n').length} lines
+                        </Typography>
+                      </Stack>
+                    </Box>
+
+                    {isEditing ? (
+                      <Box sx={{ flex: 1, minHeight: 0, p: 2 }}>
+                        <TextField
+                          value={editedContent}
+                          onChange={(e) => setEditedContent(e.target.value)}
+                          multiline
+                          fullWidth
+                          sx={{
+                            height: '100%',
+                            '& .MuiOutlinedInput-root': {
+                              height: '100%',
+                              alignItems: 'flex-start',
+                              borderRadius: 2,
+                            },
+                            '& .MuiOutlinedInput-input': {
+                              fontFamily: '"Fira Code", "Monaco", "Cascadia Code", monospace',
+                              fontSize: '0.875rem',
+                              lineHeight: 1.6,
+                              p: 3,
+                              height: '100% !important',
+                              overflow: 'auto !important',
+                            },
+                          }}
+                          InputProps={{ style: { height: '100%' } }}
+                        />
+                      </Box>
+                    ) : (
+                      <Box
+                        ref={contentScrollRef}
+                        sx={{
+                          flex: 1,
+                          minHeight: 0,
+                          overflow: 'auto',
+                          p: 3,
+                          fontFamily: '"Fira Code", "Monaco", "Cascadia Code", monospace',
+                          fontSize: '0.875rem',
+                          lineHeight: 1.6,
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          '&::-webkit-scrollbar': { width: 8, height: 8 },
+                          '&::-webkit-scrollbar-track': {
+                            background: 'rgba(255,255,255,0.05)',
+                            borderRadius: 4,
+                          },
+                          '&::-webkit-scrollbar-thumb': {
+                            background: 'rgba(255,255,255,0.2)',
+                            borderRadius: 4,
+                          },
+                          '& mark': {
+                            transition: 'all 0.2s ease',
+                            borderRadius: '3px',
+                          },
+                        }}
+                      >
+                        {renderTextWithLinksAndHighlights()}
+                      </Box>
+                    )}
+                  </Paper>
+                ) : (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                    <CircularProgress />
+                  </Box>
+                )}
+              </Box>
+            </Box>
+
+            <Box
+              sx={{
+                display: { xs: 'none', lg: 'block' },
+                width: 380,
+                minWidth: 380,
+                maxWidth: 420,
+                p: 2,
+                pl: 0,
+                overflow: 'hidden',
+              }}
+            >
+              <LinkedFileTextPanel
+                file={linkedFile}
+                containerId={containerId}
+                allFiles={allFiles}
+                title="Linked file"
+              />
+            </Box>
+          </Box>
+        </DialogContent>
+
+        <DialogActions
+          sx={{
+            borderTop: '1px solid rgba(255,255,255,0.1)',
+            p: 2,
+            background: 'rgba(0,0,0,0.1)',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Typography variant="caption" color="text.secondary">
+            Links to referenced files open in the right panel
+          </Typography>
+          <Stack direction="row" spacing={1.5}>
+            {isEditing ? (
+              <>
+                <Button onClick={handleEditToggle} variant="outlined">
+                  Cancel
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={handleSave}
+                  startIcon={<SaveIcon />}
+                  disabled={deleteFileMutation.isPending || uploadFileMutation.isPending}
+                >
+                  {deleteFileMutation.isPending || uploadFileMutation.isPending ? (
+                    <CircularProgress size={18} sx={{ color: 'white' }} />
+                  ) : (
+                    'Save Changes'
+                  )}
+                </Button>
+              </>
+            ) : (
+              <Button onClick={onClose} variant="outlined" startIcon={<CloseIcon />}>
+                Close
+              </Button>
+            )}
+          </Stack>
+        </DialogActions>
+      </Dialog>
+
+      <Menu
+        anchorEl={actionMenuAnchor}
+        open={Boolean(actionMenuAnchor)}
+        onClose={() => setActionMenuAnchor(null)}
+        PaperProps={{
+          sx: {
+            mt: 1,
+            borderRadius: 2,
+            border: '1px solid rgba(255,255,255,0.1)',
+            background: 'rgba(26, 31, 54, 0.98)',
+            backdropFilter: 'blur(20px)',
+            minWidth: 180,
+          },
+        }}
+      >
+        <MenuItem
+          onClick={() => {
+            setActionMenuAnchor(null);
+            handleDownload();
+          }}
+        >
+          <DownloadIcon fontSize="small" sx={{ mr: 1.5 }} />
+          Download File
+        </MenuItem>
+
+        {isTextFile && (
+          <MenuItem
+            onClick={() => {
+              setActionMenuAnchor(null);
+              handleCopyContent();
+            }}
+          >
+            <ContentCopyIcon fontSize="small" sx={{ mr: 1.5 }} />
+            Copy Content
+          </MenuItem>
+        )}
+
+        <Divider sx={{ my: 1 }} />
+
+        <MenuItem
+          onClick={() => {
+            setActionMenuAnchor(null);
+            setShowDeleteConfirm(true);
+          }}
+          sx={{ color: 'error.main' }}
+        >
+          <DeleteIcon fontSize="small" sx={{ mr: 1.5 }} />
+          Delete File
+        </MenuItem>
+      </Menu>
+
+      <Dialog
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            background: 'rgba(26, 31, 54, 0.98)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+          },
+        }}
+      >
+        <Box sx={{ p: 3 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+            <DeleteIcon color="error" />
+            <Typography variant="h6">Delete File</Typography>
+          </Stack>
+          <Typography>
+            Are you sure you want to permanently delete <strong>{file?.name}</strong>?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            This action cannot be undone.
+          </Typography>
+        </Box>
+        <DialogActions sx={{ p: 3, pt: 0 }}>
+          <Button onClick={() => setShowDeleteConfirm(false)} variant="outlined">
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              setShowDeleteConfirm(false);
+              handleDelete();
+            }}
+            color="error"
+            variant="contained"
+            disabled={deleteFileMutation.isPending}
+          >
+            {deleteFileMutation.isPending ? <CircularProgress size={18} sx={{ color: 'white' }} /> : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+};
+
+interface GraphNode {
+  id: string;
+  path: string;
+  name: string;
+  file: ApiFile | null;
+  degree: number;
+  radius: number;
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+}
+
+interface GraphEdge {
+  source: string;
+  target: string;
+  weight: number;
+  bidirectional: boolean;
+}
+
+const SemanticGraphCanvas: React.FC<{
+  files: ApiFile[];
+  graphData?: SemanticGraphData;
+  semanticResults: SearchResultFile[];
+  isSemanticSearch: boolean;
+  recommendations: RecommendationFile[];
+  onOpenFile: (file: ApiFile) => void;
+}> = ({ files, graphData, semanticResults, isSemanticSearch, recommendations, onOpenFile }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const animationRef = useRef<number | null>(null);
+  const dragNodeIdRef = useRef<string | null>(null);
+  const hoverNodeIdRef = useRef<string | null>(null);
+  const panRef = useRef({ x: 0, y: 0 });
+  const zoomRef = useRef(1);
+  const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
+  // Добавляем ref для предотвращения бесконечных обновлений
+  const isResizingRef = useRef(false);
+
+  const graph = useMemo(() => {
+    const normalized = normalizeGraph(files, graphData);
+    const nodes = normalized.nodes as GraphNode[];
+    const edges = normalized.edges as GraphEdge[];
+    return { nodes, edges };
+  }, [files, graphData]);
+
+  const semanticMap = useMemo(() => {
+    const map = new Map<string, number>();
+    semanticResults.forEach((f) => {
+      map.set(f.path, f.score || 0);
+      map.set(f.name, f.score || 0);
+    });
+    return map;
+  }, [semanticResults]);
+
+  const recommendationSet = useMemo(() => new Set(recommendations.map((r) => r.path)), [recommendations]);
+
+  // Исправленный useEffect для начальной инициализации позиций узлов
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    if (!container || !canvas) return;
+
+    const updateCanvasSize = () => {
+      const rect = container.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      
+      const dpr = window.devicePixelRatio || 1;
+      const newWidth = Math.floor(rect.width * dpr);
+      const newHeight = Math.floor(rect.height * dpr);
+      
+      if (canvas.width !== newWidth || canvas.height !== newHeight) {
+        canvas.width = newWidth;
+        canvas.height = newHeight;
+        canvas.style.width = `${rect.width}px`;
+        canvas.style.height = `${rect.height}px`;
+      }
+    };
+
+    updateCanvasSize();
+
+    const nodes = graph.nodes;
+    const rect = container.getBoundingClientRect();
+    const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length || 1)));
+    const spacingX = rect.width / Math.max(2, cols);
+    const spacingY = rect.height / Math.max(2, cols);
+
+    nodes.forEach((node, index) => {
+      if (typeof node.x !== 'number' || typeof node.y !== 'number') {
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+        node.x = spacingX * (col + 1) + (Math.random() - 0.5) * 50;
+        node.y = spacingY * (row + 1) + (Math.random() - 0.5) * 50;
+        node.vx = 0;
+        node.vy = 0;
+      }
+    });
+
+    // Исправленный ResizeObserver с debounce и флагом
+    let resizeTimeout: NodeJS.Timeout;
+    const resizeObserver = new ResizeObserver(() => {
+      if (isResizingRef.current) return;
+      
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        isResizingRef.current = true;
+        requestAnimationFrame(() => {
+          const rect = container.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            const dpr = window.devicePixelRatio || 1;
+            const newWidth = Math.floor(rect.width * dpr);
+            const newHeight = Math.floor(rect.height * dpr);
+            
+            if (canvas.width !== newWidth || canvas.height !== newHeight) {
+              canvas.width = newWidth;
+              canvas.height = newHeight;
+              canvas.style.width = `${rect.width}px`;
+              canvas.style.height = `${rect.height}px`;
+            }
+          }
+          isResizingRef.current = false;
+        });
+      }, 100);
+    });
+
+    resizeObserver.observe(container);
+    
+    return () => {
+      clearTimeout(resizeTimeout);
+      resizeObserver.disconnect();
+    };
+  }, [graph]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const nodes = graph.nodes;
+    const edges = graph.edges;
+
+    const tick = () => {
+      const rect = container.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+      const centerX = width / 2;
+      const centerY = height / 2;
+
+      for (let i = 0; i < nodes.length; i++) {
+        const a = nodes[i];
+
+        a.vx = (a.vx || 0) + (centerX - (a.x || 0)) * 0.00015;
+        a.vy = (a.vy || 0) + (centerY - (a.y || 0)) * 0.00015;
+
+        for (let j = i + 1; j < nodes.length; j++) {
+          const b = nodes[j];
+          const dx = (a.x || 0) - (b.x || 0);
+          const dy = (a.y || 0) - (b.y || 0);
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const minDist = a.radius + b.radius + 26;
+          if (dist < minDist * 3.5) {
+            const force = 0.15 / dist;
+            const fx = dx * force;
+            const fy = dy * force;
+            a.vx = (a.vx || 0) + fx;
+            a.vy = (a.vy || 0) + fy;
+            b.vx = (b.vx || 0) - fx;
+            b.vy = (b.vy || 0) - fy;
+          }
+        }
+      }
+
+      edges.forEach((edge) => {
+        const source = nodes.find((n) => n.id === edge.source);
+        const target = nodes.find((n) => n.id === edge.target);
+        if (!source || !target) return;
+
+        const dx = (target.x || 0) - (source.x || 0);
+        const dy = (target.y || 0) - (source.y || 0);
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const desired = 160 + Math.min(120, ((source.degree + target.degree) / 2) * 6);
+        const diff = dist - desired;
+        const force = diff * 0.0008;
+        const fx = (dx / dist) * force * 60;
+        const fy = (dy / dist) * force * 60;
+
+        if (dragNodeIdRef.current !== source.id) {
+          source.vx = (source.vx || 0) + fx;
+          source.vy = (source.vy || 0) + fy;
+        }
+        if (dragNodeIdRef.current !== target.id) {
+          target.vx = (target.vx || 0) - fx;
+          target.vy = (target.vy || 0) - fy;
+        }
+      });
+
+      nodes.forEach((node) => {
+        if (dragNodeIdRef.current === node.id) return;
+        node.vx = (node.vx || 0) * 0.92;
+        node.vy = (node.vy || 0) * 0.92;
+        node.x = (node.x || 0) + (node.vx || 0);
+        node.y = (node.y || 0) + (node.vy || 0);
+
+        node.x = Math.max(node.radius + 20, Math.min(width - node.radius - 20, node.x || 0));
+        node.y = Math.max(node.radius + 20, Math.min(height - node.radius - 20, node.y || 0));
+      });
+
+      const dpr = window.devicePixelRatio || 1;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, width, height);
+
+      const transformPoint = (x: number, y: number) => ({
+        x: x * zoomRef.current + panRef.current.x,
+        y: y * zoomRef.current + panRef.current.y,
+      });
+
+      const drawArrow = (fromX: number, fromY: number, toX: number, toY: number, color: string) => {
+        const headlen = 10;
+        const angle = Math.atan2(toY - fromY, toX - fromX);
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        ctx.lineTo(toX, toY);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(toX, toY);
+        ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fill();
+      };
+
+      edges.forEach((edge, index) => {
+        const source = nodes.find((n) => n.id === edge.source);
+        const target = nodes.find((n) => n.id === edge.target);
+        if (!source || !target) return;
+
+        const p1 = transformPoint(source.x || 0, source.y || 0);
+        const p2 = transformPoint(target.x || 0, target.y || 0);
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const nx = -dy / dist;
+        const ny = dx / dist;
+        const curve = ((index % 2 === 0 ? 1 : -1) * Math.min(42, dist * 0.18));
+        const cx = (p1.x + p2.x) / 2 + nx * curve;
+        const cy = (p1.y + p2.y) / 2 + ny * curve;
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.26)';
+        ctx.lineWidth = Math.max(1, edge.weight);
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.quadraticCurveTo(cx, cy, p2.x, p2.y);
+        ctx.stroke();
+
+        const t = 0.88;
+        const qx =
+          (1 - t) * (1 - t) * p1.x + 2 * (1 - t) * t * cx + t * t * p2.x;
+        const qy =
+          (1 - t) * (1 - t) * p1.y + 2 * (1 - t) * t * cy + t * t * p2.y;
+        const qdx = 2 * (1 - t) * (cx - p1.x) + 2 * t * (p2.x - cx);
+        const qdy = 2 * (1 - t) * (cy - p1.y) + 2 * t * (p2.y - cy);
+        const qlen = Math.sqrt(qdx * qdx + qdy * qdy) || 1;
+        const ux = qdx / qlen;
+        const uy = qdy / qlen;
+        const endOffset = target.radius * zoomRef.current;
+        const arrowEndX = p2.x - ux * endOffset;
+        const arrowEndY = p2.y - uy * endOffset;
+        const arrowStartX = arrowEndX - ux * 16;
+        const arrowStartY = arrowEndY - uy * 16;
+        drawArrow(arrowStartX, arrowStartY, arrowEndX, arrowEndY, 'rgba(255,255,255,0.72)');
+
+        if (edge.bidirectional) {
+          const t2 = 0.12;
+          const qx2 =
+            (1 - t2) * (1 - t2) * p1.x + 2 * (1 - t2) * t2 * cx + t2 * t2 * p2.x;
+          const qy2 =
+            (1 - t2) * (1 - t2) * p1.y + 2 * (1 - t2) * t2 * cy + t2 * t2 * p2.y;
+          const qdx2 = 2 * (1 - t2) * (cx - p1.x) + 2 * t2 * (p2.x - cx);
+          const qdy2 = 2 * (1 - t2) * (cy - p1.y) + 2 * t2 * (p2.y - cy);
+          const qlen2 = Math.sqrt(qdx2 * qdx2 + qdy2 * qdy2) || 1;
+          const ux2 = qdx2 / qlen2;
+          const uy2 = qdy2 / qlen2;
+          const endOffset2 = source.radius * zoomRef.current;
+          const arrowEndX2 = p1.x + ux2 * endOffset2;
+          const arrowEndY2 = p1.y + uy2 * endOffset2;
+          const arrowStartX2 = arrowEndX2 + ux2 * 16;
+          const arrowStartY2 = arrowEndY2 + uy2 * 16;
+          drawArrow(arrowStartX2, arrowStartY2, arrowEndX2, arrowEndY2, 'rgba(255,255,255,0.72)');
+        }
+      });
+
+      nodes.forEach((node) => {
+        const p = transformPoint(node.x || 0, node.y || 0);
+        const radius = node.radius * zoomRef.current;
+        const semanticScore = semanticMap.get(node.path) || semanticMap.get(node.name);
+        const isSemanticSelected = isSemanticSearch && semanticScore !== undefined;
+        const isRecommended = recommendationSet.has(node.path);
+
+        let fill = '#8a8a8a';
+        if (isRecommended) fill = '#ff9800';
+        if (isSemanticSelected) fill = '#22c55e';
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = fill;
+        ctx.shadowColor = fill;
+        ctx.shadowBlur = node.id === hoverNodeIdRef.current ? 20 : 10;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.lineWidth = node.id === hoverNodeIdRef.current ? 3 : 1.5;
+        ctx.strokeStyle = node.id === hoverNodeIdRef.current ? '#ffffff' : 'rgba(255,255,255,0.22)';
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `${Math.max(11, Math.min(14, radius * 0.45))}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const label = node.name.length > 20 ? `${node.name.slice(0, 20)}…` : node.name;
+        ctx.fillText(label, p.x, p.y);
+
+        if (isSemanticSelected && typeof semanticScore === 'number') {
+          ctx.fillStyle = '#22c55e';
+          ctx.font = `12px sans-serif`;
+          ctx.textAlign = 'left';
+          ctx.fillText(semanticScore.toFixed(2), p.x + radius + 8, p.y - radius - 4);
+        }
+      });
+
+      animationRef.current = requestAnimationFrame(tick);
+    };
+
+    animationRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
+  }, [graph, semanticMap, recommendationSet, isSemanticSearch]);
+
+  const getCanvasPoint = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    return {
+      x: (x - panRef.current.x) / zoomRef.current,
+      y: (y - panRef.current.y) / zoomRef.current,
+    };
+  }, []);
+
+  const hitTest = useCallback(
+    (x: number, y: number) => {
+      for (let i = graph.nodes.length - 1; i >= 0; i--) {
+        const node = graph.nodes[i];
+        const dx = x - (node.x || 0);
+        const dy = y - (node.y || 0);
+        if (Math.sqrt(dx * dx + dy * dy) <= node.radius) return node;
+      }
+      return null;
+    },
+    [graph.nodes]
+  );
+
+  const isPanningRef = useRef(false);
+  const lastMouseRef = useRef({ x: 0, y: 0 });
+
+  return (
+    <Box
+      ref={containerRef}
+      sx={{
+        position: 'relative',
+        width: '100%',
+        flex: 1,
+        minHeight: 540,
+        backgroundColor: '#000',
+        borderRadius: 2,
+        overflow: 'hidden',
+        border: '1px solid rgba(255,255,255,0.08)',
+      }}
+    >
+      <canvas
+        ref={canvasRef}
+        onWheel={(e) => {
+          e.preventDefault();
+          const delta = e.deltaY > 0 ? 0.92 : 1.08;
+          zoomRef.current = Math.max(0.45, Math.min(2.8, zoomRef.current * delta));
+        }}
+        onMouseDown={(e) => {
+          const p = getCanvasPoint(e);
+          const node = hitTest(p.x, p.y);
+          if (node) {
+            dragNodeIdRef.current = node.id;
+          } else {
+            isPanningRef.current = true;
+            lastMouseRef.current = { x: e.clientX, y: e.clientY };
+          }
+        }}
+        onMouseMove={(e) => {
+          const p = getCanvasPoint(e);
+          const node = hitTest(p.x, p.y);
+
+          hoverNodeIdRef.current = node?.id || null;
+          setHoveredNode(node || null);
+
+          if (dragNodeIdRef.current) {
+            const dragged = graph.nodes.find((n) => n.id === dragNodeIdRef.current);
+            if (dragged) {
+              dragged.x = p.x;
+              dragged.y = p.y;
+              dragged.vx = 0;
+              dragged.vy = 0;
+            }
+          } else if (isPanningRef.current) {
+            const dx = e.clientX - lastMouseRef.current.x;
+            const dy = e.clientY - lastMouseRef.current.y;
+            panRef.current.x += dx;
+            panRef.current.y += dy;
+            lastMouseRef.current = { x: e.clientX, y: e.clientY };
+          }
+        }}
+        onMouseUp={() => {
+          dragNodeIdRef.current = null;
+          isPanningRef.current = false;
+        }}
+        onMouseLeave={() => {
+          dragNodeIdRef.current = null;
+          isPanningRef.current = false;
+          hoverNodeIdRef.current = null;
+          setHoveredNode(null);
+        }}
+        onDoubleClick={(e) => {
+          const p = getCanvasPoint(e);
+          const node = hitTest(p.x, p.y);
+          if (node?.file) onOpenFile(node.file);
+        }}
+        onClick={(e) => {
+          const p = getCanvasPoint(e);
+          const node = hitTest(p.x, p.y);
+          if (node?.file) onOpenFile(node.file);
+        }}
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'block',
+          cursor: dragNodeIdRef.current ? 'grabbing' : hoveredNode ? 'pointer' : 'grab',
+        }}
+      />
+
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 12,
+          left: 12,
+          display: 'flex',
+          gap: 1,
+          flexWrap: 'wrap',
+          zIndex: 2,
+        }}
+      >
+        <Chip label="Gray: files" size="small" sx={{ backgroundColor: '#8a8a8a', color: '#fff' }} />
+        <Chip label="Green: semantic search" size="small" sx={{ backgroundColor: '#22c55e', color: '#fff' }} />
+        <Chip label="Orange: recommendations" size="small" sx={{ backgroundColor: '#ff9800', color: '#000' }} />
+      </Box>
+
+      {hoveredNode && (
+        <Paper
+          elevation={6}
+          sx={{
+            position: 'absolute',
+            right: 12,
+            top: 12,
+            p: 1.5,
+            minWidth: 220,
+            maxWidth: 320,
+            background: 'rgba(18,18,18,0.92)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            zIndex: 2,
+          }}
+        >
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            {hoveredNode.name}
+          </Typography>
+          <Typography variant="caption" sx={{ display: 'block', color: 'rgba(255,255,255,0.7)', wordBreak: 'break-word' }}>
+            {hoveredNode.path}
+          </Typography>
+          <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }} useFlexGap>
+            <Chip label={`${hoveredNode.degree} edges`} size="small" variant="outlined" />
+            {hoveredNode.file && <Chip label={formatFileSize(hoveredNode.file.size)} size="small" variant="outlined" />}
+            {semanticMap.has(hoveredNode.path) && (
+              <Chip
+                label={`Similarity ${(semanticMap.get(hoveredNode.path) || 0).toFixed(2)}`}
+                size="small"
+                sx={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
+              />
+            )}
+          </Stack>
+        </Paper>
+      )}
+    </Box>
+  );
+};
 
 interface FilesViewProps {
   containerId: string;
 }
 
-interface SearchResultFile extends ApiFile {
-  score?: number;
-  content_preview?: string;
-}
-
-interface RecommendationFile {
-  path: string;
-  name: string;
-  isRecommended: boolean;
-}
-
-const SEARCH_SUGGESTIONS = [
-  'authentication', 
-  'database', 
-  'error handling', 
-  'API endpoints', 
-  'configuration'
-];
-
-export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
+export default function FilesView({ containerId }: FilesViewProps) {
   const { data: files = [], isLoading: isLoadingFiles, refetch: refetchFiles } = useFiles(containerId);
-  const { addNotification } = useNotifications();
+  const { data: graphData } = useGetSemanticGraph(containerId);
+  const { addNotification, notification, closeNotification } = useNotifications();
   const semanticSearchMutation = useSemanticSearch();
-  
-  const { paths: recommendedPaths, isConnected: isRecommendationsConnected } = useRecommendationsStream(
+
+  const { paths: recommendedPaths } = useRecommendationsStream(
     containerId,
     (newPaths) => {
       addNotification({
@@ -97,7 +1941,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     }
   );
 
-  // State for file content dialog
   const [fileContentDialog, setFileContentDialog] = useState<{
     open: boolean;
     file: ApiFile | null;
@@ -108,106 +1951,98 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     currentIndex: 0,
   });
 
-  // State for search
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isSemanticSearch, setIsSemanticSearch] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResultFile[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-
-  // State for UI
   const [isRebuildingIndex, setIsRebuildingIndex] = useState(false);
   const [toolsMenuAnchor, setToolsMenuAnchor] = useState<null | HTMLElement>(null);
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [rebuildNotification, setRebuildNotification] = useState<{
     open: boolean;
     message: string;
-    severity: 'success' | 'error' | 'info' | 'warning';
+    severity: Severity;
   }>({
     open: false,
     message: '',
     severity: 'info',
   });
 
-  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Computed values
-  const filteredFiles = files.filter(file => 
-    file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    file.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    file.mime_type.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const currentFilesList = (isSemanticSearch ? searchResults : (searchQuery ? filteredFiles : files)).reverse();
-
-  const recommendationFiles: RecommendationFile[] = recommendedPaths.map(path => ({
+  const recommendationFiles: RecommendationFile[] = recommendedPaths.map((path) => ({
     path,
     name: path.split('/').pop() || 'unknown',
     isRecommended: true,
   }));
 
-  // Event handlers
-  const handleSemanticSearch = useCallback(async (query: string) => {
-    if (!query.trim() || !containerId) return;
+  const currentFilesList = useMemo(() => {
+    if (isSemanticSearch) return [...searchResults].reverse();
+    if (!searchQuery) return [...files].reverse();
+    return [...files]
+      .filter(
+        (file) =>
+          file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          file.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          file.mime_type.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+      .reverse();
+  }, [isSemanticSearch, searchResults, searchQuery, files]);
 
-    setIsSearching(true);
-    setIsSemanticSearch(true);
+  const handleSemanticSearch = useCallback(
+    async (query: string) => {
+      if (!query.trim() || !containerId) return;
 
-    try {
-      const result = await semanticSearchMutation.mutateAsync({
-        query: query,
-        container_id: containerId,
-        limit: 50
-      });
+      setIsSearching(true);
+      setIsSemanticSearch(true);
 
-      const resultFiles: SearchResultFile[] = result.results
-        .filter((searchResult): searchResult is { path: string; scope: number } => 
-          searchResult.scope !== undefined
-        )
-        .map(searchResult => ({
-          path: searchResult.path,
-          name: searchResult.path.split('/').pop() || 'unknown',
-          size: 0,
+      try {
+        const result: any = await semanticSearchMutation.mutateAsync({
+          query,
           container_id: containerId,
-          user_id: '',
-          created_at: new Date().toISOString(),
-          mime_type: 'text/plain',
-          score: searchResult.scope,
-          content_preview: `Score: ${searchResult.scope.toFixed(2)}`
-        }))
-        .filter(file => {
-          const systemFiles = ['container_config.json', 'access_policy.json'];
-          return !systemFiles.includes(file.name);
+          limit: 50,
         });
 
-      setSearchResults(resultFiles);
+        const resultFiles: SearchResultFile[] = (result.results || [])
+          .filter((searchResult: any) => searchResult.scope !== undefined)
+          .map((searchResult: any) => {
+            const existing = files.find((f) => f.path === searchResult.path || f.name === searchResult.path);
+            return {
+              path: existing?.path || searchResult.path,
+              name: existing?.name || searchResult.path.split('/').pop() || 'unknown',
+              size: existing?.size || 0,
+              container_id: containerId,
+              user_id: existing?.user_id || '',
+              created_at: existing?.created_at || new Date().toISOString(),
+              mime_type: existing?.mime_type || 'text/plain',
+              score: searchResult.scope,
+              content_preview: `Score: ${searchResult.scope.toFixed(2)}`,
+            };
+          })
+          .filter((file: { name: string; }) => !['container_config.json', 'access_policy.json'].includes(file.name));
 
-      addNotification({
-        message: `Found ${resultFiles.length} semantically relevant files`,
-        severity: 'success',
-        open: true,
-      });
+        setSearchResults(resultFiles);
 
-    } catch (error) {
-      console.error('Semantic search error:', error);
-      addNotification({
-        message: `Semantic search failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error',
-        open: true,
-      });
-      setIsSemanticSearch(false);
-    } finally {
-      setIsSearching(false);
-    }
-  }, [containerId, semanticSearchMutation, addNotification]);
+        addNotification({
+          message: `Found ${resultFiles.length} semantically relevant files`,
+          severity: 'success',
+          open: true,
+        });
+      } catch (error) {
+        addNotification({
+          message: `Semantic search failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          severity: 'error',
+          open: true,
+        });
+        setIsSemanticSearch(false);
+      } finally {
+        setIsSearching(false);
+      }
+    },
+    [containerId, semanticSearchMutation, addNotification, files]
+  );
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
-    
-    if (searchTimerRef.current) {
-      clearTimeout(searchTimerRef.current);
-    }
-    
     if (!value.trim()) {
       setIsSemanticSearch(false);
       setSearchResults([]);
@@ -220,12 +2055,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     }
   }, [searchQuery, containerId, handleSemanticSearch]);
 
-  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && searchQuery.trim() && containerId) {
-      handleSearchSubmit();
-    }
-  }, [searchQuery, containerId, handleSearchSubmit]);
-
   const handleRefreshFiles = useCallback(async () => {
     if (!containerId) return;
 
@@ -233,9 +2062,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
 
     try {
       const result = await apiClient.getFilesRebuildIndex(containerId);
-      
       refetchFiles();
-      
+
       setRebuildNotification({
         open: true,
         message: `File index rebuilt successfully. Found ${result.length} files.`,
@@ -247,10 +2075,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
         severity: 'success',
         open: true,
       });
-
     } catch (error) {
-      console.error('Rebuild index error:', error);
-      
       setRebuildNotification({
         open: true,
         message: `Failed to rebuild index: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -258,115 +2083,28 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
       });
 
       addNotification({
-        message: `Failed to rebuild file index`,
+        message: 'Failed to rebuild file index',
         severity: 'error',
         open: true,
       });
-      
+
       refetchFiles();
     } finally {
       setIsRebuildingIndex(false);
     }
   }, [containerId, refetchFiles, addNotification]);
 
-  const handleDownloadFile = useCallback(async (file: ApiFile) => {
-    try {
-      addNotification({
-        message: `Downloading file: ${file.name || file.path}`,
-        severity: 'info',
+  const openFile = useCallback(
+    (file: ApiFile) => {
+      const fileIndex = currentFilesList.findIndex((f) => f.path === file.path || f.name === file.name);
+      setFileContentDialog({
         open: true,
+        file,
+        currentIndex: fileIndex >= 0 ? fileIndex : 0,
       });
-
-      const fileContent = await apiClient.getFileContent(containerId, file.name);
-      
-      const blob = new Blob([fileContent.content || ''], { 
-        type: file.mime_type || 'application/octet-stream' 
-      });
-      
-      const url = URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = file.name || 'download';
-      document.body.appendChild(link);
-      
-      link.click();
-      
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      addNotification({
-        message: `File "${file.name || file.path}" downloaded successfully`,
-        severity: 'success',
-        open: true,
-      });
-
-    } catch (error) {
-      console.error('Download error:', error);
-      addNotification({
-        message: `Failed to download file: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error',
-        open: true,
-      });
-    }
-  }, [containerId, addNotification]);
-
-  const handleFileAction = useCallback((action: string, file: ApiFile) => {
-    switch (action) {
-      case 'download':
-        handleDownloadFile(file);
-        break;
-      case 'view':
-        const fileIndex = currentFilesList.findIndex(f => f.name === file.name);
-        setFileContentDialog({ 
-          open: true, 
-          file: file,
-          currentIndex: fileIndex
-        });
-        break;
-      case 'delete':
-        apiClient.deleteFile(file.container_id, file.name)
-          .then(() => {
-            addNotification({
-              message: `File ${file.name || file.path} deleted successfully`,
-              severity: 'success',
-              open: true,
-            });
-            refetchFiles();
-          })
-          .catch((error) => {
-            addNotification({
-              message: `Failed to delete file: ${error.message}`,
-              severity: 'error',
-              open: true,
-            });
-          });
-        break;
-      default:
-        addNotification({
-          message: `${action} action performed on file`,
-          severity: 'info',
-          open: true,
-        });
-    }
-  }, [addNotification, refetchFiles, handleDownloadFile, currentFilesList]);
-
-  const handleViewContent = useCallback((file: ApiFile) => {
-    const fileIndex = currentFilesList.findIndex(f => f.name === file.name);
-    setFileContentDialog({ 
-      open: true, 
-      file: file,
-      currentIndex: fileIndex
-    });
-  }, [currentFilesList]);
-
-  const handleFileSelect = useCallback((file: ApiFile) => {
-    addNotification({
-      message: `Selected file: ${file.name || file.path}`,
-      severity: 'success',
-      open: true,
-    });
-  }, [addNotification]);
+    },
+    [currentFilesList]
+  );
 
   const handleCloseFileContent = useCallback(() => {
     setFileContentDialog({ open: false, file: null, currentIndex: 0 });
@@ -378,45 +2116,27 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     setSearchResults([]);
   }, []);
 
-  const handleRecommendationClick = useCallback(async (recommendation: RecommendationFile) => {
-    try {
-      const recommendedFile: ApiFile = {
-        path: recommendation.path,
-        name: recommendation.name,
-        size: 0,
-        container_id: containerId,
-        user_id: '',
-        created_at: new Date().toISOString(),
-        mime_type: 'text/plain',
-      };
+  const handleRecommendationClick = useCallback(
+    (recommendation: RecommendationFile) => {
+      const existing = files.find((f) => f.path === recommendation.path || f.name === recommendation.name);
+      const recommendedFile: ApiFile =
+        existing || {
+          path: recommendation.path,
+          name: recommendation.name,
+          size: 0,
+          container_id: containerId,
+          user_id: '',
+          created_at: new Date().toISOString(),
+          mime_type: 'text/plain',
+        };
+      openFile(recommendedFile);
+    },
+    [containerId, openFile, files]
+  );
 
-      setFileContentDialog({
-        open: true,
-        file: recommendedFile,
-        currentIndex: 0
-      });
-
-      addNotification({
-        message: `Opening recommended file: ${recommendation.name}`,
-        severity: 'info',
-        open: true,
-      });
-    } catch (error) {
-      addNotification({
-        message: `Failed to open recommended file: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error',
-        open: true,
-      });
-    }
-  }, [containerId, addNotification]);
-
-  // Navigation handlers
   const handleNextFile = useCallback(() => {
     if (!fileContentDialog.file || currentFilesList.length === 0) return;
-    
-    const currentIndex = fileContentDialog.currentIndex;
-    const nextIndex = (currentIndex + 1) % currentFilesList.length;
-    
+    const nextIndex = (fileContentDialog.currentIndex + 1) % currentFilesList.length;
     setFileContentDialog({
       open: true,
       file: currentFilesList[nextIndex],
@@ -426,10 +2146,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
 
   const handlePrevFile = useCallback(() => {
     if (!fileContentDialog.file || currentFilesList.length === 0) return;
-    
-    const currentIndex = fileContentDialog.currentIndex;
-    const prevIndex = currentIndex > 0 ? currentIndex - 1 : currentFilesList.length - 1;
-    
+    const prevIndex =
+      fileContentDialog.currentIndex > 0 ? fileContentDialog.currentIndex - 1 : currentFilesList.length - 1;
     setFileContentDialog({
       open: true,
       file: currentFilesList[prevIndex],
@@ -437,27 +2155,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     });
   }, [fileContentDialog, currentFilesList]);
 
-  // Keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!fileContentDialog.open) return;
-      
-      if (e.ctrlKey || e.metaKey) {
-        if (e.key === 'ArrowLeft') {
-          e.preventDefault();
-          handlePrevFile();
-        } else if (e.key === 'ArrowRight') {
-          e.preventDefault();
-          handleNextFile();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [fileContentDialog.open, handleNextFile, handlePrevFile]);
-
-  // Auto-show recommendations
   useEffect(() => {
     if (recommendationFiles.length > 0) {
       setShowRecommendations(true);
@@ -466,14 +2163,16 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
 
   if (!containerId) {
     return (
-      <Box sx={{ 
-        display: 'flex', 
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '60vh',
-        textAlign: 'center'
-      }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '60vh',
+          textAlign: 'center',
+        }}
+      >
         <DescriptionIcon sx={{ fontSize: 96, color: 'text.secondary', mb: 3, opacity: 0.3 }} />
         <Typography variant="h4" color="text.secondary" gutterBottom sx={{ fontWeight: 300 }}>
           No Container Selected
@@ -486,25 +2185,20 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
   }
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Enhanced Header */}
-      <Box sx={{ 
-        mb: 3,
-        p: 3,
-        background: 'linear-gradient(135deg, rgba(115, 103, 240, 0.05) 0%, rgba(115, 103, 240, 0.02) 100%)',
-        borderRadius: 3,
-        border: '1px solid rgba(115, 103, 240, 0.1)',
-      }}>
-        {/* Main Search Bar */}
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2, 
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <Box
+        sx={{
           mb: 2,
-          position: 'relative'
-        }}>
-          <Box 
-            component="form" 
+          p: 2,
+          background: 'linear-gradient(135deg, rgba(115, 103, 240, 0.05) 0%, rgba(115, 103, 240, 0.02) 100%)',
+          borderRadius: 3,
+          border: '1px solid rgba(115, 103, 240, 0.1)',
+          flexShrink: 0,
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, position: 'relative' }}>
+          <Box
+            component="form"
             onSubmit={(e) => {
               e.preventDefault();
               handleSearchSubmit();
@@ -515,18 +2209,17 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
               fullWidth
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
-              onKeyPress={handleKeyPress}
               onFocus={() => setIsSearchFocused(true)}
-              onBlur={() => setIsSearchFocused(false)}
-              placeholder="Search files by content, name, or path..."
+              onBlur={() => setTimeout(() => setIsSearchFocused(false), 120)}
+              placeholder="Semantic search files..."
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SemanticSearchIcon 
-                      sx={{ 
+                    <SemanticSearchIcon
+                      sx={{
                         color: isSearchFocused ? 'primary.main' : 'text.secondary',
-                        transition: 'color 0.2s ease'
-                      }} 
+                        transition: 'color 0.2s ease',
+                      }}
                     />
                   </InputAdornment>
                 ),
@@ -534,11 +2227,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
                   <InputAdornment position="end">
                     <Stack direction="row" spacing={0.5} alignItems="center">
                       {searchQuery && (
-                        <IconButton 
-                          size="small" 
-                          onClick={handleClearSearch}
-                          sx={{ opacity: 0.6 }}
-                        >
+                        <IconButton size="small" onClick={handleClearSearch} sx={{ opacity: 0.6 }}>
                           <CloseIcon fontSize="small" />
                         </IconButton>
                       )}
@@ -547,16 +2236,9 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
                         onClick={handleSearchSubmit}
                         disabled={!searchQuery.trim() || isSearching}
                         size="small"
-                        sx={{ 
-                          minWidth: '80px',
-                          height: 32,
-                        }}
+                        sx={{ minWidth: 80, height: 32 }}
                       >
-                        {isSearching ? (
-                          <CircularProgress size={16} sx={{ color: 'white' }} />
-                        ) : (
-                          'Search'
-                        )}
+                        {isSearching ? <CircularProgress size={16} sx={{ color: 'white' }} /> : 'Search'}
                       </Button>
                     </Stack>
                   </InputAdornment>
@@ -564,39 +2246,32 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
                 sx: {
                   borderRadius: 3,
                   backgroundColor: 'background.paper',
-                  '& .MuiOutlinedInput-root': {
-                    '&:hover': {
-                      boxShadow: '0 4px 20px 0 rgba(115, 103, 240, 0.1)',
-                    },
-                    '&.Mui-focused': {
-                      boxShadow: '0 4px 20px 0 rgba(115, 103, 240, 0.15)',
-                    }
-                  }
-                }
+                },
               }}
             />
 
-            {/* Enhanced Search Suggestions */}
             <Fade in={isSearchFocused && searchQuery.length === 0}>
-              <Paper sx={{ 
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                right: 0,
-                mt: 1,
-                p: 2.5,
-                borderRadius: 2,
-                boxShadow: '0 8px 40px rgba(0,0,0,0.12)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                zIndex: 1000,
-                background: 'rgba(26, 31, 54, 0.98)',
-                backdropFilter: 'blur(20px)',
-              }}>
+              <Paper
+                sx={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  mt: 1,
+                  p: 2.5,
+                  borderRadius: 2,
+                  boxShadow: '0 8px 40px rgba(0,0,0,0.12)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  zIndex: 1000,
+                  background: 'rgba(26, 31, 54, 0.98)',
+                  backdropFilter: 'blur(20px)',
+                }}
+              >
                 <Typography variant="body2" sx={{ mb: 2, opacity: 0.8, fontWeight: 500 }}>
-                  🧠 AI-Powered Semantic Search
+                  AI-Powered Semantic Search
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                  Find files by meaning and context, not just keywords
+                  Find files by meaning and context
                 </Typography>
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                   {SEARCH_SUGGESTIONS.map((suggestion) => (
@@ -610,13 +2285,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
                         setSearchQuery(suggestion);
                         handleSemanticSearch(suggestion);
                       }}
-                      sx={{ 
-                        fontSize: '0.75rem',
-                        '&:hover': {
-                          backgroundColor: 'rgba(115, 103, 240, 0.1)',
-                          borderColor: 'primary.main'
-                        }
-                      }}
                     />
                   ))}
                 </Stack>
@@ -624,46 +2292,28 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
             </Fade>
           </Box>
 
-          {/* Tools Menu */}
-          <Button
-            variant="outlined"
-            startIcon={<TuneIcon />}
-            onClick={(e) => setToolsMenuAnchor(e.currentTarget)}
-            sx={{
-              borderRadius: 2,
-              px: 3,
-              '&:hover': {
-                backgroundColor: 'rgba(115, 103, 240, 0.1)',
-                borderColor: 'primary.main'
-              }
-            }}
-          >
+          <Button variant="outlined" startIcon={<TuneIcon />} onClick={(e) => setToolsMenuAnchor(e.currentTarget)}>
             Tools
           </Button>
         </Box>
 
-        {/* Status Bar */}
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Stack direction="row" spacing={1} alignItems="center">
+        <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" useFlexGap gap={1}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
             {isSemanticSearch && (
-              <Chip 
+              <Chip
                 icon={<SemanticSearchIcon />}
-                label="Semantic Search Active" 
-                size="small" 
-                color="primary" 
+                label="Semantic Search Active"
+                size="small"
+                color="primary"
                 variant="filled"
-                sx={{ fontWeight: 500 }}
               />
             )}
             <Typography variant="body2" color="text.secondary">
-              {isSemanticSearch 
-                ? `${searchResults.length} relevant files found`
-                : `${currentFilesList.length} files • ${files.length} total`
-              }
+              {isSemanticSearch ? `${searchResults.length} relevant files found` : `${files.length} files`}
             </Typography>
           </Stack>
 
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
             {recommendationFiles.length > 0 && (
               <Button
                 variant="text"
@@ -673,26 +2323,26 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
                     <AutoAwesomeIcon />
                   </Badge>
                 }
-                onClick={() => setShowRecommendations(!showRecommendations)}
-                sx={{ opacity: 0.8 }}
+                onClick={() => setShowRecommendations((prev) => !prev)}
               >
                 AI Recommendations
               </Button>
             )}
-            <Chip
-              icon={<FileIcon />}
-              label={`${files.length} indexed`}
-              size="small"
-              variant="outlined"
-              sx={{ opacity: 0.7 }}
-            />
+            <Chip icon={<HubIcon />} label="Semantic graph" size="small" variant="outlined" />
+            <Chip icon={<FileIcon />} label={`${files.length} indexed`} size="small" variant="outlined" />
           </Stack>
         </Stack>
       </Box>
 
-      {/* AI Recommendations Panel */}
       <Collapse in={showRecommendations && recommendationFiles.length > 0}>
-        <Card sx={{ mb: 3, background: 'linear-gradient(135deg, rgba(255, 193, 7, 0.05) 0%, rgba(255, 193, 7, 0.02) 100%)', border: '1px solid rgba(255, 193, 7, 0.2)' }}>
+        <Card
+          sx={{
+            mb: 2,
+            background: 'linear-gradient(135deg, rgba(255, 193, 7, 0.05) 0%, rgba(255, 193, 7, 0.02) 100%)',
+            border: '1px solid rgba(255, 193, 7, 0.2)',
+            flexShrink: 0,
+          }}
+        >
           <CardContent sx={{ py: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
               <Stack direction="row" alignItems="center" spacing={1}>
@@ -706,17 +2356,13 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
                   sx={{ backgroundColor: 'warning.main', color: 'black', fontWeight: 500 }}
                 />
               </Stack>
-              <IconButton 
-                size="small" 
-                onClick={() => setShowRecommendations(false)}
-                sx={{ opacity: 0.7 }}
-              >
+              <IconButton size="small" onClick={() => setShowRecommendations(false)} sx={{ opacity: 0.7 }}>
                 <CloseIcon />
               </IconButton>
             </Stack>
 
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              {recommendationFiles.slice(0, 6).map((rec, index) => (
+              {recommendationFiles.slice(0, 8).map((rec, index) => (
                 <Chip
                   key={`${rec.path}-${index}`}
                   label={rec.name}
@@ -727,88 +2373,54 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
                     borderColor: 'warning.main',
                     '&:hover': {
                       backgroundColor: 'rgba(255, 193, 7, 0.1)',
-                    }
+                    },
                   }}
                 />
               ))}
-              {recommendationFiles.length > 6 && (
-                <Chip
-                  label={`+${recommendationFiles.length - 6} more`}
-                  variant="outlined"
-                  sx={{ opacity: 0.7 }}
-                />
-              )}
             </Stack>
           </CardContent>
         </Card>
       </Collapse>
 
-      {/* Main Content */}
-      <Box sx={{ flex: 1, overflow: 'auto' }}>
+      <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {isLoadingFiles ? (
-          <LoadingSkeleton type="card" />
-        ) : currentFilesList.length === 0 ? (
-          <Box sx={{ 
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minHeight: '40vh',
-            textAlign: 'center'
-          }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
+            <CircularProgress />
+          </Box>
+        ) : files.length === 0 ? (
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: '40vh',
+              textAlign: 'center',
+            }}
+          >
             <DescriptionIcon sx={{ fontSize: 96, color: 'text.secondary', mb: 3, opacity: 0.3 }} />
             <Typography variant="h5" color="text.secondary" gutterBottom sx={{ fontWeight: 300 }}>
-              {searchQuery ? 'No Files Found' : 'No Files Available'}
+              No Files Available
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3, maxWidth: 500 }}>
-              {searchQuery 
-                ? `No files match your ${isSemanticSearch ? 'semantic' : ''} search for "${searchQuery}"`
-                : 'This container doesn\'t have any files yet. Try rebuilding the index or uploading files.'
-              }
+              This container doesn&apos;t have any files yet. Try rebuilding the index or uploading files.
             </Typography>
-            <Stack direction="row" spacing={2}>
-              {searchQuery ? (
-                <Button 
-                  variant="outlined" 
-                  onClick={handleClearSearch}
-                  startIcon={<CloseIcon />}
-                >
-                  Clear Search
-                </Button>
-              ) : (
-                <Button 
-                  variant="contained" 
-                  onClick={handleRefreshFiles}
-                  startIcon={<RefreshIcon />}
-                  disabled={isRebuildingIndex}
-                >
-                  {isRebuildingIndex ? 'Rebuilding Index...' : 'Rebuild Index'}
-                </Button>
-              )}
-            </Stack>
+            <Button variant="contained" onClick={handleRefreshFiles} startIcon={<RefreshIcon />} disabled={isRebuildingIndex}>
+              {isRebuildingIndex ? 'Rebuilding Index...' : 'Rebuild Index'}
+            </Button>
           </Box>
         ) : (
-          <Box sx={{ 
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: 3,
-          }}>
-            {currentFilesList.map((file: SearchResultFile, index: number) => (
-              <FileCard
-                key={`${file.name}-${file.score || ''}`}
-                file={file}
-                onSelect={handleFileSelect}
-                onAction={handleFileAction}
-                onViewContent={handleViewContent}
-                searchScore={file.score}
-                contentPreview={file.content_preview}
-              />
-            ))}
-          </Box>
+          <SemanticGraphCanvas
+            files={files}
+            graphData={graphData}
+            semanticResults={searchResults}
+            isSemanticSearch={isSemanticSearch}
+            recommendations={recommendationFiles}
+            onOpenFile={openFile}
+          />
         )}
       </Box>
 
-      {/* Tools Menu */}
       <Menu
         anchorEl={toolsMenuAnchor}
         open={Boolean(toolsMenuAnchor)}
@@ -820,32 +2432,38 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
             border: '1px solid rgba(255,255,255,0.1)',
             background: 'rgba(26, 31, 54, 0.98)',
             backdropFilter: 'blur(20px)',
-          }
+          },
         }}
       >
-        <MenuItem onClick={() => {
-          setToolsMenuAnchor(null);
-          handleRefreshFiles();
-        }} disabled={isRebuildingIndex}>
+        <MenuItem
+          onClick={() => {
+            setToolsMenuAnchor(null);
+            handleRefreshFiles();
+          }}
+          disabled={isRebuildingIndex}
+        >
           <RefreshIcon sx={{ mr: 1, fontSize: 20 }} />
           {isRebuildingIndex ? 'Rebuilding Index...' : 'Rebuild Index'}
         </MenuItem>
         <Divider sx={{ my: 1 }} />
-        <MenuItem onClick={() => {
-          setToolsMenuAnchor(null);
-          setShowRecommendations(true);
-        }} disabled={recommendationFiles.length === 0}>
+        <MenuItem
+          onClick={() => {
+            setToolsMenuAnchor(null);
+            setShowRecommendations(true);
+          }}
+          disabled={recommendationFiles.length === 0}
+        >
           <AutoAwesomeIcon sx={{ mr: 1, fontSize: 20 }} />
           Show Recommendations
         </MenuItem>
       </Menu>
 
-      {/* File Content Dialog */}
       <FileContentDialog
         open={fileContentDialog.open}
         onClose={handleCloseFileContent}
         file={fileContentDialog.file}
         containerId={containerId}
+        allFiles={files}
         onFileUpdated={refetchFiles}
         onFileDeleted={refetchFiles}
         searchQuery={searchQuery}
@@ -855,22 +2473,32 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
         onPrevFile={handlePrevFile}
       />
 
-      {/* Notifications */}
       <Snackbar
         open={rebuildNotification.open}
         autoHideDuration={6000}
-        onClose={() => setRebuildNotification(prev => ({ ...prev, open: false }))}
+        onClose={() => setRebuildNotification((prev) => ({ ...prev, open: false }))}
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <Alert 
-          severity={rebuildNotification.severity} 
-          onClose={() => setRebuildNotification(prev => ({ ...prev, open: false }))}
+        <Alert
+          severity={rebuildNotification.severity}
+          onClose={() => setRebuildNotification((prev) => ({ ...prev, open: false }))}
           variant="filled"
           sx={{ width: '100%' }}
         >
           {rebuildNotification.message}
         </Alert>
       </Snackbar>
+
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={4000}
+        onClose={closeNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert severity={notification.severity} onClose={closeNotification} variant="filled" sx={{ width: '100%' }}>
+          {notification.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
-};
+}

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiFile, ChatRequest, CreateContainerRequest, OcrProcessRequest, RecommendationEvent, SearchRequest, User } from '../api/client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const useContainers = () => {
   return useQuery({
@@ -31,7 +31,7 @@ export const useChatWithBot = () => {
 
 export const useCreateContainer = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (data: CreateContainerRequest) => apiClient.createContainer(data),
     onSuccess: () => {
@@ -52,7 +52,7 @@ export const useGetUser = () => {
 }
 
 export const useFileContent = (containerId: string, fileId: string) => {
-  return useQuery({ 
+  return useQuery({
     queryKey: ['fileContent', containerId, fileId],
     queryFn: async () => {
       try {
@@ -73,7 +73,7 @@ export const useFileContent = (containerId: string, fileId: string) => {
 
 export const useDeleteContainer = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (containerId: string) => apiClient.deleteContainer(containerId),
     onSuccess: () => {
@@ -84,13 +84,35 @@ export const useDeleteContainer = () => {
 
 export const useRestartContainer = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (containerId: string) => apiClient.restartContainer(containerId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['containers'] });
     },
   });
+};
+
+export const useNotifications = () => {
+  const [notification, setNotification] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info' | 'warning';
+  }>({
+    open: false,
+    message: '',
+    severity: 'info',
+  });
+
+  const addNotification = useCallback((n: { open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }) => {
+    setNotification(n);
+  }, []);
+
+  const closeNotification = useCallback(() => {
+    setNotification((prev) => ({ ...prev, open: false }));
+  }, []);
+
+  return { addNotification, notification, closeNotification };
 };
 
 export const useFiles = (containerId: string | undefined) => {
@@ -119,11 +141,11 @@ export const useFilesRebuildIndex = (containerId: string | undefined) => {
 
 export const useUploadFile = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: ({ containerId, file }: { 
-      containerId: string; 
-      file: File; 
+    mutationFn: ({ containerId, file }: {
+      containerId: string;
+      file: File;
     }) => apiClient.uploadFile(containerId, file),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['files', variables.containerId] });
@@ -135,7 +157,7 @@ export const useDownloadFile = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ container_id, file}: {
+    mutationFn: ({ container_id, file }: {
       container_id: string,
       file: ApiFile;
     }) => apiClient.downloadFile(file.name, container_id)
@@ -144,7 +166,7 @@ export const useDownloadFile = () => {
 
 export const useDeleteFile = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ fileId, containerId }: { fileId: string; containerId: string }) =>
       apiClient.deleteFile(fileId, containerId),
@@ -184,9 +206,9 @@ export const useRecommendationsStream = (
   const [isConnected, setIsConnected] = useState(false);
   const [streamId, setStreamId] = useState<string | null>(null);
   const disconnectRef = useRef<(() => void) | null>(null);
-  
+
   const callbacksRef = useRef({ onPathsUpdate, onComplete, onError });
-  
+
   useEffect(() => {
     callbacksRef.current = { onPathsUpdate, onComplete, onError };
   }, [onPathsUpdate, onComplete, onError]);
@@ -211,7 +233,7 @@ export const useRecommendationsStream = (
             const unique = Array.from(new Set(combined));
             return unique;
           });
-          
+
           if (callbacksRef.current.onPathsUpdate) {
             callbacksRef.current.onPathsUpdate(newPaths, event);
           }
