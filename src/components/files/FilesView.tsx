@@ -21,6 +21,12 @@ import {
   ListItemButton,
   Divider,
   Badge,
+  Collapse,
+  Menu,
+  MenuItem,
+  Stack,
+  Card,
+  CardContent,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -28,12 +34,14 @@ import {
   Refresh as RefreshIcon,
   Description as DescriptionIcon,
   SmartToy as SemanticSearchIcon,
-  Cached as RebuildIndexIcon,
-  ChevronLeft as ChevronLeftIcon,
-  ChevronRight as ChevronRightIcon,
-  Lightbulb as LightbulbIcon,
+  Tune as TuneIcon,
   AutoAwesome as AutoAwesomeIcon,
   InsertDriveFile as FileIcon,
+  Settings as SettingsIcon,
+  FilterList as FilterListIcon,
+  Lightbulb as LightbulbIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import { useFiles, useSemanticSearch, useRecommendationsStream } from '../../hooks/useApi';
 import { useNotifications } from '../../hooks/useNotifications';
@@ -65,8 +73,6 @@ const SEARCH_SUGGESTIONS = [
   'API endpoints', 
   'configuration'
 ];
-
-const DRAWER_WIDTH = 320;
 
 export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
   const { data: files = [], isLoading: isLoadingFiles, refetch: refetchFiles } = useFiles(containerId);
@@ -109,8 +115,10 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
   const [searchResults, setSearchResults] = useState<SearchResultFile[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // State for file operations
+  // State for UI
   const [isRebuildingIndex, setIsRebuildingIndex] = useState(false);
+  const [toolsMenuAnchor, setToolsMenuAnchor] = useState<null | HTMLElement>(null);
+  const [showRecommendations, setShowRecommendations] = useState(false);
   const [rebuildNotification, setRebuildNotification] = useState<{
     open: boolean;
     message: string;
@@ -120,9 +128,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     message: '',
     severity: 'info',
   });
-
-  // State for recommendations drawer
-  const [isRecommendationsOpen, setIsRecommendationsOpen] = useState(false);
 
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -375,7 +380,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
 
   const handleRecommendationClick = useCallback(async (recommendation: RecommendationFile) => {
     try {
-      // Создаем объект файла для рекомендации
       const recommendedFile: ApiFile = {
         path: recommendation.path,
         name: recommendation.name,
@@ -386,7 +390,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
         mime_type: 'text/plain',
       };
 
-      // Открываем диалог с содержимым файла
       setFileContentDialog({
         open: true,
         file: recommendedFile,
@@ -454,203 +457,59 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [fileContentDialog.open, handleNextFile, handlePrevFile]);
 
-  // Show recommendations when they arrive
+  // Auto-show recommendations
   useEffect(() => {
-    if (recommendationFiles.length > 0 && !isRecommendationsOpen) {
-      setIsRecommendationsOpen(true);
+    if (recommendationFiles.length > 0) {
+      setShowRecommendations(true);
     }
-  }, [recommendationFiles.length, isRecommendationsOpen]);
+  }, [recommendationFiles.length]);
 
   if (!containerId) {
     return (
-      <Box sx={{ textAlign: 'center', py: 8 }}>
-        <DescriptionIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-        <Typography variant="h6" color="text.secondary" gutterBottom>
+      <Box sx={{ 
+        display: 'flex', 
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '60vh',
+        textAlign: 'center'
+      }}>
+        <DescriptionIcon sx={{ fontSize: 96, color: 'text.secondary', mb: 3, opacity: 0.3 }} />
+        <Typography variant="h4" color="text.secondary" gutterBottom sx={{ fontWeight: 300 }}>
           No Container Selected
         </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Please select a container to view its files
+        <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 400 }}>
+          Please select a container from the sidebar to view and manage its files
         </Typography>
       </Box>
     );
   }
 
   return (
-    <Box sx={{ display: 'flex', height: '100%' }}>
-      {/* Recommendations Drawer */}
-      <Drawer
-        variant="persistent"
-        anchor="left"
-        open={isRecommendationsOpen}
-        sx={{
-          width: isRecommendationsOpen ? DRAWER_WIDTH : 0,
-          flexShrink: 0,
-          '& .MuiDrawer-paper': {
-            width: DRAWER_WIDTH,
-            boxSizing: 'border-box',
-            position: 'relative',
-            background: 'linear-gradient(135deg, rgba(26, 31, 54, 0.95) 0%, rgba(26, 31, 54, 0.9) 100%)',
-            backdropFilter: 'blur(20px)',
-            borderRight: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRadius: '0 12px 12px 0',
-          },
-        }}
-      >
-        <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <AutoAwesomeIcon sx={{ color: 'primary.main' }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Recommendations
-              </Typography>
-            </Box>
-            <IconButton 
-              size="small" 
-              onClick={() => setIsRecommendationsOpen(false)}
-              sx={{ opacity: 0.7 }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </Box>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Box 
-              sx={{ 
-                width: 8, 
-                height: 8, 
-                borderRadius: '50%', 
-                backgroundColor: isRecommendationsConnected ? 'success.main' : 'warning.main',
-                animation: isRecommendationsConnected ? 'pulse 2s infinite' : 'none',
-                '@keyframes pulse': {
-                  '0%': { opacity: 1 },
-                  '50%': { opacity: 0.5 },
-                  '100%': { opacity: 1 },
-                }
-              }} 
-            />
-            <Typography variant="caption" color="text.secondary">
-              {isRecommendationsConnected ? 'Listening for recommendations' : 'Disconnected'}
-            </Typography>
-          </Box>
-        </Box>
-
-        <Box sx={{ flex: 1, overflow: 'auto' }}>
-          {recommendationFiles.length === 0 ? (
-            <Box sx={{ p: 3, textAlign: 'center' }}>
-              <LightbulbIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2, opacity: 0.5 }} />
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                No recommendations yet
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Recommendations will appear here when you read files or perform semantic searches
-              </Typography>
-            </Box>
-          ) : (
-            <List sx={{ p: 1 }}>
-              {recommendationFiles.map((recommendation, index) => (
-                <ListItem key={`${recommendation.path}-${index}`} disablePadding sx={{ mb: 0.5 }}>
-                  <ListItemButton
-                    onClick={() => handleRecommendationClick(recommendation)}
-                    sx={{
-                      borderRadius: 2,
-                      '&:hover': {
-                        backgroundColor: 'rgba(115, 103, 240, 0.1)',
-                      },
-                      border: '1px solid rgba(255, 255, 255, 0.05)',
-                      mb: 0.5,
-                    }}
-                  >
-                    <ListItemIcon sx={{ minWidth: 36 }}>
-                      <FileIcon sx={{ fontSize: 20, color: 'primary.main' }} />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={
-                        <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
-                          {recommendation.name}
-                        </Typography>
-                      }
-                      secondary={
-                        <Typography variant="caption" color="text.secondary" noWrap>
-                          {recommendation.path}
-                        </Typography>
-                      }
-                    />
-                    <Chip
-                      label="AI"
-                      size="small"
-                      sx={{
-                        height: 20,
-                        fontSize: '0.6rem',
-                        backgroundColor: 'primary.main',
-                        color: 'white',
-                      }}
-                    />
-                  </ListItemButton>
-                </ListItem>
-              ))}
-            </List>
-          )}
-        </Box>
-
-        {recommendationFiles.length > 0 && (
-          <Box sx={{ p: 2, borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
-            <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', display: 'block' }}>
-              {recommendationFiles.length} recommended file{recommendationFiles.length !== 1 ? 's' : ''}
-            </Typography>
-          </Box>
-        )}
-      </Drawer>
-
-      {/* Main Content */}
-      <Box sx={{ flex: 1, transition: 'margin 0.3s', ml: isRecommendationsOpen ? 0 : 0 }}>
-        {/* Notifications */}
-        <Snackbar
-          open={rebuildNotification.open}
-          autoHideDuration={6000}
-          onClose={() => setRebuildNotification(prev => ({ ...prev, open: false }))}
-          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-        >
-          <Alert 
-            severity={rebuildNotification.severity} 
-            onClose={() => setRebuildNotification(prev => ({ ...prev, open: false }))}
-            variant="filled"
-            sx={{ width: '100%' }}
-          >
-            {rebuildNotification.message}
-          </Alert>
-        </Snackbar>
-
-        {/* Header Controls */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, p: 2 }}>
-          {/* Recommendations Toggle Button */}
-          <Button
-            variant="outlined"
-            startIcon={
-              <Badge badgeContent={recommendationFiles.length} color="primary">
-                <AutoAwesomeIcon />
-              </Badge>
-            }
-            onClick={() => setIsRecommendationsOpen(!isRecommendationsOpen)}
-            sx={{ mr: 2 }}
-          >
-            Recommendations
-          </Button>
-
-          {/* Search Form */}
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Enhanced Header */}
+      <Box sx={{ 
+        mb: 3,
+        p: 3,
+        background: 'linear-gradient(135deg, rgba(115, 103, 240, 0.05) 0%, rgba(115, 103, 240, 0.02) 100%)',
+        borderRadius: 3,
+        border: '1px solid rgba(115, 103, 240, 0.1)',
+      }}>
+        {/* Main Search Bar */}
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 2, 
+          mb: 2,
+          position: 'relative'
+        }}>
           <Box 
             component="form" 
             onSubmit={(e) => {
               e.preventDefault();
               handleSearchSubmit();
             }}
-            sx={{ 
-              position: 'relative',
-              maxWidth: 600,
-              flex: 1,
-              mr: 2,
-              display: 'flex',
-              gap: 1
-            }}
+            sx={{ flex: 1, position: 'relative' }}
           >
             <TextField
               fullWidth
@@ -659,7 +518,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
               onKeyPress={handleKeyPress}
               onFocus={() => setIsSearchFocused(true)}
               onBlur={() => setIsSearchFocused(false)}
-              placeholder="Search files semantically by content..."
+              placeholder="Search files by content, name, or path..."
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -671,258 +530,347 @@ export const FilesView: React.FC<FilesViewProps> = ({ containerId }) => {
                     />
                   </InputAdornment>
                 ),
-                endAdornment: searchQuery && (
+                endAdornment: (
                   <InputAdornment position="end">
-                    <IconButton 
-                      size="small" 
-                      onClick={handleClearSearch}
-                      sx={{ opacity: 0.6 }}
-                    >
-                      <CloseIcon fontSize="small" />
-                    </IconButton>
+                    <Stack direction="row" spacing={0.5} alignItems="center">
+                      {searchQuery && (
+                        <IconButton 
+                          size="small" 
+                          onClick={handleClearSearch}
+                          sx={{ opacity: 0.6 }}
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                      <Button
+                        variant="contained"
+                        onClick={handleSearchSubmit}
+                        disabled={!searchQuery.trim() || isSearching}
+                        size="small"
+                        sx={{ 
+                          minWidth: '80px',
+                          height: 32,
+                        }}
+                      >
+                        {isSearching ? (
+                          <CircularProgress size={16} sx={{ color: 'white' }} />
+                        ) : (
+                          'Search'
+                        )}
+                      </Button>
+                    </Stack>
                   </InputAdornment>
                 ),
                 sx: {
-                  borderRadius: 2,
+                  borderRadius: 3,
                   backgroundColor: 'background.paper',
-                  transition: 'all 0.2s ease',
-                  '&:hover': {
-                    boxShadow: '0 2px 12px 0 rgba(0,0,0,0.15)',
-                  },
-                  ...(isSearchFocused && {
-                    boxShadow: '0 2px 16px 0 rgba(115, 103, 240, 0.15)',
-                    borderColor: 'primary.main',
-                  })
+                  '& .MuiOutlinedInput-root': {
+                    '&:hover': {
+                      boxShadow: '0 4px 20px 0 rgba(115, 103, 240, 0.1)',
+                    },
+                    '&.Mui-focused': {
+                      boxShadow: '0 4px 20px 0 rgba(115, 103, 240, 0.15)',
+                    }
+                  }
                 }
               }}
             />
-            
-            <Button
-              variant="contained"
-              onClick={handleSearchSubmit}
-              disabled={!searchQuery.trim() || isSearching}
-              startIcon={isSearching ? <CircularProgress size={20} /> : <SearchIcon />}
-              sx={{ 
-                minWidth: '120px',
-                borderRadius: 2
-              }}
-            >
-              {isSearching ? 'Searching...' : 'Search'}
-            </Button>
-            
-            {/* Search Suggestions */}
-            <Fade in={isSearchFocused && searchQuery.length > 0}>
-              <Box sx={{ 
+
+            {/* Enhanced Search Suggestions */}
+            <Fade in={isSearchFocused && searchQuery.length === 0}>
+              <Paper sx={{ 
                 position: 'absolute',
                 top: '100%',
                 left: 0,
                 right: 0,
                 mt: 1,
-                p: 2,
-                backgroundColor: 'background.paper',
+                p: 2.5,
                 borderRadius: 2,
-                boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
+                boxShadow: '0 8px 40px rgba(0,0,0,0.12)',
                 border: '1px solid rgba(255,255,255,0.08)',
-                zIndex: 1000
+                zIndex: 1000,
+                background: 'rgba(26, 31, 54, 0.98)',
+                backdropFilter: 'blur(20px)',
               }}>
-                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block', fontSize: '0.75rem' }}>
-                  Semantic Search - finds files by meaning and context
+                <Typography variant="body2" sx={{ mb: 2, opacity: 0.8, fontWeight: 500 }}>
+                  🧠 AI-Powered Semantic Search
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-                  {SEARCH_SUGGESTIONS.map((filter) => (
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
+                  Find files by meaning and context, not just keywords
+                </Typography>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  {SEARCH_SUGGESTIONS.map((suggestion) => (
                     <Chip
-                      key={filter}
-                      label={filter}
+                      key={suggestion}
+                      label={suggestion}
                       size="small"
+                      variant="outlined"
                       clickable
                       onClick={() => {
-                        setSearchQuery(filter);
-                        handleSemanticSearch(filter);
+                        setSearchQuery(suggestion);
+                        handleSemanticSearch(suggestion);
                       }}
-                      variant="outlined"
-                      sx={{ fontSize: '0.7rem', height: 24 }}
+                      sx={{ 
+                        fontSize: '0.75rem',
+                        '&:hover': {
+                          backgroundColor: 'rgba(115, 103, 240, 0.1)',
+                          borderColor: 'primary.main'
+                        }
+                      }}
                     />
                   ))}
-                </Box>
-              </Box>
+                </Stack>
+              </Paper>
             </Fade>
           </Box>
 
-          {/* Refresh Button */}
-          <Tooltip title="Rebuild file index and refresh">
-            <span>
-              <Button 
-                startIcon={isRebuildingIndex ? <CircularProgress size={20} /> : <RefreshIcon />}
-                onClick={handleRefreshFiles}
-                variant="outlined"
-                size="medium"
-                disabled={isRebuildingIndex}
-                sx={{
-                  position: 'relative',
-                  '&:hover': {
-                    backgroundColor: 'primary.light',
-                    color: 'white',
-                  }
-                }}
-              >
-                {isRebuildingIndex ? 'Rebuilding...' : 'Refresh'}
-              </Button>
-            </span>
-          </Tooltip>
+          {/* Tools Menu */}
+          <Button
+            variant="outlined"
+            startIcon={<TuneIcon />}
+            onClick={(e) => setToolsMenuAnchor(e.currentTarget)}
+            sx={{
+              borderRadius: 2,
+              px: 3,
+              '&:hover': {
+                backgroundColor: 'rgba(115, 103, 240, 0.1)',
+                borderColor: 'primary.main'
+              }
+            }}
+          >
+            Tools
+          </Button>
         </Box>
 
-        {/* Info Panel */}
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          mb: 2,
-          mx: 2,
-          p: 2,
-          backgroundColor: 'rgba(0,0,0,0.1)',
-          borderRadius: 2,
-          border: '1px solid rgba(255,255,255,0.08)'
-        }}>
-          <Box>
-            <Typography variant="body2" color="text.secondary">
-              {isSemanticSearch 
-                ? `Semantic search results`
-                : `Showing ${currentFilesList.length} of ${files.length} files`
-              }
-            </Typography>
+        {/* Status Bar */}
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center">
             {isSemanticSearch && (
               <Chip 
-                label="Semantic Search" 
+                icon={<SemanticSearchIcon />}
+                label="Semantic Search Active" 
                 size="small" 
                 color="primary" 
-                variant="outlined"
-                icon={<SemanticSearchIcon />}
-                sx={{ mt: 0.5 }}
+                variant="filled"
+                sx={{ fontWeight: 500 }}
               />
             )}
-          </Box>
-          
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Tooltip title="Last refresh: Click to rebuild index">
-              <Chip
-                icon={<RebuildIndexIcon />}
-                label={`Index: ${files.length} files`}
+            <Typography variant="body2" color="text.secondary">
+              {isSemanticSearch 
+                ? `${searchResults.length} relevant files found`
+                : `${currentFilesList.length} files • ${files.length} total`
+              }
+            </Typography>
+          </Stack>
+
+          <Stack direction="row" spacing={1} alignItems="center">
+            {recommendationFiles.length > 0 && (
+              <Button
+                variant="text"
                 size="small"
-                variant="outlined"
-                onClick={handleRefreshFiles}
-                clickable
-              />
-            </Tooltip>
-          </Box>
-        </Box>
+                startIcon={
+                  <Badge badgeContent={recommendationFiles.length} color="primary">
+                    <AutoAwesomeIcon />
+                  </Badge>
+                }
+                onClick={() => setShowRecommendations(!showRecommendations)}
+                sx={{ opacity: 0.8 }}
+              >
+                AI Recommendations
+              </Button>
+            )}
+            <Chip
+              icon={<FileIcon />}
+              label={`${files.length} indexed`}
+              size="small"
+              variant="outlined"
+              sx={{ opacity: 0.7 }}
+            />
+          </Stack>
+        </Stack>
+      </Box>
 
-        {/* Search Results Info */}
-        {searchQuery && (
-          <Box sx={{ mb: 2, mx: 2, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Typography variant="body2" color="text.secondary">
-              {isSemanticSearch 
-                ? `Found ${searchResults.length} semantically relevant files for "${searchQuery}"`
-                : `Found ${filteredFiles.length} files for "${searchQuery}"`
+      {/* AI Recommendations Panel */}
+      <Collapse in={showRecommendations && recommendationFiles.length > 0}>
+        <Card sx={{ mb: 3, background: 'linear-gradient(135deg, rgba(255, 193, 7, 0.05) 0%, rgba(255, 193, 7, 0.02) 100%)', border: '1px solid rgba(255, 193, 7, 0.2)' }}>
+          <CardContent sx={{ py: 2 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <AutoAwesomeIcon sx={{ color: 'warning.main' }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  AI Recommendations
+                </Typography>
+                <Chip
+                  size="small"
+                  label={`${recommendationFiles.length} files`}
+                  sx={{ backgroundColor: 'warning.main', color: 'black', fontWeight: 500 }}
+                />
+              </Stack>
+              <IconButton 
+                size="small" 
+                onClick={() => setShowRecommendations(false)}
+                sx={{ opacity: 0.7 }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Stack>
+
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {recommendationFiles.slice(0, 6).map((rec, index) => (
+                <Chip
+                  key={`${rec.path}-${index}`}
+                  label={rec.name}
+                  clickable
+                  onClick={() => handleRecommendationClick(rec)}
+                  variant="outlined"
+                  sx={{
+                    borderColor: 'warning.main',
+                    '&:hover': {
+                      backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                    }
+                  }}
+                />
+              ))}
+              {recommendationFiles.length > 6 && (
+                <Chip
+                  label={`+${recommendationFiles.length - 6} more`}
+                  variant="outlined"
+                  sx={{ opacity: 0.7 }}
+                />
+              )}
+            </Stack>
+          </CardContent>
+        </Card>
+      </Collapse>
+
+      {/* Main Content */}
+      <Box sx={{ flex: 1, overflow: 'auto' }}>
+        {isLoadingFiles ? (
+          <LoadingSkeleton type="card" />
+        ) : currentFilesList.length === 0 ? (
+          <Box sx={{ 
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '40vh',
+            textAlign: 'center'
+          }}>
+            <DescriptionIcon sx={{ fontSize: 96, color: 'text.secondary', mb: 3, opacity: 0.3 }} />
+            <Typography variant="h5" color="text.secondary" gutterBottom sx={{ fontWeight: 300 }}>
+              {searchQuery ? 'No Files Found' : 'No Files Available'}
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 3, maxWidth: 500 }}>
+              {searchQuery 
+                ? `No files match your ${isSemanticSearch ? 'semantic' : ''} search for "${searchQuery}"`
+                : 'This container doesn\'t have any files yet. Try rebuilding the index or uploading files.'
               }
             </Typography>
-            {isSemanticSearch && (
-              <Chip 
-                label="Semantic Search" 
-                size="small" 
-                color="primary" 
-                variant="outlined"
-                icon={<SemanticSearchIcon />}
-              />
-            )}
-            <Button 
-              size="small" 
-              onClick={handleClearSearch}
-              startIcon={<CloseIcon />}
-              sx={{ minWidth: 'auto', p: 0.5 }}
-            >
-              Clear
-            </Button>
-          </Box>
-        )}
-
-        {/* Main Content Area */}
-        <Box sx={{ px: 2 }}>
-          {isLoadingFiles ? (
-            <LoadingSkeleton type="card" />
-          ) : currentFilesList.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 8 }}>
-              <DescriptionIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                {searchQuery ? 'No Files Found' : 'No Files Found'}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {searchQuery 
-                  ? `No files match your ${isSemanticSearch ? 'semantic' : ''} search for "${searchQuery}"`
-                  : 'This container doesn\'t have any files yet. Try rebuilding the index or uploading files.'
-                }
-              </Typography>
-              {!searchQuery && (
+            <Stack direction="row" spacing={2}>
+              {searchQuery ? (
+                <Button 
+                  variant="outlined" 
+                  onClick={handleClearSearch}
+                  startIcon={<CloseIcon />}
+                >
+                  Clear Search
+                </Button>
+              ) : (
                 <Button 
                   variant="contained" 
                   onClick={handleRefreshFiles}
                   startIcon={<RefreshIcon />}
-                  sx={{ mt: 2 }}
                   disabled={isRebuildingIndex}
                 >
-                  {isRebuildingIndex ? 'Rebuilding...' : 'Rebuild Index'}
+                  {isRebuildingIndex ? 'Rebuilding Index...' : 'Rebuild Index'}
                 </Button>
               )}
-              {searchQuery && (
-                <Button 
-                  variant="outlined" 
-                  onClick={handleClearSearch}
-                  sx={{ mt: 2 }}
-                >
-                  Clear Search
-                </Button>
-              )}
-            </Box>
-          ) : (
-            <Box sx={{ 
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: 3,
-              width: '100%'
-            }}>
-              {currentFilesList.map((file: SearchResultFile, index: number) => (
-                <FileCard
-                  key={`${file.name}-${file.score || ''}`}
-                  file={file}
-                  onSelect={handleFileSelect}
-                  onAction={handleFileAction}
-                  onViewContent={handleViewContent}
-                  searchScore={file.score}
-                  contentPreview={file.content_preview}
-                />
-              ))}
-            </Box>
-          )}
-        </Box>
-
-        {/* File Content Dialog */}
-        <FileContentDialog
-          open={fileContentDialog.open}
-          onClose={handleCloseFileContent}
-          file={fileContentDialog.file}
-          containerId={containerId}
-          onFileUpdated={() => {
-            handleRefreshFiles();
-          }}
-          onFileDeleted={() => {
-            handleRefreshFiles();
-          }}
-          searchQuery={searchQuery}
-          currentFileIndex={fileContentDialog.currentIndex}
-          totalFiles={currentFilesList.length}
-          onNextFile={handleNextFile}
-          onPrevFile={handlePrevFile}
-        />
+            </Stack>
+          </Box>
+        ) : (
+          <Box sx={{ 
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: 3,
+          }}>
+            {currentFilesList.map((file: SearchResultFile, index: number) => (
+              <FileCard
+                key={`${file.name}-${file.score || ''}`}
+                file={file}
+                onSelect={handleFileSelect}
+                onAction={handleFileAction}
+                onViewContent={handleViewContent}
+                searchScore={file.score}
+                contentPreview={file.content_preview}
+              />
+            ))}
+          </Box>
+        )}
       </Box>
+
+      {/* Tools Menu */}
+      <Menu
+        anchorEl={toolsMenuAnchor}
+        open={Boolean(toolsMenuAnchor)}
+        onClose={() => setToolsMenuAnchor(null)}
+        PaperProps={{
+          sx: {
+            mt: 1,
+            borderRadius: 2,
+            border: '1px solid rgba(255,255,255,0.1)',
+            background: 'rgba(26, 31, 54, 0.98)',
+            backdropFilter: 'blur(20px)',
+          }
+        }}
+      >
+        <MenuItem onClick={() => {
+          setToolsMenuAnchor(null);
+          handleRefreshFiles();
+        }} disabled={isRebuildingIndex}>
+          <RefreshIcon sx={{ mr: 1, fontSize: 20 }} />
+          {isRebuildingIndex ? 'Rebuilding Index...' : 'Rebuild Index'}
+        </MenuItem>
+        <Divider sx={{ my: 1 }} />
+        <MenuItem onClick={() => {
+          setToolsMenuAnchor(null);
+          setShowRecommendations(true);
+        }} disabled={recommendationFiles.length === 0}>
+          <AutoAwesomeIcon sx={{ mr: 1, fontSize: 20 }} />
+          Show Recommendations
+        </MenuItem>
+      </Menu>
+
+      {/* File Content Dialog */}
+      <FileContentDialog
+        open={fileContentDialog.open}
+        onClose={handleCloseFileContent}
+        file={fileContentDialog.file}
+        containerId={containerId}
+        onFileUpdated={refetchFiles}
+        onFileDeleted={refetchFiles}
+        searchQuery={searchQuery}
+        currentFileIndex={fileContentDialog.currentIndex}
+        totalFiles={currentFilesList.length}
+        onNextFile={handleNextFile}
+        onPrevFile={handlePrevFile}
+      />
+
+      {/* Notifications */}
+      <Snackbar
+        open={rebuildNotification.open}
+        autoHideDuration={6000}
+        onClose={() => setRebuildNotification(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert 
+          severity={rebuildNotification.severity} 
+          onClose={() => setRebuildNotification(prev => ({ ...prev, open: false }))}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {rebuildNotification.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

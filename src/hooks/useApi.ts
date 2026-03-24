@@ -101,6 +101,14 @@ export const useFiles = (containerId: string | undefined) => {
   });
 };
 
+export const useGetSemanticGraph = (containerId: string) => {
+  return useQuery({
+    queryKey: ['semanticGraph', containerId],
+    queryFn: () => apiClient.getSemanticGraph(containerId),
+    enabled: !!containerId,
+  });
+};
+
 export const useFilesRebuildIndex = (containerId: string | undefined) => {
   return useQuery({
     queryKey: ['files', containerId],

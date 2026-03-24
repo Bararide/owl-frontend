@@ -112,6 +112,12 @@ export interface User {
   role: string;
 }
 
+export interface SemanticGraph {
+  from: string;
+  to: string;
+  score: number
+}
+
 export interface OcrProcessResponse {
   text: string;
   confidence: number;
@@ -177,77 +183,75 @@ class ApiClient {
     return headers;
   }
 
-connectToRecommendationsStream(
-  containerId: string,
-  callbacks: RecommendationStreamCallbacks
-): () => void {
-  if (!this.token) {
-    throw new Error('No token set');
-  }
+  connectToRecommendationsStream(
+    containerId: string,
+    callbacks: RecommendationStreamCallbacks
+  ): () => void {
+    if (!this.token) {
+      throw new Error('No token set');
+    }
 
-  const url = `${API_BASE_URL}/recommendations/stream?container_id=${containerId}`;
-  const controller = new AbortController();
+    const url = `${API_BASE_URL}/recommendations/stream?container_id=${containerId}`;
+    const controller = new AbortController();
 
-  // НЕ ЖДЕМ, ЗАПУСКАЕМ АСИНХРОННО
-  fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${this.token}`,
-      'Accept': 'text/event-stream',
-    },
-    signal: controller.signal,
-  })
-    .then(response => {
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+    fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Accept': 'text/event-stream',
+      },
+      signal: controller.signal,
+    })
+      .then(response => {
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-      const read = async () => {
-        while (true) {
-          const { done, value } = await reader!.read();
-          if (done) break;
+        const read = async () => {
+          while (true) {
+            const { done, value } = await reader!.read();
+            if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n\n');
-          buffer = lines.pop() || '';
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n\n');
+            buffer = lines.pop() || '';
 
-          for (const line of lines) {
-            if (line.startsWith('data:')) {
-              try {
-                const data = JSON.parse(line.slice(5));
-                if (data.paths && callbacks.onPathsUpdate) {
-                  callbacks.onPathsUpdate(data.paths, data);
+            for (const line of lines) {
+              if (line.startsWith('data:')) {
+                try {
+                  const data = JSON.parse(line.slice(5));
+                  if (data.paths && callbacks.onPathsUpdate) {
+                    callbacks.onPathsUpdate(data.paths, data);
+                  }
+                } catch (e) {
+                  console.error('Error parsing SSE data:', e);
                 }
-              } catch (e) {
-                console.error('Error parsing SSE data:', e);
-              }
-            } else if (line.startsWith('event: connected')) {
-              try {
-                const data = JSON.parse(line.slice(14));
-                if (callbacks.onConnected) {
-                  callbacks.onConnected(data.stream_id);
+              } else if (line.startsWith('event: connected')) {
+                try {
+                  const data = JSON.parse(line.slice(14));
+                  if (callbacks.onConnected) {
+                    callbacks.onConnected(data.stream_id);
+                  }
+                } catch (e) {
+                  console.error('Error parsing connected event:', e);
                 }
-              } catch (e) {
-                console.error('Error parsing connected event:', e);
+              } else if (line.startsWith('event: end')) {
+                callbacks.onComplete?.([], {} as RecommendationEvent);
+                controller.abort();
               }
-            } else if (line.startsWith('event: end')) {
-              callbacks.onComplete?.([], {} as RecommendationEvent);
-              controller.abort();
             }
           }
-        }
-      };
+        };
 
-      read();
-    })
-    .catch(error => {
-      callbacks.onError?.(error);
-    });
+        read();
+      })
+      .catch(error => {
+        callbacks.onError?.(error);
+      });
 
-  // ВОЗВРАЩАЕМ СИНХРОННО функцию отмены
-  return () => {
-    controller.abort();
-  };
-}
+    return () => {
+      controller.abort();
+    };
+  }
 
   async getRecommendationsBlocking(
     containerId: string,
@@ -287,11 +291,19 @@ connectToRecommendationsStream(
   }
 
   async getUser(): Promise<User> {
-    const response = await this.client.get<{data: User}>('/user', {
+    const response = await this.client.get<{data: User}>('/auth/user', {
       headers: this.getAuthHeaders()
     });
     return response.data.data;
   }
+
+async getSemanticGraph(containerId: string): Promise<SemanticGraph> {
+  const response = await this.client.get<{ data: SemanticGraph }>('/search/graph', {
+    headers: this.getAuthHeaders(),
+    params: { container_id: containerId }
+  });
+  return response.data.data;
+}
 
   async getContainers(): Promise<Container[]> {
     const response = await this.client.get<{ data: Container[] }>('/containers', {
