@@ -1439,8 +1439,10 @@ const SemanticGraphCanvas: React.FC<{
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
-  // Добавляем ref для предотвращения бесконечных обновлений
-  const isResizingRef = useRef(false);
+  
+  // Фиксированный размер виртуального холста
+  const WORLD_SIZE = 2000;
+  const WORLD_CENTER = WORLD_SIZE / 2;
 
   const graph = useMemo(() => {
     const normalized = normalizeGraph(files, graphData);
@@ -1460,86 +1462,58 @@ const SemanticGraphCanvas: React.FC<{
 
   const recommendationSet = useMemo(() => new Set(recommendations.map((r) => r.path)), [recommendations]);
 
-  // Исправленный useEffect для начальной инициализации позиций узлов
+  // Инициализация позиций узлов
   useEffect(() => {
-    const container = containerRef.current;
-    const canvas = canvasRef.current;
-    if (!container || !canvas) return;
+    const nodes = graph.nodes;
+    if (nodes.length === 0) return;
 
+    const needsInit = nodes.some(node => typeof node.x !== 'number' || typeof node.y !== 'number');
+    if (!needsInit) return;
+
+    const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length)));
+    const spacing = WORLD_SIZE / (cols + 2);
+    const startOffset = spacing;
+
+    nodes.forEach((node, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      node.x = startOffset + col * spacing;
+      node.y = startOffset + row * spacing;
+      node.vx = 0;
+      node.vy = 0;
+    });
+  }, [graph.nodes]);
+
+  // Обновление размера canvas - только при изменении размера окна
+  useEffect(() => {
     const updateCanvasSize = () => {
+      const container = containerRef.current;
+      const canvas = canvasRef.current;
+      if (!container || !canvas) return;
+      
       const rect = container.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
       
-      const dpr = window.devicePixelRatio || 1;
-      const newWidth = Math.floor(rect.width * dpr);
-      const newHeight = Math.floor(rect.height * dpr);
-      
-      if (canvas.width !== newWidth || canvas.height !== newHeight) {
-        canvas.width = newWidth;
-        canvas.height = newHeight;
-        canvas.style.width = `${rect.width}px`;
-        canvas.style.height = `${rect.height}px`;
-      }
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
     };
 
     updateCanvasSize();
-
-    const nodes = graph.nodes;
-    const rect = container.getBoundingClientRect();
-    const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length || 1)));
-    const spacingX = rect.width / Math.max(2, cols);
-    const spacingY = rect.height / Math.max(2, cols);
-
-    nodes.forEach((node, index) => {
-      if (typeof node.x !== 'number' || typeof node.y !== 'number') {
-        const col = index % cols;
-        const row = Math.floor(index / cols);
-        node.x = spacingX * (col + 1) + (Math.random() - 0.5) * 50;
-        node.y = spacingY * (row + 1) + (Math.random() - 0.5) * 50;
-        node.vx = 0;
-        node.vy = 0;
-      }
-    });
-
-    // Исправленный ResizeObserver с debounce и флагом
-    let resizeTimeout: NodeJS.Timeout;
-    const resizeObserver = new ResizeObserver(() => {
-      if (isResizingRef.current) return;
-      
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        isResizingRef.current = true;
-        requestAnimationFrame(() => {
-          const rect = container.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) {
-            const dpr = window.devicePixelRatio || 1;
-            const newWidth = Math.floor(rect.width * dpr);
-            const newHeight = Math.floor(rect.height * dpr);
-            
-            if (canvas.width !== newWidth || canvas.height !== newHeight) {
-              canvas.width = newWidth;
-              canvas.height = newHeight;
-              canvas.style.width = `${rect.width}px`;
-              canvas.style.height = `${rect.height}px`;
-            }
-          }
-          isResizingRef.current = false;
-        });
-      }, 100);
-    });
-
-    resizeObserver.observe(container);
+    
+    // Только на resize окна, без ResizeObserver
+    window.addEventListener('resize', updateCanvasSize);
     
     return () => {
-      clearTimeout(resizeTimeout);
-      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateCanvasSize);
     };
-  }, [graph]);
+  }, []);
 
+  // Анимация и отрисовка
   useEffect(() => {
     const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container) return;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -1547,26 +1521,31 @@ const SemanticGraphCanvas: React.FC<{
     const edges = graph.edges;
 
     const tick = () => {
-      const rect = container.getBoundingClientRect();
-      const width = rect.width;
-      const height = rect.height;
-      const centerX = width / 2;
-      const centerY = height / 2;
+      const width = canvas.width;
+      const height = canvas.height;
+      
+      if (width === 0 || height === 0) {
+        animationRef.current = requestAnimationFrame(tick);
+        return;
+      }
 
+      // Физика
       for (let i = 0; i < nodes.length; i++) {
         const a = nodes[i];
+        
+        // Притяжение к центру
+        a.vx = (a.vx || 0) + (WORLD_CENTER - (a.x || 0)) * 0.0003;
+        a.vy = (a.vy || 0) + (WORLD_CENTER - (a.y || 0)) * 0.0003;
 
-        a.vx = (a.vx || 0) + (centerX - (a.x || 0)) * 0.00015;
-        a.vy = (a.vy || 0) + (centerY - (a.y || 0)) * 0.00015;
-
+        // Отталкивание
         for (let j = i + 1; j < nodes.length; j++) {
           const b = nodes[j];
           const dx = (a.x || 0) - (b.x || 0);
           const dy = (a.y || 0) - (b.y || 0);
           const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const minDist = a.radius + b.radius + 26;
-          if (dist < minDist * 3.5) {
-            const force = 0.15 / dist;
+          const minDist = a.radius + b.radius + 40;
+          if (dist < minDist * 2) {
+            const force = 0.8 / dist;
             const fx = dx * force;
             const fy = dy * force;
             a.vx = (a.vx || 0) + fx;
@@ -1577,6 +1556,7 @@ const SemanticGraphCanvas: React.FC<{
         }
       }
 
+      // Притяжение по ребрам
       edges.forEach((edge) => {
         const source = nodes.find((n) => n.id === edge.source);
         const target = nodes.find((n) => n.id === edge.target);
@@ -1585,11 +1565,11 @@ const SemanticGraphCanvas: React.FC<{
         const dx = (target.x || 0) - (source.x || 0);
         const dy = (target.y || 0) - (source.y || 0);
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const desired = 160 + Math.min(120, ((source.degree + target.degree) / 2) * 6);
+        const desired = 180;
         const diff = dist - desired;
-        const force = diff * 0.0008;
-        const fx = (dx / dist) * force * 60;
-        const fy = (dy / dist) * force * 60;
+        const force = diff * 0.0015;
+        const fx = (dx / dist) * force;
+        const fy = (dy / dist) * force;
 
         if (dragNodeIdRef.current !== source.id) {
           source.vx = (source.vx || 0) + fx;
@@ -1601,109 +1581,59 @@ const SemanticGraphCanvas: React.FC<{
         }
       });
 
+      // Обновление позиций
       nodes.forEach((node) => {
         if (dragNodeIdRef.current === node.id) return;
-        node.vx = (node.vx || 0) * 0.92;
-        node.vy = (node.vy || 0) * 0.92;
+        
+        node.vx = (node.vx || 0) * 0.95;
+        node.vy = (node.vy || 0) * 0.95;
         node.x = (node.x || 0) + (node.vx || 0);
         node.y = (node.y || 0) + (node.vy || 0);
 
-        node.x = Math.max(node.radius + 20, Math.min(width - node.radius - 20, node.x || 0));
-        node.y = Math.max(node.radius + 20, Math.min(height - node.radius - 20, node.y || 0));
+        // Ограничение в пределах мира
+        node.x = Math.max(50, Math.min(WORLD_SIZE - 50, node.x || 0));
+        node.y = Math.max(50, Math.min(WORLD_SIZE - 50, node.y || 0));
       });
 
-      const dpr = window.devicePixelRatio || 1;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Отрисовка
       ctx.clearRect(0, 0, width, height);
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, width, height);
 
       const transformPoint = (x: number, y: number) => ({
-        x: x * zoomRef.current + panRef.current.x,
-        y: y * zoomRef.current + panRef.current.y,
+        x: (x - WORLD_CENTER) * zoomRef.current + width / 2 + panRef.current.x,
+        y: (y - WORLD_CENTER) * zoomRef.current + height / 2 + panRef.current.y,
       });
 
-      const drawArrow = (fromX: number, fromY: number, toX: number, toY: number, color: string) => {
-        const headlen = 10;
-        const angle = Math.atan2(toY - fromY, toX - fromX);
-        ctx.strokeStyle = color;
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.moveTo(fromX, fromY);
-        ctx.lineTo(toX, toY);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(toX, toY);
-        ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
-        ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
-        ctx.closePath();
-        ctx.fill();
-      };
-
-      edges.forEach((edge, index) => {
+      // Рисуем ребра
+      edges.forEach((edge) => {
         const source = nodes.find((n) => n.id === edge.source);
         const target = nodes.find((n) => n.id === edge.target);
         if (!source || !target) return;
 
         const p1 = transformPoint(source.x || 0, source.y || 0);
         const p2 = transformPoint(target.x || 0, target.y || 0);
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const nx = -dy / dist;
-        const ny = dx / dist;
-        const curve = ((index % 2 === 0 ? 1 : -1) * Math.min(42, dist * 0.18));
-        const cx = (p1.x + p2.x) / 2 + nx * curve;
-        const cy = (p1.y + p2.y) / 2 + ny * curve;
+        
+        if (p1.x < -100 && p2.x < -100) return;
+        if (p1.x > width + 100 && p2.x > width + 100) return;
+        if (p1.y < -100 && p2.y < -100) return;
+        if (p1.y > height + 100 && p2.y > height + 100) return;
 
-        ctx.strokeStyle = 'rgba(255,255,255,0.26)';
-        ctx.lineWidth = Math.max(1, edge.weight);
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
-        ctx.quadraticCurveTo(cx, cy, p2.x, p2.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.strokeStyle = `rgba(255,255,255,${0.3 + (edge.weight || 1) * 0.2})`;
+        ctx.lineWidth = Math.max(1, Math.min(3, edge.weight || 1));
         ctx.stroke();
-
-        const t = 0.88;
-        const qx =
-          (1 - t) * (1 - t) * p1.x + 2 * (1 - t) * t * cx + t * t * p2.x;
-        const qy =
-          (1 - t) * (1 - t) * p1.y + 2 * (1 - t) * t * cy + t * t * p2.y;
-        const qdx = 2 * (1 - t) * (cx - p1.x) + 2 * t * (p2.x - cx);
-        const qdy = 2 * (1 - t) * (cy - p1.y) + 2 * t * (p2.y - cy);
-        const qlen = Math.sqrt(qdx * qdx + qdy * qdy) || 1;
-        const ux = qdx / qlen;
-        const uy = qdy / qlen;
-        const endOffset = target.radius * zoomRef.current;
-        const arrowEndX = p2.x - ux * endOffset;
-        const arrowEndY = p2.y - uy * endOffset;
-        const arrowStartX = arrowEndX - ux * 16;
-        const arrowStartY = arrowEndY - uy * 16;
-        drawArrow(arrowStartX, arrowStartY, arrowEndX, arrowEndY, 'rgba(255,255,255,0.72)');
-
-        if (edge.bidirectional) {
-          const t2 = 0.12;
-          const qx2 =
-            (1 - t2) * (1 - t2) * p1.x + 2 * (1 - t2) * t2 * cx + t2 * t2 * p2.x;
-          const qy2 =
-            (1 - t2) * (1 - t2) * p1.y + 2 * (1 - t2) * t2 * cy + t2 * t2 * p2.y;
-          const qdx2 = 2 * (1 - t2) * (cx - p1.x) + 2 * t2 * (p2.x - cx);
-          const qdy2 = 2 * (1 - t2) * (cy - p1.y) + 2 * t2 * (p2.y - cy);
-          const qlen2 = Math.sqrt(qdx2 * qdx2 + qdy2 * qdy2) || 1;
-          const ux2 = qdx2 / qlen2;
-          const uy2 = qdy2 / qlen2;
-          const endOffset2 = source.radius * zoomRef.current;
-          const arrowEndX2 = p1.x + ux2 * endOffset2;
-          const arrowEndY2 = p1.y + uy2 * endOffset2;
-          const arrowStartX2 = arrowEndX2 + ux2 * 16;
-          const arrowStartY2 = arrowEndY2 + uy2 * 16;
-          drawArrow(arrowStartX2, arrowStartY2, arrowEndX2, arrowEndY2, 'rgba(255,255,255,0.72)');
-        }
       });
 
+      // Рисуем узлы
       nodes.forEach((node) => {
         const p = transformPoint(node.x || 0, node.y || 0);
-        const radius = node.radius * zoomRef.current;
+        
+        if (p.x < -100 || p.x > width + 100 || p.y < -100 || p.y > height + 100) return;
+        
+        const radius = Math.max(8, node.radius * (zoomRef.current > 0.5 ? zoomRef.current : 0.5));
         const semanticScore = semanticMap.get(node.path) || semanticMap.get(node.name);
         const isSemanticSelected = isSemanticSearch && semanticScore !== undefined;
         const isRecommended = recommendationSet.has(node.path);
@@ -1716,26 +1646,21 @@ const SemanticGraphCanvas: React.FC<{
         ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
         ctx.fillStyle = fill;
         ctx.shadowColor = fill;
-        ctx.shadowBlur = node.id === hoverNodeIdRef.current ? 20 : 10;
+        ctx.shadowBlur = node.id === hoverNodeIdRef.current ? 15 : 5;
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        ctx.lineWidth = node.id === hoverNodeIdRef.current ? 3 : 1.5;
-        ctx.strokeStyle = node.id === hoverNodeIdRef.current ? '#ffffff' : 'rgba(255,255,255,0.22)';
+        ctx.lineWidth = node.id === hoverNodeIdRef.current ? 2 : 1;
+        ctx.strokeStyle = node.id === hoverNodeIdRef.current ? '#ffffff' : 'rgba(255,255,255,0.3)';
         ctx.stroke();
 
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `${Math.max(11, Math.min(14, radius * 0.45))}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const label = node.name.length > 20 ? `${node.name.slice(0, 20)}…` : node.name;
-        ctx.fillText(label, p.x, p.y);
-
-        if (isSemanticSelected && typeof semanticScore === 'number') {
-          ctx.fillStyle = '#22c55e';
-          ctx.font = `12px sans-serif`;
-          ctx.textAlign = 'left';
-          ctx.fillText(semanticScore.toFixed(2), p.x + radius + 8, p.y - radius - 4);
+        if (radius > 12) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `${Math.max(10, Math.min(12, radius * 0.5))}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const label = node.name.length > 15 ? `${node.name.slice(0, 15)}…` : node.name;
+          ctx.fillText(label, p.x, p.y);
         }
       });
 
@@ -1754,10 +1679,11 @@ const SemanticGraphCanvas: React.FC<{
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    return {
-      x: (x - panRef.current.x) / zoomRef.current,
-      y: (y - panRef.current.y) / zoomRef.current,
-    };
+    
+    const worldX = (x - canvas.width / 2 - panRef.current.x) / zoomRef.current + WORLD_CENTER;
+    const worldY = (y - canvas.height / 2 - panRef.current.y) / zoomRef.current + WORLD_CENTER;
+    
+    return { x: worldX, y: worldY };
   }, []);
 
   const hitTest = useCallback(
@@ -1794,8 +1720,8 @@ const SemanticGraphCanvas: React.FC<{
         ref={canvasRef}
         onWheel={(e) => {
           e.preventDefault();
-          const delta = e.deltaY > 0 ? 0.92 : 1.08;
-          zoomRef.current = Math.max(0.45, Math.min(2.8, zoomRef.current * delta));
+          const delta = e.deltaY > 0 ? 0.9 : 1.1;
+          zoomRef.current = Math.max(0.3, Math.min(2, zoomRef.current * delta));
         }}
         onMouseDown={(e) => {
           const p = getCanvasPoint(e);
@@ -1857,6 +1783,42 @@ const SemanticGraphCanvas: React.FC<{
           cursor: dragNodeIdRef.current ? 'grabbing' : hoveredNode ? 'pointer' : 'grab',
         }}
       />
+
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: 12,
+          right: 12,
+          display: 'flex',
+          gap: 1,
+          zIndex: 2,
+          background: 'rgba(0,0,0,0.6)',
+          borderRadius: 2,
+          p: 0.5,
+        }}
+      >
+        <IconButton
+          size="small"
+          onClick={() => {
+            zoomRef.current = Math.max(0.3, zoomRef.current * 0.9);
+          }}
+          sx={{ color: 'white' }}
+        >
+          <NavigateBeforeIcon />
+        </IconButton>
+        <Typography variant="caption" sx={{ color: 'white', alignSelf: 'center', minWidth: 40, textAlign: 'center' }}>
+          {Math.round(zoomRef.current * 100)}%
+        </Typography>
+        <IconButton
+          size="small"
+          onClick={() => {
+            zoomRef.current = Math.min(2, zoomRef.current * 1.1);
+          }}
+          sx={{ color: 'white' }}
+        >
+          <NavigateNextIcon />
+        </IconButton>
+      </Box>
 
       <Box
         sx={{
