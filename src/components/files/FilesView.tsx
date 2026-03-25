@@ -154,13 +154,50 @@ const normalizeGraph = (
     fileMap.set(f.name, f);
   });
 
-  const apiNodes = graphData?.nodes || [];
-  const apiEdges = graphData?.edges || graphData?.links || [];
+  // Проверяем, пришли ли данные в формате { graph: [...] } или { nodes: [], edges: [] }
+  let rawEdges: any[] = [];
+  let rawNodes: any[] = [];
+  
+  if (graphData) {
+    // Если есть поле graph (как в вашем случае)
+    if (Array.isArray((graphData as any).graph)) {
+      rawEdges = (graphData as any).graph;
+      console.log('Found graph array with', rawEdges.length, 'edges');
+    }
+    // Если есть стандартные поля nodes/edges
+    else if (graphData.edges || graphData.links) {
+      rawEdges = graphData.edges || graphData.links || [];
+      rawNodes = graphData.nodes || [];
+    }
+    // Если graphData сам является массивом
+    else if (Array.isArray(graphData)) {
+      rawEdges = graphData;
+    }
+  }
+
+  // Если нет узлов, но есть ребра, создаем узлы из ребер
+  if (rawNodes.length === 0 && rawEdges.length > 0) {
+    const uniqueNodes = new Set<string>();
+    rawEdges.forEach((edge: any) => {
+      const source = edge.source || edge.from;
+      const target = edge.target || edge.to;
+      if (source) uniqueNodes.add(source);
+      if (target) uniqueNodes.add(target);
+    });
+    
+    rawNodes = Array.from(uniqueNodes).map(id => ({
+      id,
+      path: id,
+      name: id.split('/').pop() || id,
+    }));
+    
+    console.log('Created', rawNodes.length, 'nodes from edges');
+  }
 
   const nodeIdToPath = new Map<string, string>();
   const nodePaths = new Set<string>();
 
-  apiNodes.forEach((node) => {
+  rawNodes.forEach((node: any) => {
     const path = node.path || node.name || node.title || node.id || '';
     const id = node.id || path;
     if (path) {
@@ -169,32 +206,52 @@ const normalizeGraph = (
     }
   });
 
-  files.forEach((file) => nodePaths.add(file.path));
+  // Добавляем все файлы как потенциальные узлы
+  files.forEach((file) => {
+    nodePaths.add(file.path);
+    nodeIdToPath.set(file.path, file.path);
+  });
 
-  const normalizedEdges = apiEdges
-    .map((edge) => {
-      const rawSource = edge.source || edge.from || '';
-      const rawTarget = edge.target || edge.to || '';
+  const normalizedEdges = rawEdges
+    .map((edge: any) => {
+      const rawSource = edge.source || edge.from;
+      const rawTarget = edge.target || edge.to;
+      
+      if (!rawSource || !rawTarget) {
+        console.warn('Edge missing source or target:', edge);
+        return null;
+      }
+      
       const source = nodeIdToPath.get(rawSource) || rawSource;
       const target = nodeIdToPath.get(rawTarget) || rawTarget;
-      if (!source || !target) return null;
+      
+      if (!source || !target) {
+        console.warn('Edge with invalid source/target after mapping:', { 
+          rawSource, rawTarget, source, target 
+        });
+        return null;
+      }
+      
       return {
         source,
         target,
-        weight: edge.weight || 1,
-        bidirectional:
-          edge.bidirectional === true ||
-          edge.reverse === true ||
-          edge.metadata?.bidirectional === true,
+        weight: edge.scope || edge.weight || 1,
+        bidirectional: edge.bidirectional === true || edge.reverse === true,
       };
     })
     .filter(Boolean) as Array<{
-    source: string;
-    target: string;
-    weight: number;
-    bidirectional: boolean;
-  }>;
+      source: string;
+      target: string;
+      weight: number;
+      bidirectional: boolean;
+    }>;
 
+  console.log('Normalized edges count:', normalizedEdges.length);
+  if (normalizedEdges.length > 0) {
+    console.log('First 3 edges:', normalizedEdges.slice(0, 3));
+  }
+
+  // Вычисляем степень для каждого узла
   const degreeMap = new Map<string, number>();
   nodePaths.forEach((p) => degreeMap.set(p, 0));
   normalizedEdges.forEach((edge) => {
@@ -202,8 +259,9 @@ const normalizeGraph = (
     degreeMap.set(edge.target, (degreeMap.get(edge.target) || 0) + 1);
   });
 
+  // Создаем узлы
   const nodes = Array.from(nodePaths).map((path) => {
-    const file = fileMap.get(path) || files.find((f) => f.name === path);
+    const file = fileMap.get(path);
     const degree = degreeMap.get(path) || 0;
     return {
       id: path,
@@ -214,6 +272,9 @@ const normalizeGraph = (
       radius: 10 + Math.min(28, degree * 2.2),
     };
   });
+
+  console.log('Total nodes:', nodes.length);
+  console.log('Nodes with degree > 0:', nodes.filter(n => n.degree > 0).length);
 
   return { nodes, edges: normalizedEdges };
 };
@@ -1087,7 +1148,7 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
                                   backgroundColor: match ? match.color : 'rgba(255,255,255,0.1)',
                                   color: 'white',
                                   fontSize: '0.7rem',
-                                  fontWeight: match ? 500 : 400,
+                                  font: match ? 500 : 400,
                                   '& .MuiChip-label': { px: 1 },
                                 }}
                               />

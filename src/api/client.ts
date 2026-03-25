@@ -118,7 +118,7 @@ export interface SemanticGraphEdge {
   target?: string;
   from?: string;
   to?: string;
-  weight?: number;
+  scope?: number;
   bidirectional?: boolean;
   reverse?: boolean;
   metadata?: Record<string, any>;
@@ -136,6 +136,12 @@ export interface SemanticGraphData {
   nodes?: SemanticGraphNode[];
   edges?: SemanticGraphEdge[];
   links?: SemanticGraphEdge[];
+  graph?: SemanticGraphEdge[];
+  count?: number;
+  container_id?: string;
+  user_id?: string;
+  request_id?: string;
+  success?: boolean;
 }
 
 export interface OcrProcessResponse {
@@ -179,7 +185,6 @@ export interface RecommendationFile {
   isRecommended: boolean;
 }
 
-// Добавляем интерфейс для SearchResultFile, который используется в FilesView
 export interface SearchResultFile extends ApiFile {
   score?: number;
   content_preview?: string;
@@ -335,6 +340,7 @@ class ApiClient {
       headers: this.getAuthHeaders(),
       params: { container_id: containerId }
     });
+    console.log('Graph data received:', response.data.data);
     return response.data.data;
   }
 
