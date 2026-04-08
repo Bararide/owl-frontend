@@ -69,6 +69,7 @@ export interface SearchResult {
 
 export interface FileContent {
   content: string;
+  explanation?: string;
   encoding: string;
   size: number;
   mime_type: string;
