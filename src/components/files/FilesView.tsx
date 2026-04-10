@@ -759,7 +759,7 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
   const zoomRef = useRef(1);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   
-  const WORLD_SIZE = 8000;
+  const WORLD_SIZE = 16000;
   const WORLD_CENTER = WORLD_SIZE / 2;
 
   const graph = useMemo(() => { const normalized = normalizeGraph(files, graphData); return { nodes: normalized.nodes as GraphNode[], edges: normalized.edges as GraphEdge[] }; }, [files, graphData]);
@@ -899,7 +899,7 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
         const p = transformPoint(node.x || 0, node.y || 0);
         if (p.x < -100 || p.x > width + 100 || p.y < -100 || p.y > height + 100) return;
         const baseRadius = Math.min(24, Math.max(8, node.radius * 0.8));
-        const radius = baseRadius * (zoomRef.current > 0.5 ? zoomRef.current : 0.6);
+        const radius = baseRadius * Math.max(0.8, zoomRef.current);
         const semanticScore = semanticMap.get(node.path) || semanticMap.get(node.name);
         const isSemanticSelected = isSemanticSearch && semanticScore !== undefined;
         const isRecommended = recommendationSet.has(node.path);
@@ -919,7 +919,7 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
           const fontSize = Math.max(10, Math.min(12, radius * 0.6));
           ctx.font = `${fontSize}px "Segoe UI", "Roboto", sans-serif`;
           ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          let label = node.name; const maxChars = Math.floor(radius * 1.5);
+          let label = ""; const maxChars = Math.floor(radius * 1.5);
           if (label.length > maxChars) label = label.slice(0, maxChars - 2) + '…';
           ctx.fillText(label, p.x, p.y);
         }
@@ -939,20 +939,41 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
     return { x: worldX, y: worldY };
   }, []);
 
-  const hitTest = useCallback((x: number, y: number) => {
-    for (let i = graph.nodes.length - 1; i >= 0; i--) {
-      const node = graph.nodes[i];
-      const dx = x - (node.x || 0), dy = y - (node.y || 0);
-      if (Math.sqrt(dx * dx + dy * dy) <= node.radius) return node;
+const hitTest = useCallback((worldX: number, worldY: number) => {
+  const canvas = canvasRef.current;
+  if (!canvas) return null;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  for (let i = graph.nodes.length - 1; i >= 0; i--) {
+    const node = graph.nodes[i];
+    // Преобразуем центр узла в экранные координаты
+    const screenCenter = {
+      x: ((node.x || 0) - WORLD_CENTER) * zoomRef.current + canvas.width / 2 + panRef.current.x,
+      y: ((node.y || 0) - WORLD_CENTER) * zoomRef.current + canvas.height / 2 + panRef.current.y
+    };
+    // Базовый радиус (как в отрисовке)
+    const baseRadius = Math.min(24, Math.max(8, node.radius * 0.8));
+    const screenRadius = baseRadius * Math.max(0.8, zoomRef.current);
+    // Преобразуем мировую точку клика в экранные координаты
+    const clickScreen = {
+      x: (worldX - WORLD_CENTER) * zoomRef.current + canvas.width / 2 + panRef.current.x,
+      y: (worldY - WORLD_CENTER) * zoomRef.current + canvas.height / 2 + panRef.current.y
+    };
+    const dx = clickScreen.x - screenCenter.x;
+    const dy = clickScreen.y - screenCenter.y;
+    if (Math.sqrt(dx*dx + dy*dy) <= screenRadius) {
+      return node;
     }
-    return null;
-  }, [graph.nodes]);
+  }
+  return null;
+}, [graph.nodes, zoomRef, panRef]);
 
   const isPanningRef = useRef(false); const lastMouseRef = useRef({ x: 0, y: 0 });
 
   return (
     <Box ref={containerRef} sx={{ position: 'relative', width: '100%', height: '100%', minHeight: '100vh', backgroundColor: '#000', overflow: 'hidden' }}>
-      <canvas ref={canvasRef} onWheel={(e) => { e.preventDefault(); const delta = e.deltaY > 0 ? 0.9 : 1.1; zoomRef.current = Math.max(0.3, Math.min(2, zoomRef.current * delta)); }}
+      <canvas ref={canvasRef} onWheel={(e) => { e.preventDefault(); const delta = e.deltaY > 0 ? 0.9 : 1.1; zoomRef.current = Math.max(0.1, Math.min(2, zoomRef.current * delta));}}
         onMouseDown={(e) => { const p = getCanvasPoint(e); const node = hitTest(p.x, p.y); if (node) { dragNodeIdRef.current = node.id; } else { isPanningRef.current = true; lastMouseRef.current = { x: e.clientX, y: e.clientY }; } }}
         onMouseMove={(e) => { const p = getCanvasPoint(e); const node = hitTest(p.x, p.y); hoverNodeIdRef.current = node?.id || null; setHoveredNode(node || null);
           if (dragNodeIdRef.current) { const dragged = graph.nodes.find((n) => n.id === dragNodeIdRef.current); if (dragged) { dragged.x = p.x; dragged.y = p.y; dragged.vx = 0; dragged.vy = 0; } }
@@ -963,11 +984,11 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
         onClick={(e) => { const p = getCanvasPoint(e); const node = hitTest(p.x, p.y); if (node?.file) onOpenFile(node.file); }}
         style={{ width: '100%', height: '100%', display: 'block', cursor: dragNodeIdRef.current ? 'grabbing' : hoveredNode ? 'pointer' : 'grab' }} />
 
-      <Box sx={{ position: 'absolute', top: 16, left: 16, display: 'flex', alignItems: 'center', gap: 1, zIndex: 10, pointerEvents: 'none' }}>
+      <Box sx={{ position: 'absolute', top: 16, left: 100, display: 'flex', alignItems: 'center', gap: 1, zIndex: 10, pointerEvents: 'none' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pointerEvents: 'auto', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)' }}>
           <Paper elevation={3} sx={{ p: 0.5, borderRadius: 2, background: 'rgba(26, 31, 54, 0.9)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)' }}>
             <Tooltip title="Semantic Search">
-              <IconButton ref={searchAnchorRef} size="small" sx={{ color: 'white' }} onClick={onOpenSearch}><SearchIcon /></IconButton>
+              <IconButton ref={searchAnchorRef} size="small" sx={{ color: 'white'}} onClick={onOpenSearch}><SearchIcon /></IconButton>
             </Tooltip>
           </Paper>
           
@@ -1020,7 +1041,17 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
 
       <Box sx={{ position: 'absolute', bottom: 16, right: 16, display: 'flex', gap: 1, zIndex: 10, pointerEvents: 'none' }}>
         <Paper elevation={3} sx={{ p: 0.5, borderRadius: 2, background: 'rgba(26, 31, 54, 0.9)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)', pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <Tooltip title="Zoom out"><IconButton size="small" onClick={() => { zoomRef.current = Math.max(0.3, zoomRef.current * 0.9); }} sx={{ color: 'white' }}><ZoomOutIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title="Zoom out">
+            <IconButton 
+              size="small" 
+              onClick={() => { 
+                zoomRef.current = Math.max(0.1, zoomRef.current * 0.9); // 0.3 → 0.1
+              }} 
+              sx={{ color: 'white' }}
+            >
+              <ZoomOutIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Typography variant="caption" sx={{ color: 'white', minWidth: 40, textAlign: 'center' }}>{Math.round(zoomRef.current * 100)}%</Typography>
           <Tooltip title="Zoom in"><IconButton size="small" onClick={() => { zoomRef.current = Math.min(2, zoomRef.current * 1.1); }} sx={{ color: 'white' }}><ZoomInIcon fontSize="small" /></IconButton></Tooltip>
           <Tooltip title="Reset view"><IconButton size="small" onClick={() => { zoomRef.current = 1; panRef.current = { x: 0, y: 0 }; }} sx={{ color: 'white' }}><CenterFocusStrongIcon fontSize="small" /></IconButton></Tooltip>
@@ -1152,8 +1183,18 @@ export default function FilesView({ containerId }: FilesViewProps) {
     </Box>);
   }
 
-  return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#000' }}>
+ return (
+    <Box
+      sx={{
+        height: '100%',
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        background: '#000',
+        position: 'relative',
+      }}
+    >
       <Menu anchorEl={toolsMenuAnchor} open={Boolean(toolsMenuAnchor)} onClose={() => setToolsMenuAnchor(null)} PaperProps={{ sx: { mt: 1, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(26, 31, 54, 0.98)', backdropFilter: 'blur(20px)' } }}>
         <MenuItem onClick={() => { setToolsMenuAnchor(null); handleRefreshFiles(); }} disabled={isRebuildingIndex}><RefreshIcon sx={{ mr: 1, fontSize: 20 }} />{isRebuildingIndex ? 'Rebuilding Index...' : 'Rebuild Index'}</MenuItem>
         <Divider sx={{ my: 1 }} />

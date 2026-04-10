@@ -9,11 +9,10 @@ import { useAppState } from './hooks/useAppState';
 import { useNotifications } from './hooks/useNotifications';
 
 import { Sidebar } from './components/layout/Sidebar';
-import { Header } from './components/layout/Header';
 import { NotificationSnackbar } from './components/notifications/NotificationSnackbar';
 import { FloatingActionButton } from './components/styled';
 import { Login } from './components/auth/Login';
-import { CreateTxtFileView } from './views/CreateFileView';
+import { FloatingControls } from './components/layout/FloatingControls';
 
 import { Dashboard } from './views/Dashboard';
 import { ContainersView } from './views/ContainersView';
@@ -21,17 +20,16 @@ import { FilesView } from './views/FilesView';
 import { SearchView } from './views/SearchView';
 import { PlaceholderView } from './views/PlaceholderView';
 import { CreateTxtMainView } from './views/CreateMainView';
+import { OcrView } from './views/OCRView';
 
 import { apiClient } from './api/client';
 import { Container, User } from './api/client';
-import { 
+import {
   Speed as SpeedIcon,
   Search as SearchIcon,
   Security as SecurityIcon,
   Add as AddIcon,
-  Create as CreateIcon, // Добавлено
 } from '@mui/icons-material';
-import { OcrView } from './views/OCRView';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,14 +45,13 @@ const mockUser: User = {
   id: 'user123',
   name: 'Алексей Петров',
   email: 'alexey@company.com',
-  role: 'Senior Developer'
+  role: 'Senior Developer',
 };
 
 const App: React.FC = () => {
   const [selectedContainer, setSelectedContainer] = useState<Container | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [createContainerOpen, setCreateContainerOpen] = useState(false);
-  const [createTxtDialogOpen, setCreateTxtDialogOpen] = useState(false); // Добавлено
   const [currentTab, setCurrentTab] = useState(0);
   const [activeMenuItem, setActiveMenuItem] = useState('dashboard');
   const [isTokenProcessed, setIsTokenProcessed] = useState(false);
@@ -65,37 +62,23 @@ const App: React.FC = () => {
   const { state: appState, updateState } = useAppState();
   const { notifications, addNotification, removeNotification } = useNotifications();
 
-  // Проверяем существующий токен при загрузке
+  // Проверка токена при загрузке
   useEffect(() => {
     const checkExistingToken = async () => {
       const storedToken = localStorage.getItem('auth_token');
-      
       if (storedToken) {
-        console.log('Token found in localStorage, validating...', storedToken);
         apiClient.setToken(storedToken);
         setAuthLoading(true);
-        
         try {
-          // Проверяем валидность токена
           const userData = await apiClient.getUser();
-          console.log('User data received:', userData);
-          
           if (userData) {
             setUser(userData);
             setIsAuthenticated(true);
-            addNotification({
-              message: 'Successfully logged in',
-              severity: 'success',
-              open: true,
-            });
           } else {
-            // Если getUser возвращает null/undefined, но запрос прошел успешно
-            console.log('User data is null/undefined, using mock user');
             setUser(mockUser);
             setIsAuthenticated(true);
           }
         } catch (error) {
-          console.error('Invalid token:', error);
           localStorage.removeItem('auth_token');
           setAuthError('Your session has expired. Please login again.');
         } finally {
@@ -103,75 +86,28 @@ const App: React.FC = () => {
           setIsTokenProcessed(true);
         }
       } else {
-        console.log('No token found in localStorage');
         setIsTokenProcessed(true);
       }
     };
-
     checkExistingToken();
-  }, [addNotification]);
+  }, []);
 
   const handleLogin = async (token: string) => {
     setAuthLoading(true);
     setAuthError('');
-
     try {
-      console.log('Setting token and validating...', token);
       apiClient.setToken(token);
-      
       const userData = await apiClient.getUser();
-      console.log('Login user data:', userData);
-      
-      if (userData || true) {
-        setUser(userData || mockUser);
-        setIsAuthenticated(true);
-        localStorage.setItem('auth_token', token);
-        
-        addNotification({
-          message: 'Successfully logged in!',
-          severity: 'success',
-          open: true,
-        });
-        console.log('Login successful, authenticated:', true);
-      }
+      setUser(userData || mockUser);
+      setIsAuthenticated(true);
+      localStorage.setItem('auth_token', token);
+      addNotification({
+        message: 'Successfully logged in!',
+        severity: 'success',
+        open: true,
+      });
     } catch (error: any) {
-      console.error('Login failed:', error);
-      const errorMessage = error?.response?.data?.message || 
-                          error?.message || 
-                          'Invalid token. Please check your access token and try again.';
-      setAuthError(errorMessage);
-      apiClient.setToken('');
-      localStorage.removeItem('auth_token');
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleLoginSimple = async (token: string) => {
-    setAuthLoading(true);
-    setAuthError('');
-
-    try {
-      console.log('Setting token:', token);
-      apiClient.setToken(token);
-      
-      if (token && token.length > 0) {
-        const userData = await apiClient.getUser();
-        console.log(userData)
-        setUser(userData);
-        setIsAuthenticated(true);
-        localStorage.setItem('auth_token', token);
-        
-        addNotification({
-          message: 'Successfully logged in!',
-          severity: 'success',
-          open: true,
-        });
-        console.log('Login successful with token');
-      }
-    } catch (error) {
-      console.error('Login failed:', error);
-      setAuthError('Authentication failed. Please try again.');
+      setAuthError(error?.message || 'Invalid token');
       apiClient.setToken('');
       localStorage.removeItem('auth_token');
     } finally {
@@ -185,7 +121,6 @@ const App: React.FC = () => {
     setIsAuthenticated(false);
     setUser(null);
     setSelectedContainer(null);
-    
     addNotification({
       message: 'Successfully logged out',
       severity: 'info',
@@ -205,56 +140,19 @@ const App: React.FC = () => {
   };
 
   const handleMenuItemClick = (menuId: string, tabIndex: number) => {
-    console.log(menuId)
-    if (menuId === 'search' && !selectedContainer) {
+    if ((menuId === 'search' || menuId === 'photo' || menuId === 'create-txt') && !selectedContainer) {
       addNotification({
-        message: 'Please select a container first to use search functionality',
+        message: 'Please select a container first',
         severity: 'warning',
         open: true,
       });
       return;
     }
-
-    if (menuId === 'photo' && !selectedContainer) {
-      addNotification({
-        message: 'Please select a container first to use photo ocr functionality',
-        severity: 'warning',
-        open: true,
-      });
-      return;
-    }
-
-    if (menuId === 'create-txt' && !selectedContainer) {
-      addNotification({
-        message: 'Please select a container first to create text files',
-        severity: 'warning',
-        open: true,
-      });
-      return;
-    }
-    
     setActiveMenuItem(menuId);
     setCurrentTab(tabIndex);
   };
 
-  const handleViewModeChange = (mode: 'grid' | 'list') => {
-    updateState({ viewMode: mode });
-  };
-
-  const handleCreateTxtClick = () => {
-    setCreateTxtDialogOpen(true);
-  };
-
-  const handleFileCreated = () => {
-    addNotification({
-      message: 'Text file created successfully',
-      severity: 'success',
-      open: true,
-    });
-  };
-
   const renderCurrentView = () => {
-    console.log('Current tab:', currentTab);
     switch (currentTab) {
       case 0:
         return (
@@ -274,7 +172,6 @@ const App: React.FC = () => {
           />
         );
       case 2:
-        console.log('Selected container in FilesView:', selectedContainer)
         return (
           <FilesView
             selectedContainer={selectedContainer}
@@ -306,13 +203,9 @@ const App: React.FC = () => {
             onContainerSelect={handleContainerSelect}
           />
         );
-      case 6: // Добавлено для Create TXT
-        return (
-          <CreateTxtMainView
-            selectedContainer={selectedContainer}
-          />
-        );
-      case 7: // Security сдвинуто
+      case 6:
+        return <CreateTxtMainView selectedContainer={selectedContainer} />;
+      case 7:
         return (
           <PlaceholderView
             icon={<SecurityIcon sx={{ fontSize: 64, color: 'text.secondary' }} />}
@@ -321,27 +214,25 @@ const App: React.FC = () => {
           />
         );
       default:
-        return <Dashboard onContainerSelect={handleContainerSelect} onTabChange={setCurrentTab} user={user || mockUser} />;
+        return (
+          <Dashboard
+            onContainerSelect={handleContainerSelect}
+            onTabChange={setCurrentTab}
+            user={user || mockUser}
+          />
+        );
     }
   };
 
-  console.log('App state:', {
-    isTokenProcessed,
-    isAuthenticated,
-    authLoading,
-    user,
-    hasToken: !!localStorage.getItem('auth_token')
-  });
-
   if (!isTokenProcessed || authLoading) {
     return (
-      <Box 
-        sx={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          alignItems: 'center', 
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
           height: '100vh',
-          background: 'linear-gradient(135deg, #0F1424 0%, #13182B 100%)'
+          background: 'linear-gradient(135deg, #0F1424 0%, #13182B 100%)',
         }}
       >
         <CircularProgress />
@@ -350,27 +241,28 @@ const App: React.FC = () => {
   }
 
   if (!isAuthenticated) {
-    console.log('Rendering login page - user not authenticated');
     return (
       <QueryClientProvider client={queryClient}>
         <ThemeProvider theme={theme}>
           <CssBaseline />
-          <Login 
-            onLogin={handleLoginSimple}
-            isLoading={authLoading}
-            error={authError}
-          />
+          <Login onLogin={handleLogin} isLoading={authLoading} error={authError} />
         </ThemeProvider>
       </QueryClientProvider>
     );
   }
 
-  console.log('Rendering main application - user authenticated');
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Box sx={{ display: 'flex', minHeight: '100vh', background: 'linear-gradient(135deg, #0F1424 0%, #13182B 100%)' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            minHeight: '100vh',
+            background: 'linear-gradient(135deg, #0F1424 0%, #13182B 100%)',
+          }}
+        >
+          {/* Компактный сайдбар (иконки) */}
           <Sidebar
             activeMenuItem={activeMenuItem}
             onMenuItemClick={handleMenuItemClick}
@@ -379,18 +271,27 @@ const App: React.FC = () => {
             onLogout={handleLogout}
           />
 
-          <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-            <Header
-              currentTab={currentTab}
-              appState={appState}
-              onViewModeChange={handleViewModeChange}
+          {/* Основная область — занимает всё оставшееся пространство */}
+          <Box
+            sx={{
+              flexGrow: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Плавающие элементы управления (уведомления, профиль) */}
+            <FloatingControls
               notificationsCount={notifications.length}
               onLogout={handleLogout}
-              selectedContainer={selectedContainer} // Добавлено
-              onCreateTxtClick={currentTab === 6 ? handleCreateTxtClick : undefined} // Добавлено
+              user={user || mockUser}
+              viewMode={appState.viewMode}
+              onViewModeChange={(mode) => updateState({ viewMode: mode })}
             />
 
-            <Box sx={{ flexGrow: 1, p: 3, overflow: 'auto' }}>
+            {/* Контент без отступов */}
+            <Box sx={{ flexGrow: 1, overflow: 'auto', p: 0 }}>
               {renderCurrentView()}
             </Box>
           </Box>
@@ -404,6 +305,7 @@ const App: React.FC = () => {
             <FloatingActionButton
               color="primary"
               onClick={() => setCreateContainerOpen(true)}
+              sx={{ position: 'fixed', bottom: 24, right: 24 }}
             >
               <AddIcon />
             </FloatingActionButton>

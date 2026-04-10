@@ -1,26 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  Drawer,
   Box,
-  Typography,
-  Divider,
+  IconButton,
+  Tooltip,
+  Drawer,
+  List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Divider,
+  Typography,
   Avatar,
-  Tooltip,
-  Button,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
-  Storage as StorageIcon,
-  FileCopy as FileCopyIcon,
+  Folder as FolderIcon,
+  Description as DescriptionIcon,
+  Analytics as AnalyticsIcon,
   Search as SearchIcon,
-  Speed as SpeedIcon,
+  PhotoCamera as PhotoCameraIcon,
+  Create as CreateIcon,
   Security as SecurityIcon,
-  Photo as PhotoIcon,
+  Menu as MenuIcon,
+  ChevronLeft as ChevronLeftIcon,
   ExitToApp as ExitToAppIcon,
-  Create as CreateIcon, // Добавлено
 } from '@mui/icons-material';
 import { Container, User } from '../../api/client';
 
@@ -33,194 +36,145 @@ interface SidebarProps {
 }
 
 const menuItems = [
-  { icon: <DashboardIcon />, text: 'Dashboard', id: 'dashboard' },
-  { icon: <StorageIcon />, text: 'Containers', id: 'containers' },
-  { icon: <FileCopyIcon />, text: 'Files', id: 'files' },
-  { icon: <SearchIcon />, text: 'Advanced search', id: 'search' },
-  { icon: <PhotoIcon />, text: 'Photo', id: 'photo'},
-  { icon: <CreateIcon />, text: 'Create TXT', id: 'create-txt' },
-  { icon: <SpeedIcon />, text: 'Analytics', id: 'analytics' },
-  { icon: <SecurityIcon />, text: 'Security', id: 'security' },
+  { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon />, tabIndex: 0 },
+  { id: 'containers', label: 'Containers', icon: <FolderIcon />, tabIndex: 1 },
+  { id: 'files', label: 'Files', icon: <DescriptionIcon />, tabIndex: 2 },
+  { id: 'analytics', label: 'Analytics', icon: <AnalyticsIcon />, tabIndex: 3 },
+  { id: 'search', label: 'Search', icon: <SearchIcon />, tabIndex: 4 },
+  { id: 'photo', label: 'Photo OCR', icon: <PhotoCameraIcon />, tabIndex: 5 },
+  { id: 'create-txt', label: 'Create TXT', icon: <CreateIcon />, tabIndex: 6 },
+  { id: 'security', label: 'Security', icon: <SecurityIcon />, tabIndex: 7 },
 ];
 
-export const Sidebar: React.FC<SidebarProps> = ({ 
-  activeMenuItem, 
-  onMenuItemClick, 
+export const Sidebar: React.FC<SidebarProps> = ({
+  activeMenuItem,
+  onMenuItemClick,
   user,
   selectedContainer,
-  onLogout 
+  onLogout,
 }) => {
-  const isSearchDisabled = !selectedContainer;
-  const isPhotoDisabled = !selectedContainer;
-  const isCreateTxtDisabled = !selectedContainer;
+  const [expanded, setExpanded] = useState(false);
+
+  const toggleDrawer = () => setExpanded(!expanded);
+
+  const handleItemClick = (item: typeof menuItems[0]) => {
+    onMenuItemClick(item.id, item.tabIndex);
+  };
 
   return (
-    <Drawer
-      variant="permanent"
+    <>
+    <Box
       sx={{
-        width: 260,
-        flexShrink: 0,
-        '& .MuiDrawer-paper': {
-          width: 260,
-          boxSizing: 'border-box',
-          backgroundColor: 'background.default',
-          borderRight: '1px solid rgba(255,255,255,0.04)',
-          background: 'linear-gradient(180deg, #0F1424 0%, #13182B 100%)',
-        },
+        position: 'fixed',
+        left: 16,
+        top: 20,
+        zIndex: 1200,
       }}
     >
-      <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <Box
-            sx={{
-              width: 36,
-              height: 36,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #7367F0 0%, #CE9FFC 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              mr: 2,
-              boxShadow: '0 2px 8px rgba(115, 103, 240, 0.3)'
-            }}
-          >
-            <StorageIcon sx={{ color: 'white', fontSize: 18 }} />
+      <Tooltip title={expanded ? 'Collapse sidebar' : 'Expand sidebar'}>
+        <IconButton
+          onClick={toggleDrawer}
+          sx={{
+            backgroundColor: 'rgba(26, 31, 54, 0.8)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            color: 'white',
+            '&:hover': {
+              backgroundColor: 'rgba(26, 31, 54, 0.95)',
+            },
+          }}
+        >
+          {expanded ? <ChevronLeftIcon /> : <MenuIcon />}
+        </IconButton>
+      </Tooltip>
+    </Box>
+
+      {/* Выдвижная панель с иконками и текстом */}
+      <Drawer
+        variant="temporary"
+        open={expanded}
+        onClose={toggleDrawer}
+        ModalProps={{ keepMounted: true }}
+        PaperProps={{
+          sx: {
+            width: 260,
+            background: 'rgba(18, 22, 40, 0.98)',
+            backdropFilter: 'blur(20px)',
+            borderRight: '1px solid rgba(255,255,255,0.08)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          },
+        }}
+        SlideProps={{ direction: 'right' }}
+      >
+        <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}>
+            {user.name.charAt(0).toUpperCase()}
+          </Avatar>
+          <Box>
+            <Typography variant="subtitle2" noWrap>
+              {user.name}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" noWrap>
+              {user.email}
+            </Typography>
           </Box>
-          <Typography variant="h6" fontWeight="700" color="primary">
-            ContainerHub
-          </Typography>
         </Box>
 
-        <Divider sx={{ mb: 2.5, opacity: 0.2 }} />
+        <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
 
-        <Box sx={{ flexGrow: 1 }}>
-          {menuItems.map((item) => {
-            const isSearchItem = item.id === 'search';
-            const isPhotoItem = item.id === 'photo';
-            const isCreateTxtItem = item.id === 'create-txt'; // Добавлено
-            const isDisabled = (isSearchItem && isSearchDisabled) || 
-                              (isPhotoItem && isPhotoDisabled) || 
-                              (isCreateTxtItem && isCreateTxtDisabled); // Обновлено
-
-            return (
-              <Tooltip
-                key={item.id}
-                title={isDisabled ? "Select a container first to use this feature" : ""}
-                placement="right"
-                arrow
-              >
-                <ListItemButton
-                  key={item.id}
-                  selected={activeMenuItem === item.id}
-                  onClick={() => {
-                    if (isDisabled) return;
-                    
-                    const tabMap: Record<string, number> = {
-                      dashboard: 0,
-                      containers: 1,
-                      files: 2,
-                      analytics: 3,
-                      search: 4,
-                      photo: 5,
-                      'create-txt': 6, // Добавлено
-                      security: 7, // Сдвинуто
-                    };
-                    onMenuItemClick(item.id, tabMap[item.id] || 0);
-                  }}
-                  sx={{
-                    borderRadius: 1.5,
-                    mb: 0.5,
-                    py: 1,
-                    '&.Mui-selected': {
-                      backgroundColor: 'primary.main',
-                      '&:hover': { backgroundColor: 'primary.dark' }
-                    },
-                    ...(isDisabled && {
-                      opacity: 0.5,
-                      pointerEvents: 'none',
-                      cursor: 'not-allowed',
-                    })
-                  }}
-                  disabled={isDisabled}
-                >
-                  <ListItemIcon 
-                    sx={{ 
-                      color: isDisabled ? 'text.disabled' : 'inherit', 
-                      minWidth: 36, 
-                      fontSize: '1.25rem' 
-                    }}
-                  >
-                    {item.icon}
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={item.text} 
-                    primaryTypographyProps={{ 
-                      fontWeight: 600, 
-                      fontSize: '0.9rem',
-                      color: isDisabled ? 'text.disabled' : 'inherit'
-                    }}
-                  />
-                </ListItemButton>
-              </Tooltip>
-            );
-          })}
-        </Box>
-
-        <Box sx={{ mt: 'auto' }}>
-          <Box 
-            sx={{ 
-              p: 1.5, 
-              borderRadius: 2, 
-              backgroundColor: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(255,255,255,0.04)',
-              mb: 2
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Avatar 
-                src={user.avatar}
-                sx={{ 
-                  width: 36, 
-                  height: 36, 
-                  mr: 1.5,
-                  background: 'linear-gradient(135deg, #7367F0 0%, #CE9FFC 100%)',
-                  fontSize: '0.875rem'
-                }}
-              >
-                {user.name.split(' ').map(n => n[0]).join('')}
-              </Avatar>
-              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                <Typography variant="subtitle2" noWrap fontSize="0.875rem">
-                  {user.name}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" noWrap fontSize="0.75rem">
-                  {user.role}
-                </Typography>
-              </Box>
-            </Box>
+        {selectedContainer && (
+          <Box sx={{ px: 2, py: 1.5 }}>
+            <Typography variant="caption" color="text.secondary">
+              Current container
+            </Typography>
+            <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
+              {selectedContainer.id}
+            </Typography>
           </Box>
+        )}
 
-          {onLogout && (
-            <Button
-              fullWidth
-              variant="outlined"
-              color="secondary"
-              onClick={onLogout}
-              startIcon={<ExitToAppIcon />}
+        <List sx={{ pt: 0 }}>
+          {menuItems.map((item) => (
+            <ListItemButton
+              key={item.id}
+              selected={activeMenuItem === item.id}
+              onClick={() => handleItemClick(item)}
               sx={{
-                color: 'text.secondary',
-                borderColor: 'rgba(255, 255, 255, 0.2)',
+                borderRadius: 2,
+                mx: 1,
+                my: 0.3,
+                '&.Mui-selected': {
+                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255,255,255,0.12)',
+                  },
+                },
                 '&:hover': {
-                  borderColor: 'error.main',
-                  color: 'error.main',
-                }
+                  backgroundColor: 'rgba(255,255,255,0.04)',
+                },
               }}
             >
-              Logout
-            </Button>
-          )}
-        </Box>
-      </Box>
-    </Drawer>
+              <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>
+                {item.icon}
+              </ListItemIcon>
+              <ListItemText primary={item.label} />
+            </ListItemButton>
+          ))}
+        </List>
+
+        <Box sx={{ flexGrow: 1 }} />
+
+        <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+
+        <List>
+          <ListItemButton onClick={onLogout} sx={{ borderRadius: 2, mx: 1 }}>
+            <ListItemIcon sx={{ minWidth: 40 }}>
+              <ExitToAppIcon />
+            </ListItemIcon>
+            <ListItemText primary="Logout" />
+          </ListItemButton>
+        </List>
+      </Drawer>
+    </>
   );
 };
