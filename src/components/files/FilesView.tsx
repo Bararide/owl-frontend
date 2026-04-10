@@ -759,7 +759,7 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
   const zoomRef = useRef(1);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   
-  const WORLD_SIZE = 16000;
+  const WORLD_SIZE = 60000;
   const WORLD_CENTER = WORLD_SIZE / 2;
 
   const graph = useMemo(() => { const normalized = normalizeGraph(files, graphData); return { nodes: normalized.nodes as GraphNode[], edges: normalized.edges as GraphEdge[] }; }, [files, graphData]);
@@ -805,7 +805,7 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
       const width = canvas.width; const height = canvas.height;
       if (width === 0 || height === 0) { animationRef.current = requestAnimationFrame(tick); return; }
 
-      const CENTER_FORCE = 0.00005, REPULSION_FORCE = 5042.5, EDGE_FORCE = 0.002, DAMPING = 0.85, DESIRED_DISTANCE = 420;
+      const CENTER_FORCE = 0.00005, REPULSION_FORCE = 12042.5, EDGE_FORCE = 0.008, DAMPING = 0.85, DESIRED_DISTANCE = 1820;
 
       for (let i = 0; i < nodes.length; i++) {
         const a = nodes[i];
