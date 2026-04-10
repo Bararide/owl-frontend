@@ -38,7 +38,7 @@ const menuItems = [
   { icon: <FileCopyIcon />, text: 'Files', id: 'files' },
   { icon: <SearchIcon />, text: 'Advanced search', id: 'search' },
   { icon: <PhotoIcon />, text: 'Photo', id: 'photo'},
-  { icon: <CreateIcon />, text: 'Create TXT', id: 'create-txt' }, // Добавлено
+  { icon: <CreateIcon />, text: 'Create TXT', id: 'create-txt' },
   { icon: <SpeedIcon />, text: 'Analytics', id: 'analytics' },
   { icon: <SecurityIcon />, text: 'Security', id: 'security' },
 ];
@@ -52,7 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const isSearchDisabled = !selectedContainer;
   const isPhotoDisabled = !selectedContainer;
-  const isCreateTxtDisabled = !selectedContainer; // Добавлено
+  const isCreateTxtDisabled = !selectedContainer;
 
   return (
     <Drawer
