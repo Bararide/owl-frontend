@@ -24,6 +24,11 @@ export interface Container {
   privileged: boolean;
 }
 
+export interface ContainerStatus {
+  id: string;
+  status: string;
+}
+
 export interface ApiFile {
   path: string;
   name: string;
@@ -416,6 +421,17 @@ class ApiClient {
     const response = await this.client.get<{ data: FileContent }>(
       `/containers/${containerId}/files/${fileId}/content`,
       { headers: this.getAuthHeaders() }
+    );
+    return response.data.data;
+  }
+
+  async getContainerStatus(containerId: string, userId: string): Promise<ContainerStatus> {
+    const response = await this.client.get<{ data: ContainerStatus }>(
+      `/containers/${containerId}/status`,
+      {
+        headers: this.getAuthHeaders(),
+        params: { user_id: userId }
+      }
     );
     return response.data.data;
   }

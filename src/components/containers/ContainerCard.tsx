@@ -251,7 +251,7 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelec
               <IconButton 
                 size="small" 
                 onClick={handleMenuOpen}
-                sx={{ 
+                sx={{
                   opacity: 0.6,
                   '&:hover': { opacity: 1, backgroundColor: 'rgba(255,255,255,0.08)' }
                 }}
@@ -272,6 +272,14 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({ container, onSelec
                   fontSize: '0.7rem',
                   height: 20
                 }}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+              />
+              <AnimatedChip 
+                label={container.type_label.value}
+                size="small"
+                variant="outlined"
+                sx={{ fontSize: '0.7rem', height: 20 }}
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
               />

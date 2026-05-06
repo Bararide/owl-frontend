@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient, ApiFile, ChatRequest, CreateContainerRequest, OcrProcessRequest, RecommendationEvent, SearchRequest, User } from '../api/client';
+import { apiClient, ApiFile, ChatRequest, CreateContainerRequest, OcrProcessRequest, RecommendationEvent, SearchRequest, User, ContainerStatus } from '../api/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const useContainers = () => {
@@ -48,6 +48,25 @@ export const useGetUser = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['user'] });
     },
+  })
+}
+
+export const useContainerStatus = (containerId: string, userId: string) => {
+  return useQuery({
+    queryKey: ['containerStatus', containerId, userId],
+    queryFn: async () => {
+      try {
+        if (!containerId || !userId) {
+          throw new Error('containerId and userId are required');
+        }
+
+        const result = await apiClient.getContainerStatus(containerId, userId);
+        return result;
+
+      } catch (error) {
+        throw error;
+      }
+    }
   })
 }
 
