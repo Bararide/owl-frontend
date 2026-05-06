@@ -113,7 +113,6 @@ export interface User {
   role: string;
 }
 
-// Обновленный интерфейс для семантического графа
 export interface SemanticGraphEdge {
   source?: string;
   target?: string;
