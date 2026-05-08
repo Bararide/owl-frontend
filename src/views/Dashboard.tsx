@@ -13,7 +13,6 @@ import { useContainers, useCreateContainer, useDeleteContainer, useRestartContai
 
 import { StatsOverview } from '../components/dashboard/StatsOverview';
 import { EnhancedSearch } from '../components/search/EnhancedSearch';
-import { QuickActions } from '../components/dashboard/QuickActions';
 import { ContainerCard } from '../components/containers/ContainerCard';
 import { CreateContainerDialog } from '../components/dialogs/CreateContainerDialog';
 import { LoadingSkeleton } from '../components/common/LoadingSkeleton';
@@ -24,12 +23,14 @@ interface DashboardProps {
   onContainerSelect: (container: Container) => void;
   onTabChange: (tab: number) => void;
   user: User;
+  onCreateContainerOpen?: () => void; // Добавлен пропс
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
   onContainerSelect,
   onTabChange,
   user,
+  onCreateContainerOpen, // Получаем пропс
 }) => {
   const [createContainerOpen, setCreateContainerOpen] = useState(false);
 
@@ -136,6 +137,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           severity: 'success',
           open: true,
         });
+        setCreateContainerOpen(false);
       },
       onError: (error) => {
         addNotification({
@@ -175,30 +177,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <Box>
-      <StatsOverview />
-      
-      <QuickActions
-        onCreateContainer={() => setCreateContainerOpen(true)}
-        onUploadFiles={handleUploadFiles}
-        onShowAnalytics={handleShowAnalytics}
-        onSecurityScan={handleSecurityScan}
-      />
-
       <Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2.5 }}>
-          <Typography variant="h5" sx={{ fontSize: '1.5rem' }}>
-            Recent Containers
-          </Typography>
-          <Button 
-            startIcon={<AddIcon />}
-            onClick={() => setCreateContainerOpen(true)}
-            variant="contained"
-            size="medium"
-          >
-            New Container
-          </Button>
-        </Box>
-
         {isLoadingContainers ? (
           <LoadingSkeleton type="card" />
         ) : (
@@ -213,6 +192,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
             ))}
           </Box>
         )}
+      </Box>
+
+      {/* Кнопка создания контейнера */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2.5, mt: 2 }}>
+        <Button 
+          startIcon={<AddIcon />}
+          onClick={() => {
+            if (onCreateContainerOpen) {
+              onCreateContainerOpen();
+            } else {
+              setCreateContainerOpen(true);
+            }
+          }}
+          variant="contained"
+          size="medium"
+        >
+          New Container
+        </Button>
       </Box>
 
       <CreateContainerDialog

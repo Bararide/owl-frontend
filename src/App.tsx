@@ -42,10 +42,10 @@ const queryClient = new QueryClient({
 });
 
 const mockUser: User = {
-  id: 'user123',
-  name: 'Алексей Петров',
-  email: 'alexey@company.com',
-  role: 'Senior Developer',
+  id: 'Undefined',
+  name: 'Undefined',
+  email: 'Undefined',
+  role: 'Undefined',
 };
 
 const App: React.FC = () => {
@@ -62,7 +62,6 @@ const App: React.FC = () => {
   const { state: appState, updateState } = useAppState();
   const { notifications, addNotification, removeNotification } = useNotifications();
 
-  // Проверка токена при загрузке
   useEffect(() => {
     const checkExistingToken = async () => {
       const storedToken = localStorage.getItem('auth_token');
@@ -162,15 +161,15 @@ const App: React.FC = () => {
             user={user || mockUser}
           />
         );
-      case 1:
-        return (
-          <ContainersView
-            onContainerSelect={handleContainerSelect}
-            onCreateContainerOpen={() => setCreateContainerOpen(true)}
-            createContainerOpen={createContainerOpen}
-            onCloseCreateContainer={() => setCreateContainerOpen(false)}
-          />
-        );
+      // case 1:
+      //   return (
+      //     <ContainersView
+      //       onContainerSelect={handleContainerSelect}
+      //       onCreateContainerOpen={() => setCreateContainerOpen(true)}
+      //       createContainerOpen={createContainerOpen}
+      //       onCloseCreateContainer={() => setCreateContainerOpen(false)}
+      //     />
+      //   );
       case 2:
         return (
           <FilesView
@@ -262,7 +261,6 @@ const App: React.FC = () => {
             background: 'linear-gradient(135deg, #0F1424 0%, #13182B 100%)',
           }}
         >
-          {/* Компактный сайдбар (иконки) */}
           <Sidebar
             activeMenuItem={activeMenuItem}
             onMenuItemClick={handleMenuItemClick}
@@ -271,7 +269,6 @@ const App: React.FC = () => {
             onLogout={handleLogout}
           />
 
-          {/* Основная область — занимает всё оставшееся пространство */}
           <Box
             sx={{
               flexGrow: 1,
@@ -281,16 +278,15 @@ const App: React.FC = () => {
               overflow: 'hidden',
             }}
           >
-            {/* Плавающие элементы управления (уведомления, профиль) */}
+            {/*
             <FloatingControls
               notificationsCount={notifications.length}
               onLogout={handleLogout}
               user={user || mockUser}
               viewMode={appState.viewMode}
               onViewModeChange={(mode) => updateState({ viewMode: mode })}
-            />
+            /> */}
 
-            {/* Контент без отступов */}
             <Box sx={{ flexGrow: 1, overflow: 'auto', p: 0 }}>
               {renderCurrentView()}
             </Box>
@@ -300,16 +296,6 @@ const App: React.FC = () => {
             notifications={notifications}
             onClose={removeNotification}
           />
-
-          <Zoom in={true}>
-            <FloatingActionButton
-              color="primary"
-              onClick={() => setCreateContainerOpen(true)}
-              sx={{ position: 'fixed', bottom: 24, right: 24 }}
-            >
-              <AddIcon />
-            </FloatingActionButton>
-          </Zoom>
         </Box>
       </ThemeProvider>
     </QueryClientProvider>
