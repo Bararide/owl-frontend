@@ -281,7 +281,7 @@ export const useRecommendationsStream = (
         disconnectRef.current();
       }
     };
-  }, [containerId]); // ТОЛЬКО containerId вызывает пересоздание!
+  }, [containerId]);
 
   return { paths, isConnected, streamId };
 };

@@ -235,6 +235,16 @@ class ApiClient {
 
     const url = `${API_BASE_URL}/recommendations/stream?container_id=${containerId}`;
     const controller = new AbortController();
+    let isAborted = false;
+
+    const safeCallback = <K extends keyof RecommendationStreamCallbacks>(
+      name: K,
+      ...args: Parameters<NonNullable<RecommendationStreamCallbacks[K]>>
+    ) => {
+      if (!isAborted && callbacks[name]) {
+        (callbacks[name] as any)(...args);
+      }
+    };
 
     fetch(url, {
       headers: {
@@ -244,42 +254,50 @@ class ApiClient {
       signal: controller.signal,
     })
       .then(response => {
-        const reader = response.body?.getReader();
+        if (!response.ok || !response.body) {
+          throw new Error(`Failed to connect: ${response.status}`);
+        }
+        
+        const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
 
         const read = async () => {
-          while (true) {
-            const { done, value } = await reader!.read();
-            if (done) break;
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
 
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n\n');
-            buffer = lines.pop() || '';
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n\n');
+              buffer = lines.pop() || '';
 
-            for (const line of lines) {
-              if (line.startsWith('data:')) {
-                try {
-                  const data = JSON.parse(line.slice(5));
-                  if (data.paths && callbacks.onPathsUpdate) {
-                    callbacks.onPathsUpdate(data.paths, data);
+              for (const line of lines) {
+                if (line.startsWith('data:')) {
+                  try {
+                    const data = JSON.parse(line.slice(5));
+                    if (data.paths) {
+                      safeCallback('onPathsUpdate', data.paths, data);
+                    }
+                  } catch (e) {
+                    console.error('Error parsing SSE data:', e);
                   }
-                } catch (e) {
-                  console.error('Error parsing SSE data:', e);
-                }
-              } else if (line.startsWith('event: connected')) {
-                try {
-                  const data = JSON.parse(line.slice(14));
-                  if (callbacks.onConnected) {
-                    callbacks.onConnected(data.stream_id);
+                } else if (line.startsWith('event: connected')) {
+                  try {
+                    const data = JSON.parse(line.slice(14));
+                    safeCallback('onConnected', data.stream_id);
+                  } catch (e) {
+                    console.error('Error parsing connected event:', e);
                   }
-                } catch (e) {
-                  console.error('Error parsing connected event:', e);
+                } else if (line.startsWith('event: end')) {
+                  safeCallback('onComplete', [], {} as RecommendationEvent);
+                  return;
                 }
-              } else if (line.startsWith('event: end')) {
-                callbacks.onComplete?.([], {} as RecommendationEvent);
-                controller.abort();
               }
+            }
+          } catch (readError) {
+            if (!isAborted) {
+              safeCallback('onError', readError as Event);
             }
           }
         };
@@ -287,10 +305,13 @@ class ApiClient {
         read();
       })
       .catch(error => {
-        callbacks.onError?.(error);
+        if (error.name !== 'AbortError' && !isAborted) {
+          safeCallback('onError', error);
+        }
       });
 
     return () => {
+      isAborted = true;
       controller.abort();
     };
   }
@@ -339,7 +360,6 @@ class ApiClient {
     return response.data.data;
   }
 
-  // Обновляем метод для получения семантического графа с правильным типом возврата
   async getSemanticGraph(containerId: string): Promise<SemanticGraphData> {
     const response = await this.client.get<{ data: SemanticGraphData }>('/search/graph', {
       headers: this.getAuthHeaders(),

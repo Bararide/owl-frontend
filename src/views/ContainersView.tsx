@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Box,
   Typography,
@@ -7,6 +7,7 @@ import {
   Collapse,
   IconButton,
   Chip,
+  Tooltip,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -16,6 +17,7 @@ import {
   Pause as StoppedIcon,
   Error as ErrorIcon,
   HourglassEmpty as StartingIcon,
+  Person as PersonIcon,
 } from '@mui/icons-material';
 
 import { useContainers, useCreateContainer, useDeleteContainer, useRestartContainer } from '../hooks/useApi';
@@ -87,7 +89,7 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
   const deleteContainerMutation = useDeleteContainer();
   const restartContainerMutation = useRestartContainer();
 
-  const [expandedGroups, setExpandedGroups] = React.useState<Record<ContainerStatus, boolean>>({
+  const [expandedGroups, setExpandedGroups] = useState<Record<ContainerStatus, boolean>>({
     running: true,
     starting: true,
     stopped: false,
@@ -194,9 +196,8 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, p: 2 }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 3, minHeight: '100vh' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
         <Box>
           <Typography variant="h5" fontWeight="600">
             Containers
@@ -215,24 +216,22 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
         </Button>
       </Box>
 
-      {/* Status Groups */}
       {STATUS_GROUPS.map(group => {
         const groupContainers = groupedContainers[group.key];
         const isEmpty = groupContainers.length === 0;
         const isExpanded = expandedGroups[group.key];
 
+        if (isEmpty) return null;
+
         return (
-          <Box key={group.key} sx={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
-            {/* Group Header */}
+          <Box key={group.key}>
             <Box
               sx={{
-                p: 2,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
+                py: 1.5,
                 cursor: 'pointer',
-                bgcolor: 'rgba(255,255,255,0.02)',
-                '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
               }}
               onClick={() => toggleGroup(group.key)}
             >
@@ -247,9 +246,9 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
                   {group.description}
                 </Typography>
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  {groupContainers.length} container{groupContainers.length !== 1 ? 's' : ''}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body2" color="text.secondary" fontWeight="500">
+                  {groupContainers.length}
                 </Typography>
                 <IconButton size="small" sx={{ color: 'text.secondary' }}>
                   {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
@@ -257,26 +256,22 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
               </Box>
             </Box>
 
-            <Divider />
-
-            {/* Group Content */}
             <Collapse in={isExpanded}>
-              {isEmpty ? (
-                <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-                  <Typography variant="body2">No {group.label.toLowerCase()} containers</Typography>
-                </Box>
-              ) : (
-                <Box sx={{ p: 2, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-                  {groupContainers.map(container => (
-                    <ContainerCard
-                      key={container.id}
-                      container={container}
-                      onSelect={onContainerSelect}
-                      onAction={handleContainerAction}
-                    />
-                  ))}
-                </Box>
-              )}
+              <Box sx={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fill, minmax(520px, 1fr))', 
+                gap: 2,
+                mt: 1,
+              }}>
+                {groupContainers.map(container => (
+                  <ContainerCard
+                    key={container.id}
+                    container={container}
+                    onSelect={onContainerSelect}
+                    onAction={handleContainerAction}
+                  />
+                ))}
+              </Box>
             </Collapse>
           </Box>
         );
