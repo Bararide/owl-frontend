@@ -170,6 +170,34 @@ export interface RecommendationEvent {
   count?: number;
 }
 
+export interface Group {
+  id: string;
+  container_id: string;
+  description: string | null;
+  created_at: string;
+}
+
+export interface GroupStats {
+  group_id: string;
+  container_id: string;
+  description: string | null;
+  created_at: string;
+  total_files: number;
+  total_size: number;
+  average_file_size: number;
+  files: Array<{
+    id: string;
+    name: string;
+    size: number;
+    created_at: string;
+  }>;
+}
+
+export interface FileGroupRelation {
+  file_id: string;
+  group_id: string;
+}
+
 export interface RecommendationStreamCallbacks {
   onPathsUpdate?: (paths: string[], event: RecommendationEvent) => void;
   onComplete?: (paths: string[], event: RecommendationEvent) => void;
@@ -527,6 +555,108 @@ class ApiClient {
     const response = await this.client.get('/system/status', {
       headers: this.getAuthHeaders()
     });
+    return response.data.data;
+  }
+
+  async getContainerGroups(containerId: string): Promise<Group[]> {
+    const response = await this.client.get<{ data: Group[] }>(
+      `/groups/container/${containerId}`,
+      { headers: this.getAuthHeaders() }
+    );
+    return response.data.data;
+  }
+
+  async createGroup(containerId: string, name: string, description?: string): Promise<Group> {
+    const response = await this.client.post<{ data: Group }>(
+      `/groups/container/${containerId}`,
+      { name, description: description || '' },
+      { headers: this.getAuthHeaders() }
+    );
+    return response.data.data;
+  }
+
+  async getGroup(groupId: string): Promise<Group> {
+    const response = await this.client.get<{ data: Group }>(
+      `/groups/${groupId}`,
+      { headers: this.getAuthHeaders() }
+    );
+    return response.data.data;
+  }
+
+  async updateGroup(groupId: string, description: string): Promise<void> {
+    await this.client.patch(
+      `/groups/${groupId}`,
+      { description },
+      { headers: this.getAuthHeaders() }
+    );
+  }
+
+  async deleteGroup(groupId: string): Promise<void> {
+    await this.client.delete(`/groups/${groupId}`, {
+      headers: this.getAuthHeaders()
+    });
+  }
+
+  async addFileToGroup(groupId: string, fileId: string): Promise<FileGroupRelation> {
+    const response = await this.client.post<{ data: FileGroupRelation }>(
+      `/groups/${groupId}/files`,
+      { file_id: fileId },
+      { headers: this.getAuthHeaders() }
+    );
+    return response.data.data;
+  }
+
+  async removeFileFromGroup(groupId: string, fileId: string): Promise<void> {
+    await this.client.delete(`/groups/${groupId}/files/${fileId}`, {
+      headers: this.getAuthHeaders()
+    });
+  }
+
+  async getGroupFiles(groupId: string): Promise<ApiFile[]> {
+    const response = await this.client.get<{ data: ApiFile[] }>(
+      `/groups/${groupId}/files`,
+      { headers: this.getAuthHeaders() }
+    );
+    return response.data.data;
+  }
+
+  async getFileGroups(fileId: string): Promise<Group[]> {
+    const response = await this.client.get<{ data: Group[] }>(
+      `/groups/file/${fileId}/groups`,
+      { headers: this.getAuthHeaders() }
+    );
+    return response.data.data;
+  }
+
+  async addMultipleFilesToGroup(groupId: string, fileIds: string[]): Promise<FileGroupRelation[]> {
+    const response = await this.client.post<{ data: FileGroupRelation[] }>(
+      `/groups/${groupId}/files/batch`,
+      { file_ids: fileIds },
+      { headers: this.getAuthHeaders() }
+    );
+    return response.data.data;
+  }
+
+  async removeMultipleFilesFromGroup(groupId: string, fileIds: string[]): Promise<void> {
+    await this.client.delete(`/groups/${groupId}/files/batch`, {
+      data: { file_ids: fileIds },
+      headers: this.getAuthHeaders()
+    });
+  }
+
+  async moveFileBetweenGroups(fileId: string, fromGroupId: string, toGroupId: string): Promise<void> {
+    await this.client.post(
+      `/groups/${toGroupId}/move/${fileId}`,
+      { from_group_id: fromGroupId },
+      { headers: this.getAuthHeaders() }
+    );
+  }
+
+  async getGroupStats(groupId: string): Promise<GroupStats> {
+    const response = await this.client.get<{ data: GroupStats }>(
+      `/groups/${groupId}/stats`,
+      { headers: this.getAuthHeaders() }
+    );
     return response.data.data;
   }
 }

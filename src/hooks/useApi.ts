@@ -317,3 +317,157 @@ export const useAutoRefreshFiles = (containerId: string | undefined) => {
     refresh: () => queryClient.invalidateQueries({ queryKey: ['files', containerId] })
   };
 };
+
+export const useContainerGroups = (containerId: string | undefined) => {
+  return useQuery({
+    queryKey: ['groups', 'container', containerId],
+    queryFn: () => apiClient.getContainerGroups(containerId!),
+    enabled: !!containerId,
+  });
+};
+
+export const useGroup = (groupId: string | undefined) => {
+  return useQuery({
+    queryKey: ['groups', groupId],
+    queryFn: () => apiClient.getGroup(groupId!),
+    enabled: !!groupId,
+  });
+};
+
+export const useCreateGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ containerId, name, description }: { containerId: string; name: string; description?: string }) =>
+      apiClient.createGroup(containerId, name, description),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['groups', 'container', variables.containerId] });
+    },
+  });
+};
+
+export const useUpdateGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ groupId, description }: { groupId: string; description: string }) =>
+      apiClient.updateGroup(groupId, description),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['groups', variables.groupId] });
+      // Также можно инвалидировать группы контейнера, но container_id неизвестен. 
+      // Обновление описания не влияет на список групп, так что можно не инвалидировать.
+    },
+  });
+};
+
+export const useDeleteGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (groupId: string) => apiClient.deleteGroup(groupId),
+    onSuccess: (_, groupId) => {
+      // После удаления нужно обновить списки групп в контейнере
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+    },
+  });
+};
+
+export const useGroupFiles = (groupId: string | undefined) => {
+  return useQuery({
+    queryKey: ['groups', groupId, 'files'],
+    queryFn: () => apiClient.getGroupFiles(groupId!),
+    enabled: !!groupId,
+  });
+};
+
+export const useFileGroups = (fileId: string | undefined) => {
+  return useQuery({
+    queryKey: ['files', fileId, 'groups'],
+    queryFn: () => apiClient.getFileGroups(fileId!),
+    enabled: !!fileId,
+  });
+};
+
+export const useAddFileToGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ groupId, fileId }: { groupId: string; fileId: string }) =>
+      apiClient.addFileToGroup(groupId, fileId),
+    onSuccess: (_, { groupId, fileId }) => {
+      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'files'] });
+      queryClient.invalidateQueries({ queryKey: ['files', fileId, 'groups'] });
+      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'stats'] });
+    },
+  });
+};
+
+export const useRemoveFileFromGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ groupId, fileId }: { groupId: string; fileId: string }) =>
+      apiClient.removeFileFromGroup(groupId, fileId),
+    onSuccess: (_, { groupId, fileId }) => {
+      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'files'] });
+      queryClient.invalidateQueries({ queryKey: ['files', fileId, 'groups'] });
+      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'stats'] });
+    },
+  });
+};
+
+export const useAddMultipleFilesToGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ groupId, fileIds }: { groupId: string; fileIds: string[] }) =>
+      apiClient.addMultipleFilesToGroup(groupId, fileIds),
+    onSuccess: (_, { groupId, fileIds }) => {
+      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'files'] });
+      fileIds.forEach(fileId => {
+        queryClient.invalidateQueries({ queryKey: ['files', fileId, 'groups'] });
+      });
+      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'stats'] });
+    },
+  });
+};
+
+export const useRemoveMultipleFilesFromGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ groupId, fileIds }: { groupId: string; fileIds: string[] }) =>
+      apiClient.removeMultipleFilesFromGroup(groupId, fileIds),
+    onSuccess: (_, { groupId, fileIds }) => {
+      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'files'] });
+      fileIds.forEach(fileId => {
+        queryClient.invalidateQueries({ queryKey: ['files', fileId, 'groups'] });
+      });
+      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'stats'] });
+    },
+  });
+};
+
+export const useMoveFileBetweenGroups = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ fileId, fromGroupId, toGroupId }: { fileId: string; fromGroupId: string; toGroupId: string }) =>
+      apiClient.moveFileBetweenGroups(fileId, fromGroupId, toGroupId),
+    onSuccess: (_, { fileId, fromGroupId, toGroupId }) => {
+      queryClient.invalidateQueries({ queryKey: ['groups', fromGroupId, 'files'] });
+      queryClient.invalidateQueries({ queryKey: ['groups', toGroupId, 'files'] });
+      queryClient.invalidateQueries({ queryKey: ['files', fileId, 'groups'] });
+      queryClient.invalidateQueries({ queryKey: ['groups', fromGroupId, 'stats'] });
+      queryClient.invalidateQueries({ queryKey: ['groups', toGroupId, 'stats'] });
+    },
+  });
+};
+
+export const useGroupStats = (groupId: string | undefined) => {
+  return useQuery({
+    queryKey: ['groups', groupId, 'stats'],
+    queryFn: () => apiClient.getGroupStats(groupId!),
+    enabled: !!groupId,
+  });
+};
