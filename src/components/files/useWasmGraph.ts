@@ -28,27 +28,29 @@ export function useWasmGraphLayout() {
         return () => { mounted = false; };
     }, []);
 
-    const initGraph = useCallback((nodes: Array<{id: string, radius: number}>, 
-                                 edges: Array<{source: string, target: string, weight: number, bidirectional: boolean}>) => {
+    const initGraph = useCallback((
+        nodes: Array<{id: string, radius: number}>, 
+        edges: Array<{source: string, target: string, weight: number, bidirectional: boolean}>
+    ) => {
         if (!engineRef.current || !nodes.length) return;
         engineRef.current.initGraph(
-            nodes.map(n => n.id),
-            nodes.map(n => n.radius),
-            edges.map(e => e.source),
-            edges.map(e => e.target),
-            edges.map(e => e.weight),
-            edges.map(e => e.bidirectional)
+            nodes.map(n => String(n.id)),
+            nodes.map(n => Number(n.radius)),
+            edges.map(e => String(e.source)),
+            edges.map(e => String(e.target)),
+            edges.map(e => Number(e.weight)),
+            edges.map(e => Boolean(e.bidirectional))
         );
     }, []);
 
     const step = useCallback(() => engineRef.current?.step(), []);
-    const getNodeIds = useCallback(() => engineRef.current?.getNodeIds() ?? [], []);
-    const getX = useCallback(() => engineRef.current?.getX() ?? [], []);
-    const getY = useCallback(() => engineRef.current?.getY() ?? [], []);
-    const getRadii = useCallback(() => engineRef.current?.getRadii() ?? [], []);
+    const getNodeIds = useCallback(() => { const v = engineRef.current?.getNodeIds(); return v ? [...v] : []; }, []);
+    const getX = useCallback(() => { const v = engineRef.current?.getX(); return v ? [...v] : []; }, []);
+    const getY = useCallback(() => { const v = engineRef.current?.getY(); return v ? [...v] : []; }, []);
+    const getRadii = useCallback(() => { const v = engineRef.current?.getRadii(); return v ? [...v] : []; }, []);
     const hitTest = useCallback((sx: number, sy: number, px: number, py: number, z: number, w: number, h: number) => 
         engineRef.current?.hitTest(sx, sy, px, py, z, w, h) ?? -1, []);
-    const setDrag = useCallback((id: string) => engineRef.current?.setDrag(id), []);
+    const setDrag = useCallback((id: string) => engineRef.current?.setDrag(String(id)), []);
     const updateDrag = useCallback((wx: number, wy: number) => engineRef.current?.updateDrag(wx, wy), []);
     const clearDrag = useCallback(() => engineRef.current?.clearDrag(), []);
 

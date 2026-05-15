@@ -830,7 +830,7 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
   const WORLD_SIZE = 60000;
   const WORLD_CENTER = WORLD_SIZE / 2;
 
-  const { ready, initGraph, step, getX, getY, getRadii, hitTest: wasmHitTest, setDrag, updateDrag, clearDrag } = useWasmGraphLayout();
+  const { ready, initGraph, step, getNodeIds, getX, getY, getRadii, hitTest: wasmHitTest, setDrag, updateDrag, clearDrag } = useWasmGraphLayout();
 
   const graph = useMemo(() => {
     const normalized = normalizeGraph(files, graphData);
@@ -880,7 +880,7 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
       gradient.addColorStop(0, '#0a0a0a'); gradient.addColorStop(1, '#000000');
       ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
 
-      const ids = getX();
+      const ids = getNodeIds();
       const xs = getX();
       const ys = getY();
       const radii = getRadii();
@@ -890,9 +890,11 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
       });
 
       graph.edges.forEach((edge) => {
-        const sourceIdx = ids.indexOf(Number(edge.source));
-        const targetIdx = ids.indexOf(Number(edge.target));
+
+        const sourceIdx = ids.indexOf(String(edge.source));
+        const targetIdx = ids.indexOf(String(edge.target));
         if (sourceIdx === -1 || targetIdx === -1) return;
+
         const p1 = transformPoint(xs[sourceIdx], ys[sourceIdx]);
         const p2 = transformPoint(xs[targetIdx], ys[targetIdx]);
         if (p1.x < -100 && p2.x < -100) return; if (p1.x > width + 100 && p2.x > width + 100) return;
@@ -980,9 +982,10 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
           const mx = e.clientX - rect.left, my = e.clientY - rect.top;
           const canvasW = canvasRef.current!.width, canvasH = canvasRef.current!.height;
           const idx = wasmHitTest(mx, my, panRef.current.x, panRef.current.y, zoomRef.current, canvasW, canvasH);
-          if (idx >= 0) {
-            dragNodeIdRef.current = String(getX()[idx]);;
-            setDrag(String(getX()[idx]));
+          const nodeIds = getNodeIds();
+          if (idx >= 0 && idx < nodeIds.length) {
+              dragNodeIdRef.current = nodeIds[idx];
+              setDrag(nodeIds[idx]);
           } else {
             isPanningRef.current = true; lastMouseRef.current = { x: e.clientX, y: e.clientY };
           }
@@ -992,7 +995,8 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
           const mx = e.clientX - rect.left, my = e.clientY - rect.top;
           const canvasW = canvasRef.current!.width, canvasH = canvasRef.current!.height;
           const idx = wasmHitTest(mx, my, panRef.current.x, panRef.current.y, zoomRef.current, canvasW, canvasH);
-          const node = idx >= 0 ? graph.nodes.find(n => n.id === String(getX()[idx])) : null;
+          const nodeIds = getNodeIds();
+          const node = idx >= 0 && idx < nodeIds.length ? graph.nodes.find(n => n.id === nodeIds[idx]) : null;
           hoverNodeIdRef.current = node?.id || null; 
           setHoveredNode(node || null);
           if (dragNodeIdRef.current) { 
@@ -1013,8 +1017,9 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
           const mx = e.clientX - rect.left, my = e.clientY - rect.top;
           const canvasW = canvasRef.current!.width, canvasH = canvasRef.current!.height;
           const idx = wasmHitTest(mx, my, panRef.current.x, panRef.current.y, zoomRef.current, canvasW, canvasH);
-          if (idx >= 0) {
-            const node = graph.nodes.find(n => n.id === String(getX()[idx]));
+          const nodeIds = getNodeIds();
+          if (idx >= 0 && idx < nodeIds.length) {
+            const node = graph.nodes.find(n => n.id === nodeIds[idx]);
             if (node?.file) onOpenFile(node.file);
           }
         }}
@@ -1023,8 +1028,9 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
           const mx = e.clientX - rect.left, my = e.clientY - rect.top;
           const canvasW = canvasRef.current!.width, canvasH = canvasRef.current!.height;
           const idx = wasmHitTest(mx, my, panRef.current.x, panRef.current.y, zoomRef.current, canvasW, canvasH);
-          if (idx >= 0) {
-            const node = graph.nodes.find(n => n.id === String(getX()[idx]));
+          const nodeIds = getNodeIds();
+          if (idx >= 0 && idx < nodeIds.length) {
+            const node = graph.nodes.find(n => n.id === nodeIds[idx]);
             if (node?.file) onOpenFile(node.file);
           }
         }}

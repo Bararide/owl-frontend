@@ -2387,44 +2387,6 @@ async function createWasm() {
     };
 
   
-  var installIndexedIterator = (proto, sizeMethodName, getMethodName) => {
-      const makeIterator = (size, getValue) => {
-        let index = 0;
-        return {
-          next() {
-            if (index >= size) {
-              return { done: true };
-            }
-            const current = index;
-            index++;
-            const value = getValue(current);
-            return { value, done: false };
-          },
-          [Symbol.iterator]() {
-            return this;
-          },
-        };
-      };
-  
-      if (!proto[Symbol.iterator]) {
-        proto[Symbol.iterator] = function() {
-          const size = this[sizeMethodName]();
-          return makeIterator(size, (i) => this[getMethodName](i));
-        };
-      }
-    };
-  
-  var __embind_register_iterable = (rawClassType, rawElementType, sizeMethodName, getMethodName) => {
-      sizeMethodName = AsciiToString(sizeMethodName);
-      getMethodName = AsciiToString(getMethodName);
-      whenDependentTypesAreResolved([], [rawClassType, rawElementType], (types) => {
-        const classType = types[0];
-        installIndexedIterator(classType.registeredClass.instancePrototype, sizeMethodName, getMethodName);
-        return [];
-      });
-    };
-
-  
   var __embind_register_memory_view = (rawType, dataTypeIndex, name) => {
       var typeMapping = [
         Int8Array,
@@ -2455,12 +2417,6 @@ async function createWasm() {
       }, {
         ignoreDuplicateRegistrations: true,
       });
-    };
-
-  
-  var EmValOptionalType = Object.assign({optional: true}, EmValType);;
-  var __embind_register_optional = (rawOptionalType, rawType) => {
-      registerType(rawOptionalType, EmValOptionalType);
     };
 
   
@@ -2870,11 +2826,29 @@ ${functionBody}
       return emval_addMethodCaller(createNamedFunction(functionName, invokerFunction));
     };
 
+
+  var __emval_get_property = (handle, key) => {
+      handle = Emval.toValue(handle);
+      key = Emval.toValue(key);
+      return Emval.toHandle(handle[key]);
+    };
+
+  var __emval_incref = (handle) => {
+      if (handle > 9) {
+        emval_handles[handle + 1] += 1;
+      }
+    };
+
   
   
   var __emval_invoke = (caller, handle, methodName, destructorsRef, args) => {
       return emval_methodCallers[caller](handle, methodName, destructorsRef, args);
     };
+
+  var __emval_new_array = () => Emval.toHandle([]);
+
+  
+  var __emval_new_cstring = (v) => Emval.toHandle(getStringOrSymbol(v));
 
   
   
@@ -3348,6 +3322,7 @@ Module['FS_createPreloadedFile'] = FS.createPreloadedFile;
   'getInheritedInstanceCount',
   'getLiveInheritedInstances',
   'enumReadValueFromPointer',
+  'installIndexedIterator',
   'setDelayFunction',
   'validateThis',
   'count_emval_handles',
@@ -3620,7 +3595,6 @@ missingLibrarySymbols.forEach(missingLibrarySymbol)
   'floatReadValueFromPointer',
   'assertIntegerRange',
   'readPointer',
-  'installIndexedIterator',
   'runDestructors',
   'craftInvokerFunction',
   'embind__requireFunction',
@@ -3781,11 +3755,7 @@ var wasmImports = {
   /** @export */
   _embind_register_integer: __embind_register_integer,
   /** @export */
-  _embind_register_iterable: __embind_register_iterable,
-  /** @export */
   _embind_register_memory_view: __embind_register_memory_view,
-  /** @export */
-  _embind_register_optional: __embind_register_optional,
   /** @export */
   _embind_register_std_string: __embind_register_std_string,
   /** @export */
@@ -3795,7 +3765,17 @@ var wasmImports = {
   /** @export */
   _emval_create_invoker: __emval_create_invoker,
   /** @export */
+  _emval_decref: __emval_decref,
+  /** @export */
+  _emval_get_property: __emval_get_property,
+  /** @export */
+  _emval_incref: __emval_incref,
+  /** @export */
   _emval_invoke: __emval_invoke,
+  /** @export */
+  _emval_new_array: __emval_new_array,
+  /** @export */
+  _emval_new_cstring: __emval_new_cstring,
   /** @export */
   _emval_run_destructors: __emval_run_destructors,
   /** @export */
