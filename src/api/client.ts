@@ -175,6 +175,7 @@ export interface Group {
   container_id: string;
   description: string | null;
   created_at: string;
+  color: string;
 }
 
 export interface GroupStats {
@@ -566,13 +567,21 @@ class ApiClient {
     return response.data.data;
   }
 
-  async createGroup(containerId: string, name: string, description?: string): Promise<Group> {
+  async createGroup(containerId: string, name: string, description?: string, color?: string): Promise<Group> {
     const response = await this.client.post<{ data: Group }>(
       `/groups/container/${containerId}`,
-      { name, description: description || '' },
+      { name, description: description || '', color: color || '#ff9800' },
       { headers: this.getAuthHeaders() }
     );
     return response.data.data;
+  }
+
+  async updateGroupColor(groupId: string, color: string): Promise<void> {
+    await this.client.patch(
+      `/groups/${groupId}`,
+      { color },
+      { headers: this.getAuthHeaders() }
+    );
   }
 
   async getGroup(groupId: string): Promise<Group> {

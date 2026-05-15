@@ -1,4 +1,3 @@
-// FilesView.tsx
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Box,
@@ -80,7 +79,8 @@ import {
   useDeleteGroup,
   useAddFileToGroup,
   useRemoveFileFromGroup,
-  useGroupFiles,
+  useFileGroups,
+  useUpdateGroupColor,
 } from '../../hooks/useApi';
 
 type Severity = 'success' | 'error' | 'info' | 'warning';
@@ -357,6 +357,10 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
   const deleteFileMutation = useDeleteFile();
   const uploadFileMutation = useUploadFile();
   const { addNotification } = useNotifications();
+  const { data: groups, refetch: refetchGroups } = useContainerGroups(containerId);
+  const addFileToGroup = useAddFileToGroup();
+  const removeFileFromGroup = useRemoveFileFromGroup();
+  const { data: fileGroups, refetch: refetchFileGroups } = useFileGroups(file?.name);
 
   const content = data?.content || '';
   const explanation = data?.explanation || '';
@@ -373,6 +377,7 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [matchCase, setMatchCase] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
+  const [groupMenuAnchor, setGroupMenuAnchor] = useState<null | HTMLElement>(null);
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
 
   const isTextFile = file?.mime_type?.startsWith('text/') || file?.mime_type === 'application/json';
@@ -410,8 +415,9 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
       setCurrentMatchIndex(-1); setIsSearchActive(!!initialSearchQuery); setCopied(false);
       setMatchCase(false); setWholeWord(false);
       setTimeout(() => refetch(), 100);
+      refetchFileGroups();
     }
-  }, [file?.name, initialSearchQuery, open, refetch]);
+  }, [file?.name, initialSearchQuery, open, refetch, refetchFileGroups]);
 
   useEffect(() => { if (data?.content && !editedContent) setEditedContent(data.content); }, [data, editedContent]);
   useEffect(() => {
@@ -507,6 +513,29 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
     }
   }, [file, containerId, addNotification]);
 
+  const handleAddToGroup = async (groupId: string) => {
+    if (!file) return;
+    try {
+      await addFileToGroup.mutateAsync({ groupId, fileId: file.name });
+      addNotification({ message: `File added to group successfully`, severity: 'success', open: true });
+      refetchFileGroups();
+    } catch (error) {
+      addNotification({ message: `Failed to add file to group: ${error}`, severity: 'error', open: true });
+    }
+    setGroupMenuAnchor(null);
+  };
+
+  const handleRemoveFromGroup = async (groupId: string) => {
+    if (!file) return;
+    try {
+      await removeFileFromGroup.mutateAsync({ groupId, fileId: file.name });
+      addNotification({ message: `File removed from group successfully`, severity: 'success', open: true });
+      refetchFileGroups();
+    } catch (error) {
+      addNotification({ message: `Failed to remove file from group: ${error}`, severity: 'error', open: true });
+    }
+  };
+
   const renderTextWithHighlights = () => {
     if (!editedContent) return null;
     if (flattenRanges.length === 0) return editedContent;
@@ -591,8 +620,26 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
                 )}
                 <Button fullWidth variant="outlined" size="small" startIcon={<DownloadIcon />} onClick={handleDownload}>Download</Button>
                 <Button fullWidth variant="outlined" size="small" startIcon={<DeleteIcon />} color="error" onClick={() => setShowDeleteConfirm(true)}>Delete</Button>
+                <Button fullWidth variant="outlined" size="small" startIcon={<FolderSpecialIcon />} onClick={(e) => setGroupMenuAnchor(e.currentTarget)}>Groups</Button>
                 <Button fullWidth variant="outlined" size="small" startIcon={<MoreVertIcon />} onClick={(e) => setActionMenuAnchor(e.currentTarget)}>More</Button>
                 <Divider sx={{ my: 1 }} />
+                {fileGroups && fileGroups.length > 0 && (
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Current groups:</Typography>
+                    <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 0.5 }}>
+                      {fileGroups && fileGroups.map((group: Group) => (
+                        <Chip 
+                          key={group.id} 
+                          label={group.id} 
+                          size="small" 
+                          onDelete={() => handleRemoveFromGroup(group.id)}
+                          deleteIcon={<CloseIcon />}
+                          sx={{ backgroundColor: group.color || '#ff9800', color: '#fff' }}
+                        />
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
                 {isSearchActive && searchMatches.length > 0 && <Chip icon={<SearchIcon />} label={`${totalMatches} matches`} size="small" color="secondary" variant="outlined" />}
                 {isEditing && <Alert severity="warning" sx={{ mt: 1 }}>Ctrl/Cmd + S to save</Alert>}
                 {saveError && <Alert severity="error" onClose={() => setSaveError('')}>{saveError}</Alert>}
@@ -698,12 +745,26 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
           </Stack>
         </DialogActions>
       </Dialog>
+      
+      <Menu anchorEl={groupMenuAnchor} open={Boolean(groupMenuAnchor)} onClose={() => setGroupMenuAnchor(null)} PaperProps={{ sx: { mt: 1, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(26, 31, 54, 0.98)', backdropFilter: 'blur(20px)', minWidth: 200 } }}>
+        {groups && groups.filter(g => !fileGroups?.some((fg: { id: string; }) => fg.id === g.id)).map(group => (
+          <MenuItem key={group.id} onClick={() => handleAddToGroup(group.id)}>
+            <Box sx={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: group.color || '#ff9800', mr: 1.5 }} />
+            {group.id}
+          </MenuItem>
+        ))}
+        {groups && groups.filter(g => !fileGroups?.some((fg: { id: string; }) => fg.id === g.id)).length === 0 && (
+          <MenuItem disabled>No available groups</MenuItem>
+        )}
+      </Menu>
+
       <Menu anchorEl={actionMenuAnchor} open={Boolean(actionMenuAnchor)} onClose={() => setActionMenuAnchor(null)} PaperProps={{ sx: { mt: 1, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(26, 31, 54, 0.98)', backdropFilter: 'blur(20px)', minWidth: 180 } }}>
         <MenuItem onClick={() => { setActionMenuAnchor(null); handleDownload(); }}><DownloadIcon fontSize="small" sx={{ mr: 1.5 }} />Download File</MenuItem>
         {isTextFile && <MenuItem onClick={() => { setActionMenuAnchor(null); handleCopyContent(); }}><ContentCopyIcon fontSize="small" sx={{ mr: 1.5 }} />Copy Content</MenuItem>}
         <Divider sx={{ my: 1 }} />
         <MenuItem onClick={() => { setActionMenuAnchor(null); setShowDeleteConfirm(true); }} sx={{ color: 'error.main' }}><DeleteIcon fontSize="small" sx={{ mr: 1.5 }} />Delete File</MenuItem>
       </Menu>
+
       <Dialog open={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} PaperProps={{ sx: { borderRadius: 3, background: 'rgba(26, 31, 54, 0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)' } }}>
         <Box sx={{ p: 3 }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}><DeleteIcon color="error" /><Typography variant="h6">Delete File</Typography></Stack>
@@ -1111,23 +1172,22 @@ const GroupManagementDialog: React.FC<{
   open: boolean;
   onClose: () => void;
   containerId: string;
-  files: ApiFile[];
   groups: Group[];
   refetchGroups: () => void;
-}> = ({ open, onClose, containerId, files, groups, refetchGroups }) => {
+}> = ({ open, onClose, containerId, groups, refetchGroups }) => {
   const createGroup = useCreateGroup();
   const deleteGroup = useDeleteGroup();
-  const addFileToGroup = useAddFileToGroup();
-  const removeFileFromGroup = useRemoveFileFromGroup();
+  const updateGroupColor = useUpdateGroupColor();
   const [newGroupName, setNewGroupName] = useState('');
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
-  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
-  const { data: groupFiles, refetch: refetchGroupFiles } = useGroupFiles(selectedGroupId || undefined);
+  const [newGroupColor, setNewGroupColor] = useState('#ff9800');
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editingColor, setEditingColor] = useState('#ff9800');
 
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return;
-    await createGroup.mutateAsync({ containerId, name: newGroupName });
+    await createGroup.mutateAsync({ containerId, name: newGroupName, description: '', color: newGroupColor });
     setNewGroupName('');
+    setNewGroupColor('#ff9800');
     refetchGroups();
   };
 
@@ -1135,74 +1195,76 @@ const GroupManagementDialog: React.FC<{
     if (window.confirm('Delete group? All file associations will be lost.')) {
       await deleteGroup.mutateAsync(groupId);
       refetchGroups();
-      if (selectedGroupId === groupId) setSelectedGroupId(null);
     }
   };
 
-  const handleAddFile = async () => {
-    if (selectedGroupId && selectedFileId) {
-      await addFileToGroup.mutateAsync({ groupId: selectedGroupId, fileId: selectedFileId });
-      refetchGroupFiles();
-    }
+  const handleUpdateColor = async (groupId: string) => {
+    await updateGroupColor.mutateAsync({ groupId, color: editingColor });
+    refetchGroups();
+    setEditingGroupId(null);
   };
 
-  const handleRemoveFile = async (fileId: string) => {
-    if (selectedGroupId) {
-      await removeFileFromGroup.mutateAsync({ groupId: selectedGroupId, fileId });
-      refetchGroupFiles();
-    }
-  };
+  const predefinedColors = ['#ff9800', '#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f3', '#03a9f4', '#00bcd4', '#009688', '#4caf50', '#8bc34a', '#cddc39', '#ffeb3b', '#ffc107'];
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3, background: 'rgba(26,31,54,0.98)', backdropFilter: 'blur(20px)' } }}>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3, background: 'rgba(26,31,54,0.98)', backdropFilter: 'blur(20px)' } }}>
       <DialogTitle>Manage Groups</DialogTitle>
-      <DialogContent dividers sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', md: 'row' } }}>
-        <Box sx={{ flex: 1, minWidth: 200 }}>
-          <Typography variant="subtitle2" gutterBottom>Groups</Typography>
-          <Stack spacing={1}>
-            {groups.map(group => (
-              <Paper key={group.id} variant="outlined" sx={{ p: 1, cursor: 'pointer', bgcolor: selectedGroupId === group.id ? 'action.selected' : 'transparent' }} onClick={() => setSelectedGroupId(group.id)}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography variant="body2">{group.id}</Typography>
-                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group.id); }}><DeleteIcon fontSize="small" /></IconButton>
-                </Stack>
-                <Typography variant="caption" color="text.secondary">{group.description || 'No description'}</Typography>
-              </Paper>
-            ))}
-            <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-              <TextField size="small" placeholder="New group name" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} fullWidth />
-              <IconButton onClick={handleCreateGroup} disabled={!newGroupName.trim()}><AddIcon /></IconButton>
-            </Stack>
+      <DialogContent dividers>
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" gutterBottom>Create New Group</Typography>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <TextField size="small" placeholder="Group name" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} fullWidth />
+            <Box sx={{ position: 'relative' }}>
+              <Box sx={{ width: 40, height: 40, borderRadius: '50%', backgroundColor: newGroupColor, cursor: 'pointer', border: '2px solid rgba(255,255,255,0.3)' }} />
+              <input type="color" value={newGroupColor} onChange={(e) => setNewGroupColor(e.target.value)} style={{ position: 'absolute', top: 0, left: 0, width: 40, height: 40, opacity: 0, cursor: 'pointer' }} />
+            </Box>
+            <Button variant="contained" onClick={handleCreateGroup} disabled={!newGroupName.trim()}>Create</Button>
           </Stack>
         </Box>
-
-        {selectedGroupId && (
-          <Box sx={{ flex: 2 }}>
-            <Typography variant="subtitle2" gutterBottom>Files in group</Typography>
-            <Stack spacing={1} sx={{ maxHeight: 300, overflow: 'auto' }}>
-              {groupFiles?.map(file => (
-                <Paper key={file.path} variant="outlined" sx={{ p: 1 }}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center">
-                    <Typography variant="body2">{file.name}</Typography>
-                    <IconButton size="small" onClick={() => handleRemoveFile(file.name)}><CloseIcon fontSize="small" /></IconButton>
-                  </Stack>
-                </Paper>
-              ))}
-              {groupFiles?.length === 0 && <Typography variant="caption" color="text.secondary">No files in this group</Typography>}
-            </Stack>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="subtitle2" gutterBottom>Add file to group</Typography>
-            <Stack direction="row" spacing={1}>
-              <Select size="small" fullWidth displayEmpty value={selectedFileId || ''} onChange={(e) => setSelectedFileId(e.target.value)}>
-                <MenuItem value="" disabled>Select file</MenuItem>
-                {files.map(file => (
-                  <MenuItem key={file.path} value={file.name}>{file.name}</MenuItem>
-                ))}
-              </Select>
-              <Button variant="contained" onClick={handleAddFile} disabled={!selectedFileId}>Add</Button>
-            </Stack>
-          </Box>
-        )}
+        
+        <Divider sx={{ my: 2 }} />
+        
+        <Typography variant="subtitle2" gutterBottom>Existing Groups</Typography>
+        <Stack spacing={1}>
+          {groups.map((group) => (
+            <Paper key={group.id} variant="outlined" sx={{ p: 1.5 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  {editingGroupId === group.id ? (
+                    <>
+                      <Box sx={{ position: 'relative' }}>
+                        <Box sx={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: editingColor, border: '2px solid rgba(255,255,255,0.3)' }} />
+                        <input type="color" value={editingColor} onChange={(e) => setEditingColor(e.target.value)} style={{ position: 'absolute', top: 0, left: 0, width: 32, height: 32, opacity: 0, cursor: 'pointer' }} />
+                      </Box>
+                      <TextField size="small" value={group.id} disabled sx={{ minWidth: 150 }} />
+                    </>
+                  ) : (
+                    <>
+                      <Box sx={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: group.color || '#ff9800' }} />
+                      <Typography variant="body2">{group.id}</Typography>
+                    </>
+                  )}
+                </Stack>
+                <Stack direction="row" spacing={1}>
+                  {editingGroupId === group.id ? (
+                    <IconButton size="small" onClick={() => handleUpdateColor(group.id)} sx={{ color: '#4caf50' }}><CheckCircleIcon fontSize="small" /></IconButton>
+                  ) : (
+                    <IconButton size="small" onClick={() => { setEditingGroupId(group.id); setEditingColor(group.color || '#ff9800'); }}><EditIcon fontSize="small" /></IconButton>
+                  )}
+                  <IconButton size="small" onClick={() => handleDeleteGroup(group.id)} sx={{ color: 'error.main' }}><DeleteIcon fontSize="small" /></IconButton>
+                </Stack>
+              </Stack>
+              <Typography variant="caption" color="text.secondary">ID: {group.id}</Typography>
+              {editingGroupId === group.id && (
+                <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
+                  {predefinedColors.map((color) => (
+                    <Box key={color} sx={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: color, cursor: 'pointer', border: editingColor === color ? '2px solid white' : '2px solid transparent' }} onClick={() => setEditingColor(color)} />
+                  ))}
+                </Stack>
+              )}
+            </Paper>
+          ))}
+        </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Close</Button>
@@ -1387,7 +1449,6 @@ export default function FilesView({ containerId }: { containerId: string }) {
         open={groupDialogOpen}
         onClose={() => setGroupDialogOpen(false)}
         containerId={containerId}
-        files={files}
         groups={groups || []}
         refetchGroups={refetchGroups}
       />

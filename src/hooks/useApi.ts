@@ -338,10 +338,22 @@ export const useCreateGroup = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ containerId, name, description }: { containerId: string; name: string; description?: string }) =>
-      apiClient.createGroup(containerId, name, description),
+    mutationFn: ({ containerId, name, description, color }: { containerId: string; name: string; description?: string; color: string }) =>
+      apiClient.createGroup(containerId, name, description, color),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['groups', 'container', variables.containerId] });
+    },
+  });
+};
+
+export const useUpdateGroupColor = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ groupId, color }: { groupId: string; color: string }) =>
+      apiClient.updateGroupColor(groupId, color),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
     },
   });
 };
@@ -354,8 +366,6 @@ export const useUpdateGroup = () => {
       apiClient.updateGroup(groupId, description),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['groups', variables.groupId] });
-      // Также можно инвалидировать группы контейнера, но container_id неизвестен. 
-      // Обновление описания не влияет на список групп, так что можно не инвалидировать.
     },
   });
 };
