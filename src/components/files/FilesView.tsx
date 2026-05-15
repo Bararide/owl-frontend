@@ -780,7 +780,20 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
   );
 };
 
-interface GraphNode { id: string; path: string; name: string; file: ApiFile | null; degree: number; radius: number; x?: number; y?: number; vx?: number; vy?: number; groups?: string[]; }
+interface GraphNode { 
+  id: string; 
+  path: string; 
+  name: string; 
+  file: ApiFile | null; 
+  degree: number; 
+  radius: number; 
+  x?: number; 
+  y?: number; 
+  vx?: number; 
+  vy?: number; 
+  groups?: { groupId: string; color: string }[]; 
+}
+
 interface GraphEdge { source: string; target: string; weight: number; bidirectional: boolean; }
 
 interface SemanticGraphCanvasProps {
@@ -799,7 +812,7 @@ interface SemanticGraphCanvasProps {
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
   onSearchSubmit: () => void;
-  fileGroupsMap?: Map<string, string[]>;
+  fileGroupsMap?: Map<string, { groupId: string; color: string }[]>;
 }
 
 const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
@@ -977,15 +990,17 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
         if (glowColor && node.id === hoverNodeIdRef.current) { ctx.shadowColor = glowColor; ctx.shadowBlur = 20; }
         ctx.beginPath(); ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
         ctx.fillStyle = fill; ctx.fill(); ctx.shadowBlur = 0;
+        
         let strokeColor = node.id === hoverNodeIdRef.current ? '#ffffff' : 'rgba(255,255,255,0.4)';
         if (node.groups && node.groups.length > 0) {
-          strokeColor = '#ff9800';
+          strokeColor = node.groups[0].color || '#ff9800';
           ctx.lineWidth = 2.5;
         } else {
           ctx.lineWidth = node.id === hoverNodeIdRef.current ? 2.5 : 1.5;
         }
         ctx.strokeStyle = strokeColor;
         ctx.stroke();
+        
         if (radius > 14) {
           ctx.fillStyle = '#ffffff';
           const fontSize = Math.max(10, Math.min(12, radius * 0.6));
@@ -1140,9 +1155,6 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
         <Paper elevation={3} sx={{ px: 1.5, py: 0.75, borderRadius: 2, background: 'rgba(26, 31, 54, 0.9)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)', pointerEvents: 'auto' }}>
           <Stack direction="row" spacing={1} alignItems="center"><Box sx={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: '#ff9800' }} /><Typography variant="caption" sx={{ color: 'white' }}>Recommended</Typography></Stack>
         </Paper>
-        <Paper elevation={3} sx={{ px: 1.5, py: 0.75, borderRadius: 2, background: 'rgba(26, 31, 54, 0.9)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)', pointerEvents: 'auto' }}>
-          <Stack direction="row" spacing={1} alignItems="center"><Box sx={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: '#ff9800', border: '2px solid #ff9800' }} /><Typography variant="caption" sx={{ color: 'white' }}>In Group</Typography></Stack>
-        </Paper>
       </Box>
 
       {hoveredNode && (
@@ -1158,7 +1170,19 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
             <Box sx={{ mt: 1 }}>
               <Typography variant="caption" sx={{ fontWeight: 600, color: '#ff9800' }}>Groups:</Typography>
               <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 0.5 }}>
-                {hoveredNode.groups.map(g => <Chip key={g} label={g} size="small" variant="outlined" sx={{ color: '#ff9800', borderColor: '#ff9800' }} />)}
+                {hoveredNode.groups.map(g => (
+                  <Chip 
+                    key={g.groupId} 
+                    label={g.groupId} 
+                    size="small" 
+                    variant="outlined" 
+                    sx={{ 
+                      color: g.color, 
+                      borderColor: g.color,
+                      '& .MuiChip-label': { color: g.color }
+                    }} 
+                  />
+                ))}
               </Stack>
             </Box>
           )}
@@ -1297,7 +1321,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
   const [showSearchPopup, setShowSearchPopup] = useState(false);
   const [rebuildNotification, setRebuildNotification] = useState<{ open: boolean; message: string; severity: Severity; }>({ open: false, message: '', severity: 'info' });
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
-  const [fileGroupsMap, setFileGroupsMap] = useState<Map<string, string[]>>(new Map());
+  const [fileGroupsMap, setFileGroupsMap] = useState<Map<string, { groupId: string; color: string }[]>>(new Map());
   
   const searchAnchorRef = useRef<HTMLButtonElement>(null);
 
@@ -1311,12 +1335,12 @@ export default function FilesView({ containerId }: { containerId: string }) {
   useEffect(() => {
     if (!files.length || !groups?.length) return;
     const fetchAllGroups = async () => {
-      const map = new Map<string, string[]>();
+      const map = new Map<string, { groupId: string; color: string }[]>();
       for (const file of files) {
         try {
           const groupsForFile = await apiClient.getFileGroups(file.name);
           if (groupsForFile.length) {
-            map.set(file.path, groupsForFile.map(g => g.id));
+            map.set(file.path, groupsForFile.map(g => ({ groupId: g.id, color: g.color || '#ff9800' })));
           }
         } catch (error) {
           console.error(`Failed to fetch groups for file ${file.name}`, error);
