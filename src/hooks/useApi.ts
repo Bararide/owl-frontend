@@ -376,7 +376,6 @@ export const useDeleteGroup = () => {
   return useMutation({
     mutationFn: (groupId: string) => apiClient.deleteGroup(groupId),
     onSuccess: (_, groupId) => {
-      // После удаления нужно обновить списки групп в контейнере
       queryClient.invalidateQueries({ queryKey: ['groups'] });
     },
   });

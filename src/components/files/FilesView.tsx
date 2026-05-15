@@ -82,6 +82,7 @@ import {
   useFileGroups,
   useUpdateGroupColor,
 } from '../../hooks/useApi';
+import { useWasmGraphLayout } from './useWasmGraph';
 
 type Severity = 'success' | 'error' | 'info' | 'warning';
 
@@ -787,10 +788,6 @@ interface GraphNode {
   file: ApiFile | null; 
   degree: number; 
   radius: number; 
-  x?: number; 
-  y?: number; 
-  vx?: number; 
-  vy?: number; 
   groups?: { groupId: string; color: string }[]; 
 }
 
@@ -833,6 +830,8 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
   const WORLD_SIZE = 60000;
   const WORLD_CENTER = WORLD_SIZE / 2;
 
+  const { ready, initGraph, step, getX, getY, getRadii, hitTest: wasmHitTest, setDrag, updateDrag, clearDrag } = useWasmGraphLayout();
+
   const graph = useMemo(() => {
     const normalized = normalizeGraph(files, graphData);
     const nodesWithGroups = normalized.nodes.map(node => ({
@@ -845,20 +844,12 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
   const recommendationSet = useMemo(() => new Set(recommendations.map((r) => r.path)), [recommendations]);
 
   useEffect(() => {
-    const nodes = graph.nodes;
-    if (nodes.length === 0) return;
-    const needsInit = nodes.some(node => typeof node.x !== 'number' || typeof node.y !== 'number');
-    if (!needsInit) return;
-    const radius = Math.min(WORLD_SIZE * 0.4, Math.max(300, nodes.length * 3));
-    const center = WORLD_CENTER;
-    nodes.forEach((node, index) => {
-      const angle = (index / nodes.length) * Math.PI * 2;
-      const randomOffset = 50 * (Math.random() - 0.5);
-      node.x = center + Math.cos(angle) * radius + randomOffset;
-      node.y = center + Math.sin(angle) * radius + randomOffset;
-      node.vx = 0; node.vy = 0;
-    });
-  }, [graph.nodes]);
+    if (ready && graph.nodes.length > 0) {
+      const nodes = graph.nodes.map(n => ({ id: n.id, radius: n.radius }));
+      const edges = graph.edges.map(e => ({ source: e.source, target: e.target, weight: e.weight, bidirectional: e.bidirectional }));
+      initGraph(nodes, edges);
+    }
+  }, [ready, graph.nodes, graph.edges, initGraph]);
 
   useEffect(() => {
     const updateCanvasSize = () => {
@@ -874,77 +865,36 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
   }, []);
 
   useEffect(() => {
+    if (!ready) return;
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
-    const nodes = graph.nodes; const edges = graph.edges;
-    if (nodes.length === 0) return;
+    if (graph.nodes.length === 0) return;
 
     const tick = () => {
+      step();
       const width = canvas.width; const height = canvas.height;
       if (width === 0 || height === 0) { animationRef.current = requestAnimationFrame(tick); return; }
-
-      const CENTER_FORCE = 0.00005, REPULSION_FORCE = 12042.5, EDGE_FORCE = 0.008, DAMPING = 0.85, DESIRED_DISTANCE = 1820;
-
-      for (let i = 0; i < nodes.length; i++) {
-        const a = nodes[i];
-        for (let j = i + 1; j < nodes.length; j++) {
-          const b = nodes[j];
-          const dx = (a.x || 0) - (b.x || 0), dy = (a.y || 0) - (b.y || 0);
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = REPULSION_FORCE / (dist * 0.5);
-          const fx = (dx / dist) * force, fy = (dy / dist) * force;
-          a.vx = (a.vx || 0) + fx; a.vy = (a.vy || 0) + fy;
-          b.vx = (b.vx || 0) - fx; b.vy = (b.vy || 0) - fy;
-        }
-      }
-
-      edges.forEach((edge) => {
-        const source = nodes.find((n) => n.id === edge.source);
-        const target = nodes.find((n) => n.id === edge.target);
-        if (!source || !target) return;
-        const dx = (target.x || 0) - (source.x || 0), dy = (target.y || 0) - (source.y || 0);
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const diff = dist - DESIRED_DISTANCE;
-        const force = diff * EDGE_FORCE;
-        const fx = (dx / dist) * force, fy = (dy / dist) * force;
-        if (dragNodeIdRef.current !== source.id) { source.vx = (source.vx || 0) + fx; source.vy = (source.vy || 0) + fy; }
-        if (dragNodeIdRef.current !== target.id) { target.vx = (target.vx || 0) - fx; target.vy = (target.vy || 0) - fy; }
-      });
-
-      nodes.forEach((node) => {
-        if (dragNodeIdRef.current === node.id) return;
-        const dx = WORLD_CENTER - (node.x || 0), dy = WORLD_CENTER - (node.y || 0);
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist > 100) { const force = CENTER_FORCE * dist; node.vx = (node.vx || 0) + dx * force; node.vy = (node.vy || 0) + dy * force; }
-      });
-
-      nodes.forEach((node) => {
-        if (dragNodeIdRef.current === node.id) return;
-        node.vx = (node.vx || 0) * DAMPING; node.vy = (node.vy || 0) * DAMPING;
-        node.x = (node.x || 0) + (node.vx || 0); node.y = (node.y || 0) + (node.vy || 0);
-        const margin = 100;
-        if (node.x < margin) { node.x = margin; node.vx = Math.abs(node.vx || 0) * 0.5; }
-        if (node.x > WORLD_SIZE - margin) { node.x = WORLD_SIZE - margin; node.vx = -Math.abs(node.vx || 0) * 0.5; }
-        if (node.y < margin) { node.y = margin; node.vy = Math.abs(node.vy || 0) * 0.5; }
-        if (node.y > WORLD_SIZE - margin) { node.y = WORLD_SIZE - margin; node.vy = -Math.abs(node.vy || 0) * 0.5; }
-      });
 
       ctx.clearRect(0, 0, width, height);
       const gradient = ctx.createLinearGradient(0, 0, width, height);
       gradient.addColorStop(0, '#0a0a0a'); gradient.addColorStop(1, '#000000');
       ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
 
+      const ids = getX();
+      const xs = getX();
+      const ys = getY();
+      const radii = getRadii();
       const transformPoint = (x: number, y: number) => ({
         x: (x - WORLD_CENTER) * zoomRef.current + width / 2 + panRef.current.x,
         y: (y - WORLD_CENTER) * zoomRef.current + height / 2 + panRef.current.y,
       });
 
-      edges.forEach((edge) => {
-        const source = nodes.find((n) => n.id === edge.source);
-        const target = nodes.find((n) => n.id === edge.target);
-        if (!source || !target) return;
-        const p1 = transformPoint(source.x || 0, source.y || 0);
-        const p2 = transformPoint(target.x || 0, target.y || 0);
+      graph.edges.forEach((edge) => {
+        const sourceIdx = ids.indexOf(Number(edge.source));
+        const targetIdx = ids.indexOf(Number(edge.target));
+        if (sourceIdx === -1 || targetIdx === -1) return;
+        const p1 = transformPoint(xs[sourceIdx], ys[sourceIdx]);
+        const p2 = transformPoint(xs[targetIdx], ys[targetIdx]);
         if (p1.x < -100 && p2.x < -100) return; if (p1.x > width + 100 && p2.x > width + 100) return;
         if (p1.y < -100 && p2.y < -100) return; if (p1.y > height + 100 && p2.y > height + 100) return;
 
@@ -973,10 +923,12 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
         }
       });
 
-      nodes.forEach((node) => {
-        const p = transformPoint(node.x || 0, node.y || 0);
+      ids.forEach((id, i) => {
+        const p = transformPoint(xs[i], ys[i]);
         if (p.x < -100 || p.x > width + 100 || p.y < -100 || p.y > height + 100) return;
-        const baseRadius = Math.min(24, Math.max(8, node.radius * 0.8));
+        const node = graph.nodes.find(n => n.id === String(id));
+        if (!node) return;
+        const baseRadius = Math.min(24, Math.max(8, radii[i] * 0.8));
         const radius = baseRadius * Math.max(0.8, zoomRef.current);
         const semanticScore = semanticMap.get(node.path) || semanticMap.get(node.name);
         const isSemanticSelected = isSemanticSearch && semanticScore !== undefined;
@@ -1016,57 +968,66 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
     };
     animationRef.current = requestAnimationFrame(tick);
     return () => { if (animationRef.current) cancelAnimationFrame(animationRef.current); };
-  }, [graph, semanticMap, recommendationSet, isSemanticSearch, useCurvedEdges]);
-
-  const getCanvasPoint = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current; if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left, y = event.clientY - rect.top;
-    const worldX = (x - canvas.width / 2 - panRef.current.x) / zoomRef.current + WORLD_CENTER;
-    const worldY = (y - canvas.height / 2 - panRef.current.y) / zoomRef.current + WORLD_CENTER;
-    return { x: worldX, y: worldY };
-  }, []);
-
-  const hitTest = useCallback((worldX: number, worldY: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return null;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-
-    for (let i = graph.nodes.length - 1; i >= 0; i--) {
-      const node = graph.nodes[i];
-      const screenCenter = {
-        x: ((node.x || 0) - WORLD_CENTER) * zoomRef.current + canvas.width / 2 + panRef.current.x,
-        y: ((node.y || 0) - WORLD_CENTER) * zoomRef.current + canvas.height / 2 + panRef.current.y
-      };
-      const baseRadius = Math.min(24, Math.max(8, node.radius * 0.8));
-      const screenRadius = baseRadius * Math.max(0.8, zoomRef.current);
-      const clickScreen = {
-        x: (worldX - WORLD_CENTER) * zoomRef.current + canvas.width / 2 + panRef.current.x,
-        y: (worldY - WORLD_CENTER) * zoomRef.current + canvas.height / 2 + panRef.current.y
-      };
-      const dx = clickScreen.x - screenCenter.x;
-      const dy = clickScreen.y - screenCenter.y;
-      if (Math.sqrt(dx*dx + dy*dy) <= screenRadius) {
-        return node;
-      }
-    }
-    return null;
-  }, [graph.nodes, zoomRef, panRef]);
+  }, [ready, graph, semanticMap, recommendationSet, isSemanticSearch, useCurvedEdges, step, getX, getY, getRadii]);
 
   const isPanningRef = useRef(false); const lastMouseRef = useRef({ x: 0, y: 0 });
 
   return (
     <Box ref={containerRef} sx={{ position: 'relative', width: '100%', height: '100%', minHeight: '100vh', backgroundColor: '#000', overflow: 'hidden' }}>
       <canvas ref={canvasRef} onWheel={(e) => { e.preventDefault(); const delta = e.deltaY > 0 ? 0.9 : 1.1; zoomRef.current = Math.max(0.1, Math.min(2, zoomRef.current * delta));}}
-        onMouseDown={(e) => { const p = getCanvasPoint(e); const node = hitTest(p.x, p.y); if (node) { dragNodeIdRef.current = node.id; } else { isPanningRef.current = true; lastMouseRef.current = { x: e.clientX, y: e.clientY }; } }}
-        onMouseMove={(e) => { const p = getCanvasPoint(e); const node = hitTest(p.x, p.y); hoverNodeIdRef.current = node?.id || null; setHoveredNode(node || null);
-          if (dragNodeIdRef.current) { const dragged = graph.nodes.find((n) => n.id === dragNodeIdRef.current); if (dragged) { dragged.x = p.x; dragged.y = p.y; dragged.vx = 0; dragged.vy = 0; } }
-          else if (isPanningRef.current) { const dx = e.clientX - lastMouseRef.current.x, dy = e.clientY - lastMouseRef.current.y; panRef.current.x += dx; panRef.current.y += dy; lastMouseRef.current = { x: e.clientX, y: e.clientY }; } }}
-        onMouseUp={() => { dragNodeIdRef.current = null; isPanningRef.current = false; }}
+        onMouseDown={(e) => { 
+          const rect = canvasRef.current!.getBoundingClientRect();
+          const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+          const canvasW = canvasRef.current!.width, canvasH = canvasRef.current!.height;
+          const idx = wasmHitTest(mx, my, panRef.current.x, panRef.current.y, zoomRef.current, canvasW, canvasH);
+          if (idx >= 0) {
+            dragNodeIdRef.current = String(getX()[idx]);;
+            setDrag(String(getX()[idx]));
+          } else {
+            isPanningRef.current = true; lastMouseRef.current = { x: e.clientX, y: e.clientY };
+          }
+        }}
+        onMouseMove={(e) => { 
+          const rect = canvasRef.current!.getBoundingClientRect();
+          const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+          const canvasW = canvasRef.current!.width, canvasH = canvasRef.current!.height;
+          const idx = wasmHitTest(mx, my, panRef.current.x, panRef.current.y, zoomRef.current, canvasW, canvasH);
+          const node = idx >= 0 ? graph.nodes.find(n => n.id === String(getX()[idx])) : null;
+          hoverNodeIdRef.current = node?.id || null; 
+          setHoveredNode(node || null);
+          if (dragNodeIdRef.current) { 
+            const wx = (mx - canvasW / 2 - panRef.current.x) / zoomRef.current + WORLD_CENTER;
+            const wy = (my - canvasH / 2 - panRef.current.y) / zoomRef.current + WORLD_CENTER;
+            updateDrag(wx, wy); 
+          }
+          else if (isPanningRef.current) { 
+            const dx = e.clientX - lastMouseRef.current.x, dy = e.clientY - lastMouseRef.current.y; 
+            panRef.current.x += dx; panRef.current.y += dy; 
+            lastMouseRef.current = { x: e.clientX, y: e.clientY }; 
+          } 
+        }}
+        onMouseUp={() => { dragNodeIdRef.current = null; isPanningRef.current = false; clearDrag(); }}
         onMouseLeave={() => { dragNodeIdRef.current = null; isPanningRef.current = false; hoverNodeIdRef.current = null; setHoveredNode(null); }}
-        onDoubleClick={(e) => { const p = getCanvasPoint(e); const node = hitTest(p.x, p.y); if (node?.file) onOpenFile(node.file); }}
-        onClick={(e) => { const p = getCanvasPoint(e); const node = hitTest(p.x, p.y); if (node?.file) onOpenFile(node.file); }}
+        onDoubleClick={(e) => { 
+          const rect = canvasRef.current!.getBoundingClientRect();
+          const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+          const canvasW = canvasRef.current!.width, canvasH = canvasRef.current!.height;
+          const idx = wasmHitTest(mx, my, panRef.current.x, panRef.current.y, zoomRef.current, canvasW, canvasH);
+          if (idx >= 0) {
+            const node = graph.nodes.find(n => n.id === String(getX()[idx]));
+            if (node?.file) onOpenFile(node.file);
+          }
+        }}
+        onClick={(e) => { 
+          const rect = canvasRef.current!.getBoundingClientRect();
+          const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+          const canvasW = canvasRef.current!.width, canvasH = canvasRef.current!.height;
+          const idx = wasmHitTest(mx, my, panRef.current.x, panRef.current.y, zoomRef.current, canvasW, canvasH);
+          if (idx >= 0) {
+            const node = graph.nodes.find(n => n.id === String(getX()[idx]));
+            if (node?.file) onOpenFile(node.file);
+          }
+        }}
         style={{ width: '100%', height: '100%', display: 'block', cursor: dragNodeIdRef.current ? 'grabbing' : hoveredNode ? 'pointer' : 'grab' }} />
 
       <Box sx={{ position: 'absolute', top: 16, left: 100, display: 'flex', alignItems: 'center', gap: 1, zIndex: 10, pointerEvents: 'none' }}>
