@@ -130,7 +130,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
                   fontSize: '0.875rem',
                 }}
               >
-                {user.name.charAt(0).toUpperCase()}
+                {user.name}
               </Avatar>
             </IconButton>
           </Tooltip>

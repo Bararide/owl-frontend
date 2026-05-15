@@ -108,7 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}>
-            {user.name.charAt(0).toUpperCase()}
+            {user.name}
           </Avatar>
           <Box>
             <Typography variant="subtitle2" noWrap>
