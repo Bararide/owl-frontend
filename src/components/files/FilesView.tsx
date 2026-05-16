@@ -830,7 +830,7 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
   const WORLD_SIZE = 60000;
   const WORLD_CENTER = WORLD_SIZE / 2;
 
-  const { ready, initGraph, step, getNodeIds, getX, getY, getRadii, hitTest: wasmHitTest, setDrag, updateDrag, clearDrag } = useWasmGraphLayout();
+  const { ready, initGraph, isStable, step, getNodeIds, getX, getY, getRadii, hitTest: wasmHitTest, setDrag, updateDrag, clearDrag } = useWasmGraphLayout();
 
   const graph = useMemo(() => {
     const normalized = normalizeGraph(files, graphData);
@@ -865,86 +865,135 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
-    const canvas = canvasRef.current; if (!canvas) return;
-    const ctx = canvas.getContext('2d'); if (!ctx) return;
-    if (graph.nodes.length === 0) return;
+    if (!ready || graph.nodes.length === 0) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const nodeMap = new Map(graph.nodes.map(n => [n.id, n]));
+
+    let stableFrames = 0;
+    let isRunning = true;
 
     const tick = () => {
+      if (!isRunning) return;
+
       step();
-      const width = canvas.width; const height = canvas.height;
-      if (width === 0 || height === 0) { animationRef.current = requestAnimationFrame(tick); return; }
+
+      if (isStable?.()) {
+        stableFrames++;
+        if (stableFrames > 45) {
+          console.log('🎯 Graph stabilized. Stopping animation loop.');
+          isRunning = false;
+          return;
+        }
+      } else {
+        stableFrames = 0;
+      }
+
+      const width = canvas.width;
+      const height = canvas.height;
+      if (width === 0 || height === 0) {
+        animationRef.current = requestAnimationFrame(tick);
+        return;
+      }
 
       ctx.clearRect(0, 0, width, height);
       const gradient = ctx.createLinearGradient(0, 0, width, height);
-      gradient.addColorStop(0, '#0a0a0a'); gradient.addColorStop(1, '#000000');
-      ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
+      gradient.addColorStop(0, '#0a0a0a');
+      gradient.addColorStop(1, '#000000');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
 
       const ids = getNodeIds();
       const xs = getX();
       const ys = getY();
       const radii = getRadii();
+
       const transformPoint = (x: number, y: number) => ({
         x: (x - WORLD_CENTER) * zoomRef.current + width / 2 + panRef.current.x,
         y: (y - WORLD_CENTER) * zoomRef.current + height / 2 + panRef.current.y,
       });
 
       graph.edges.forEach((edge) => {
-
         const sourceIdx = ids.indexOf(String(edge.source));
         const targetIdx = ids.indexOf(String(edge.target));
         if (sourceIdx === -1 || targetIdx === -1) return;
 
         const p1 = transformPoint(xs[sourceIdx], ys[sourceIdx]);
         const p2 = transformPoint(xs[targetIdx], ys[targetIdx]);
-        if (p1.x < -100 && p2.x < -100) return; if (p1.x > width + 100 && p2.x > width + 100) return;
-        if (p1.y < -100 && p2.y < -100) return; if (p1.y > height + 100 && p2.y > height + 100) return;
+
+        if (p1.x < -100 && p2.x < -100) return;
+        if (p1.x > width + 100 && p2.x > width + 100) return;
+        if (p1.y < -100 && p2.y < -100) return;
+        if (p1.y > height + 100 && p2.y > height + 100) return;
 
         ctx.beginPath();
         if (useCurvedEdges) {
-          const midX = (p1.x + p2.x) / 2, midY = (p1.y + p2.y) / 2;
-          const dx = p2.x - p1.x, dy = p2.y - p1.y;
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          const offset = Math.min(100, dist * 0.3) * (edge.bidirectional ? 0 : 1);
-          const ctrlX = midX - dy * (offset / dist), ctrlY = midY + dx * (offset / dist);
-          ctx.moveTo(p1.x, p1.y); ctx.quadraticCurveTo(ctrlX, ctrlY, p2.x, p2.y);
-        } else { ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); }
-        
-        const intensity = Math.min(0.8, 0.3 + (edge.weight || 1) * 0.3);
-        ctx.strokeStyle = `rgba(100, 150, 255, ${intensity})`;
-        ctx.lineWidth = Math.max(1, Math.min(4, (edge.weight || 1) * 2));
+          const offset = dist > 0 ? Math.min(100, dist * 0.3) * (edge.bidirectional ? 0 : 1) : 0;
+          const ctrlX = midX - (dy * offset) / (dist || 1);
+          const ctrlY = midY + (dx * offset) / (dist || 1);
+          ctx.moveTo(p1.x, p1.y);
+          ctx.quadraticCurveTo(ctrlX, ctrlY, p2.x, p2.y);
+        } else {
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+        }
+
+        const weight = edge.weight || 1;
+        const intensity = Math.min(0.8, 0.3 + weight * 0.3);
+        ctx.strokeStyle = `rgba(100, 150, 255, ${intensity}`;
+        ctx.lineWidth = Math.max(1, Math.min(4, weight * 2));
         ctx.stroke();
-        if (edge.weight > 0.8 && !edge.bidirectional) {
+
+        if (weight > 0.8 && !edge.bidirectional) {
           const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
           const arrowSize = 8;
-          const arrowX = p2.x - arrowSize * Math.cos(angle), arrowY = p2.y - arrowSize * Math.sin(angle);
-          ctx.beginPath(); ctx.moveTo(arrowX, arrowY);
+          const arrowX = p2.x - arrowSize * Math.cos(angle);
+          const arrowY = p2.y - arrowSize * Math.sin(angle);
+          ctx.beginPath();
+          ctx.moveTo(arrowX, arrowY);
           ctx.lineTo(arrowX - arrowSize * Math.sin(angle), arrowY + arrowSize * Math.cos(angle));
           ctx.lineTo(arrowX + arrowSize * Math.sin(angle), arrowY - arrowSize * Math.cos(angle));
-          ctx.fillStyle = `rgba(100, 150, 255, ${intensity})`; ctx.fill();
+          ctx.fillStyle = `rgba(100, 150, 255, ${intensity}`;
+          ctx.fill();
         }
       });
 
       ids.forEach((id, i) => {
         const p = transformPoint(xs[i], ys[i]);
         if (p.x < -100 || p.x > width + 100 || p.y < -100 || p.y > height + 100) return;
-        const node = graph.nodes.find(n => n.id === String(id));
+
+        const node = nodeMap.get(id);
         if (!node) return;
+
         const baseRadius = Math.min(24, Math.max(8, radii[i] * 0.8));
         const radius = baseRadius * Math.max(0.8, zoomRef.current);
         const semanticScore = semanticMap.get(node.path) || semanticMap.get(node.name);
         const isSemanticSelected = isSemanticSearch && semanticScore !== undefined;
         const isRecommended = recommendationSet.has(node.path);
-        
+
         let fill = '#6c6c6c';
         let glowColor = '';
         if (isRecommended) { fill = '#ff9800'; glowColor = '#ff9800'; }
         if (isSemanticSelected) { fill = '#22c55e'; glowColor = '#22c55e'; }
-        
-        if (glowColor && node.id === hoverNodeIdRef.current) { ctx.shadowColor = glowColor; ctx.shadowBlur = 20; }
-        ctx.beginPath(); ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = fill; ctx.fill(); ctx.shadowBlur = 0;
-        
+
+        if (glowColor && node.id === hoverNodeIdRef.current) {
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = 20;
+        }
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
         let strokeColor = node.id === hoverNodeIdRef.current ? '#ffffff' : 'rgba(255,255,255,0.4)';
         if (node.groups && node.groups.length > 0) {
           strokeColor = node.groups[0].color || '#ff9800';
@@ -954,23 +1003,31 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
         }
         ctx.strokeStyle = strokeColor;
         ctx.stroke();
-        
+
         if (radius > 14) {
           ctx.fillStyle = '#ffffff';
           const fontSize = Math.max(10, Math.min(12, radius * 0.6));
           ctx.font = `${fontSize}px "Segoe UI", "Roboto", sans-serif`;
-          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          let label = "";
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          
+          const label = '';
           const maxChars = Math.floor(radius * 1.5);
-          if (label.length > maxChars) label = label.slice(0, maxChars - 2) + '…';
-          ctx.fillText(label, p.x, p.y);
+          const displayLabel = label.length > maxChars ? label.slice(0, maxChars - 2) + '…' : label;
+          ctx.fillText(displayLabel, p.x, p.y);
         }
       });
+
       animationRef.current = requestAnimationFrame(tick);
     };
+
     animationRef.current = requestAnimationFrame(tick);
-    return () => { if (animationRef.current) cancelAnimationFrame(animationRef.current); };
-  }, [ready, graph, semanticMap, recommendationSet, isSemanticSearch, useCurvedEdges, step, getX, getY, getRadii]);
+
+    return () => {
+      isRunning = false;
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
+  }, [ready, graph, semanticMap, recommendationSet, isSemanticSearch, useCurvedEdges, step, getNodeIds, getX, getY, getRadii, isStable]);
 
   const isPanningRef = useRef(false); const lastMouseRef = useRef({ x: 0, y: 0 });
 

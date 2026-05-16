@@ -1,4 +1,3 @@
-// Type declarations for xgraph.js
 export interface GraphLayoutEngine {
   initGraph(
     nodeIds: string[],
@@ -13,10 +12,12 @@ export interface GraphLayoutEngine {
   getX(): number[];
   getY(): number[];
   getRadii(): number[];
-  hitTest(sx: number, sy: number, px: number, py: number, z: number, w: number, h: number): number;
+  hitTest(sx: number, sy: number, px: number, py: number, 
+          z: number, w: number, h: number): number;
   setDrag(id: string): void;
   updateDrag(wx: number, wy: number): void;
   clearDrag(): void;
+  isStable(): boolean;
 }
 
 export interface GraphEngineModule {
