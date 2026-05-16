@@ -12,9 +12,11 @@ export interface GraphLayoutEngine {
   getX(): number[];
   getY(): number[];
   getRadii(): number[];
+  getIdByIndex(idx: number): string;
   hitTest(sx: number, sy: number, px: number, py: number, 
           z: number, w: number, h: number): number;
   setDrag(id: string): void;
+  setDragByIndex(idx: number): void;
   updateDrag(wx: number, wy: number): void;
   clearDrag(): void;
   isStable(): boolean;

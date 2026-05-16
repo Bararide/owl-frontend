@@ -43,6 +43,8 @@ export function useWasmGraphLayout() {
   const getX = useCallback(() => engineRef.current?.getX() || [], []);
   const getY = useCallback(() => engineRef.current?.getY() || [], []);
   const getRadii = useCallback(() => engineRef.current?.getRadii() || [], []);
+  const getIdByIndex = useCallback((idx: number) => 
+    engineRef.current?.getIdByIndex(idx) || '', []);
   
   const hitTest = useCallback((
     sx: number, sy: number, px: number, py: number, 
@@ -50,6 +52,8 @@ export function useWasmGraphLayout() {
   ) => engineRef.current?.hitTest(sx, sy, px, py, z, w, h) ?? -1, []);
   
   const setDrag = useCallback((id: string) => engineRef.current?.setDrag(id), []);
+  const setDragByIndex = useCallback((idx: number) => 
+    engineRef.current?.setDragByIndex(idx), []);
   const updateDrag = useCallback((wx: number, wy: number) => 
     engineRef.current?.updateDrag(wx, wy), []);
   const clearDrag = useCallback(() => engineRef.current?.clearDrag(), []);
@@ -58,6 +62,6 @@ export function useWasmGraphLayout() {
 
   return { 
     ready, initGraph, step, isStable, getNodeIds, getX, getY, getRadii, 
-    hitTest, setDrag, updateDrag, clearDrag 
+    getIdByIndex, hitTest, setDrag, setDragByIndex, updateDrag, clearDrag 
   };
 }
