@@ -61,6 +61,7 @@ import {
   Settings as SettingsIcon,
   Psychology as PsychologyIcon,
   FolderSpecial as FolderSpecialIcon,
+  Add as AddIcon,
 } from "@mui/icons-material";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiClient } from "../../api/client";
@@ -80,6 +81,13 @@ import {
   useSemanticSearch,
   useUploadFile,
   useNotifications,
+  useContainerGroups,
+  useCreateGroup,
+  useDeleteGroup,
+  useAddFileToGroup,
+  useRemoveFileFromGroup,
+  useFileGroups,
+  useUpdateGroupColor,
 } from "../../hooks/useApi";
 import { useWasmGraphLayout } from "./useWasmGraph";
 import { useWebSocketGraph } from "../../hooks/useWebSocketGraph";
@@ -856,6 +864,15 @@ const FileContentDialog: React.FC<FileContentDialogProps> = ({
                   fullWidth
                   variant="outlined"
                   size="small"
+                  startIcon={<FolderSpecialIcon />}
+                  onClick={(e) => setActionMenuAnchor(e.currentTarget)}
+                >
+                  Groups
+                </Button>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  size="small"
                   startIcon={<MoreVertIcon />}
                   onClick={(e) => setActionMenuAnchor(e.currentTarget)}
                 >
@@ -1557,7 +1574,8 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
     return () => window.removeEventListener("resize", updateCanvasSize);
   }, []);
 
-  const { renderGraph, isWorkerReady, initSharedBuffer, updatePositions } = useWorkerRenderer();
+  const { renderGraph, isWorkerReady, initSharedBuffer, updatePositions } =
+    useWorkerRenderer();
   const imageBitmapRef = useRef<ImageBitmap | null>(null);
   const frameRequestRef = useRef<number | null>(null);
   const lastTimestampRef = useRef(0);
@@ -1566,37 +1584,29 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
 
   useEffect(() => {
     if (!ready || !isWorkerReady || graph.nodes.length === 0) return;
-
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
     const nodeCount = graph.nodes.length;
     const positionBuffer = initSharedBuffer(nodeCount);
-
     const tick = (timestamp: number) => {
       if (timestamp - lastTimestampRef.current < FRAME_INTERVAL) {
         frameRequestRef.current = requestAnimationFrame(tick);
         return;
       }
-
       lastTimestampRef.current = timestamp;
       step();
-
       const width = canvas.width;
       const height = canvas.height;
       if (width === 0 || height === 0) {
         frameRequestRef.current = requestAnimationFrame(tick);
         return;
       }
-
       const ids = getNodeIds();
       const xs = getX();
       const ys = getY();
       const radii = getRadii();
-
       if (positionBuffer) {
         for (let i = 0; i < nodeCount; i++) {
           positionBuffer[i * 3] = xs[i];
@@ -1605,21 +1615,19 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
         }
         updatePositions(xs, ys, radii);
       }
-
       const renderNodes = ids.map((id, idx) => {
-        const node = graph.nodes.find(n => n.id === String(id));
+        const node = graph.nodes.find((n) => n.id === String(id));
         return {
           id: String(id),
           x: xs[idx],
           y: ys[idx],
           radius: radii[idx],
-          name: '',
-          path: node?.path || '',
+          name: "",
+          path: node?.path || "",
           degree: node?.degree || 0,
           groups: node?.groups || [],
         };
       });
-
       const renderData = {
         canvasWidth: width,
         canvasHeight: height,
@@ -1633,24 +1641,36 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
         recommendationSet,
         hoveredNodeId: hoverNodeIdRef.current,
       };
-
       renderGraph(renderData, (imageBitmap: ImageBitmap) => {
         if (imageBitmapRef.current) imageBitmapRef.current.close();
         imageBitmapRef.current = imageBitmap;
         ctx.drawImage(imageBitmap, 0, 0);
       });
-
       frameRequestRef.current = requestAnimationFrame(tick);
     };
-
     frameRequestRef.current = requestAnimationFrame(tick);
-
     return () => {
-      if (frameRequestRef.current) cancelAnimationFrame(frameRequestRef.current);
+      if (frameRequestRef.current)
+        cancelAnimationFrame(frameRequestRef.current);
       if (imageBitmapRef.current) imageBitmapRef.current.close();
     };
-  }, [ready, isWorkerReady, graph, semanticMap, recommendationSet, isSemanticSearch,
-    useCurvedEdges, step, getX, getY, getRadii, getNodeIds, renderGraph, initSharedBuffer, updatePositions]);
+  }, [
+    ready,
+    isWorkerReady,
+    graph,
+    semanticMap,
+    recommendationSet,
+    isSemanticSearch,
+    useCurvedEdges,
+    step,
+    getX,
+    getY,
+    getRadii,
+    getNodeIds,
+    renderGraph,
+    initSharedBuffer,
+    updatePositions,
+  ]);
   const isPanningRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
   return (
@@ -2279,6 +2299,268 @@ const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = ({
   );
 };
 
+const GroupManagementDialog: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  containerId: string;
+  groups: Group[];
+  refetchGroups: () => void;
+}> = ({ open, onClose, containerId, groups, refetchGroups }) => {
+  const createGroup = useCreateGroup();
+  const deleteGroup = useDeleteGroup();
+  const updateGroupColor = useUpdateGroupColor();
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupColor, setNewGroupColor] = useState("#ff9800");
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editingColor, setEditingColor] = useState("#ff9800");
+  const { addNotification } = useNotifications();
+  const handleCreateGroup = async () => {
+    if (!newGroupName.trim()) return;
+    await createGroup.mutateAsync({
+      containerId,
+      name: newGroupName,
+      description: "",
+      color: newGroupColor,
+    });
+    setNewGroupName("");
+    setNewGroupColor("#ff9800");
+    refetchGroups();
+    addNotification({
+      message: `Group "${newGroupName}" created`,
+      severity: "success",
+      open: true,
+    });
+  };
+  const handleDeleteGroup = async (groupId: string) => {
+    if (window.confirm("Delete group? All file associations will be lost.")) {
+      await deleteGroup.mutateAsync(groupId);
+      refetchGroups();
+      addNotification({
+        message: `Group "${groupId}" deleted`,
+        severity: "success",
+        open: true,
+      });
+    }
+  };
+  const handleUpdateColor = async (groupId: string) => {
+    await updateGroupColor.mutateAsync({ groupId, color: editingColor });
+    refetchGroups();
+    setEditingGroupId(null);
+    addNotification({
+      message: `Group color updated`,
+      severity: "success",
+      open: true,
+    });
+  };
+  const predefinedColors = [
+    "#ff9800",
+    "#f44336",
+    "#e91e63",
+    "#9c27b0",
+    "#673ab7",
+    "#3f51b5",
+    "#2196f3",
+    "#03a9f4",
+    "#00bcd4",
+    "#009688",
+    "#4caf50",
+    "#8bc34a",
+    "#cddc39",
+    "#ffeb3b",
+    "#ffc107",
+  ];
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: 3,
+          background: "rgba(26,31,54,0.98)",
+          backdropFilter: "blur(20px)",
+        },
+      }}
+    >
+      <DialogTitle>Manage Groups</DialogTitle>
+      <DialogContent dividers>
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Create New Group
+          </Typography>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <TextField
+              size="small"
+              placeholder="Group name"
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              fullWidth
+            />
+            <Box sx={{ position: "relative" }}>
+              <Box
+                sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: "50%",
+                  backgroundColor: newGroupColor,
+                  cursor: "pointer",
+                  border: "2px solid rgba(255,255,255,0.3)",
+                }}
+              />
+              <input
+                type="color"
+                value={newGroupColor}
+                onChange={(e) => setNewGroupColor(e.target.value)}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: 40,
+                  height: 40,
+                  opacity: 0,
+                  cursor: "pointer",
+                }}
+              />
+            </Box>
+            <Button
+              variant="contained"
+              onClick={handleCreateGroup}
+              disabled={!newGroupName.trim()}
+            >
+              Create
+            </Button>
+          </Stack>
+        </Box>
+        <Divider sx={{ my: 2 }} />
+        <Typography variant="subtitle2" gutterBottom>
+          Existing Groups
+        </Typography>
+        <Stack spacing={1}>
+          {groups.map((group) => (
+            <Paper key={group.id} variant="outlined" sx={{ p: 1.5 }}>
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="center"
+              >
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  {editingGroupId === group.id ? (
+                    <>
+                      <Box sx={{ position: "relative" }}>
+                        <Box
+                          sx={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: "50%",
+                            backgroundColor: editingColor,
+                            border: "2px solid rgba(255,255,255,0.3)",
+                          }}
+                        />
+                        <input
+                          type="color"
+                          value={editingColor}
+                          onChange={(e) => setEditingColor(e.target.value)}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: 32,
+                            height: 32,
+                            opacity: 0,
+                            cursor: "pointer",
+                          }}
+                        />
+                      </Box>
+                      <TextField
+                        size="small"
+                        value={group.id}
+                        disabled
+                        sx={{ minWidth: 150 }}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Box
+                        sx={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: "50%",
+                          backgroundColor: group.color || "#ff9800",
+                        }}
+                      />
+                      <Typography variant="body2">{group.id}</Typography>
+                    </>
+                  )}
+                </Stack>
+                <Stack direction="row" spacing={1}>
+                  {editingGroupId === group.id ? (
+                    <IconButton
+                      size="small"
+                      onClick={() => handleUpdateColor(group.id)}
+                      sx={{ color: "#4caf50" }}
+                    >
+                      <CheckCircleIcon fontSize="small" />
+                    </IconButton>
+                  ) : (
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setEditingGroupId(group.id);
+                        setEditingColor(group.color || "#ff9800");
+                      }}
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                  <IconButton
+                    size="small"
+                    onClick={() => handleDeleteGroup(group.id)}
+                    sx={{ color: "error.main" }}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                ID: {group.id}
+              </Typography>
+              {editingGroupId === group.id && (
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  sx={{ mt: 1, flexWrap: "wrap" }}
+                >
+                  {predefinedColors.map((color) => (
+                    <Box
+                      key={color}
+                      sx={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: "50%",
+                        backgroundColor: color,
+                        cursor: "pointer",
+                        border:
+                          editingColor === color
+                            ? "2px solid white"
+                            : "2px solid transparent",
+                      }}
+                      onClick={() => setEditingColor(color)}
+                    />
+                  ))}
+                </Stack>
+              )}
+            </Paper>
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 export default function FilesView({ containerId }: { containerId: string }) {
   const {
     data: files = [],
@@ -2287,7 +2569,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
   } = useFiles(containerId);
   const {
     graphData,
-    groups,
+    groups: wsGroups,
     fileGroupsMap: wsFileGroupsMap,
     isConnected: graphWsConnected,
     requestGraphData,
@@ -2296,6 +2578,10 @@ export default function FilesView({ containerId }: { containerId: string }) {
     subscribeToGraphUpdates,
     unsubscribeFromGraphUpdates,
   } = useWebSocketGraph(containerId);
+  const { data: apiGroups = [], refetch: refetchApiGroups } =
+    useContainerGroups(containerId);
+  const addFileToGroup = useAddFileToGroup();
+  const removeFileFromGroup = useRemoveFileFromGroup();
   const { addNotification, notification, closeNotification } =
     useNotifications();
   const semanticSearchMutation = useSemanticSearch();
@@ -2315,9 +2601,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
       }),
   );
   useEffect(() => {
-    // Ждем пока graphWsConnected И isReady (получили 'connected' от сервера)
     if (graphWsConnected && containerId) {
-      // Небольшая задержка чтобы сервер точно обработал подключение
       const timer = setTimeout(() => {
         requestGraphData();
         requestGroups();
@@ -2326,7 +2610,9 @@ export default function FilesView({ containerId }: { containerId: string }) {
       }, 100);
       return () => clearTimeout(timer);
     }
-    return () => { if (graphWsConnected) unsubscribeFromGraphUpdates(); };
+    return () => {
+      if (graphWsConnected) unsubscribeFromGraphUpdates();
+    };
   }, [graphWsConnected, containerId]);
   const [fileContentDialog, setFileContentDialog] = useState<{
     open: boolean;
@@ -2351,7 +2637,15 @@ export default function FilesView({ containerId }: { containerId: string }) {
   const [fileGroupsMap, setFileGroupsMap] = useState<
     Map<string, { groupId: string; color: string }[]>
   >(new Map());
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const searchAnchorRef = useRef<HTMLButtonElement>(null);
+  const groups = useMemo(() => {
+    const map = new Map<string, Group>();
+    [...(wsGroups || []), ...apiGroups].forEach((g) => {
+      if (g?.id) map.set(g.id, g);
+    });
+    return Array.from(map.values());
+  }, [wsGroups, apiGroups]);
   const recommendationFiles: RecommendationFile[] = recommendedPaths.map(
     (path) => ({
       path,
@@ -2371,17 +2665,53 @@ export default function FilesView({ containerId }: { containerId: string }) {
       )
       .reverse();
   }, [isSemanticSearch, searchResults, searchQuery, files]);
+  
   useEffect(() => {
     const combinedMap = new Map<string, { groupId: string; color: string }[]>();
-    Object.entries(wsFileGroupsMap || {}).forEach(([path, groups]) => {
-      combinedMap.set(path, groups);
+
+    Object.entries(wsFileGroupsMap || {}).forEach(([path, grps]) => {
+      if (grps && grps.length > 0) {
+        combinedMap.set(path, grps);
+      }
     });
-    files.forEach((file) => {
-      if (!combinedMap.has(file.path) && fileGroupsMap.has(file.path))
-        combinedMap.set(file.path, fileGroupsMap.get(file.path)!);
-    });
+
     setFileGroupsMap(combinedMap);
-  }, [wsFileGroupsMap, files]);
+  }, [wsFileGroupsMap]);
+
+  const handleAddToGroup = async (groupId: string, fileId: string) => {
+    try {
+      await addFileToGroup.mutateAsync({ groupId, fileId });
+      refetchApiGroups();
+      addNotification({
+        message: "File added to group",
+        severity: "success",
+        open: true,
+      });
+    } catch {
+      addNotification({
+        message: "Failed to add file to group",
+        severity: "error",
+        open: true,
+      });
+    }
+  };
+  const handleRemoveFromGroup = async (groupId: string, fileId: string) => {
+    try {
+      await removeFileFromGroup.mutateAsync({ groupId, fileId });
+      refetchApiGroups();
+      addNotification({
+        message: "File removed from group",
+        severity: "success",
+        open: true,
+      });
+    } catch {
+      addNotification({
+        message: "Failed to remove file from group",
+        severity: "error",
+        open: true,
+      });
+    }
+  };
   const handleSemanticSearch = useCallback(
     async (query: string) => {
       if (!query.trim() || !containerId) return;
@@ -2527,6 +2857,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
     (e: React.MouseEvent<HTMLElement>) => setToolsMenuAnchor(e.currentTarget),
     [],
   );
+  const handleOpenGroupDialog = useCallback(() => setGroupDialogOpen(true), []);
   if (!containerId)
     return (
       <Box
@@ -2596,6 +2927,15 @@ export default function FilesView({ containerId }: { containerId: string }) {
         >
           <RefreshIcon sx={{ mr: 1, fontSize: 20 }} />
           {isRebuildingIndex ? "Rebuilding Index..." : "Rebuild Index"}
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setToolsMenuAnchor(null);
+            handleOpenGroupDialog();
+          }}
+        >
+          <FolderSpecialIcon sx={{ mr: 1, fontSize: 20 }} />
+          Manage Groups
         </MenuItem>
         <Divider sx={{ my: 1 }} />
         <MenuItem onClick={() => setToolsMenuAnchor(null)}>
@@ -2694,6 +3034,13 @@ export default function FilesView({ containerId }: { containerId: string }) {
         totalFiles={currentFilesList.length}
         onNextFile={handleNextFile}
         onPrevFile={handlePrevFile}
+      />
+      <GroupManagementDialog
+        open={groupDialogOpen}
+        onClose={() => setGroupDialogOpen(false)}
+        containerId={containerId}
+        groups={groups}
+        refetchGroups={refetchApiGroups}
       />
       <Snackbar
         open={rebuildNotification.open}
