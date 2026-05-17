@@ -1,7 +1,7 @@
-import axios from 'axios';
-import { EventSourcePolyfill } from 'event-source-polyfill';
+import axios from "axios";
+import { EventSourcePolyfill } from "event-source-polyfill";
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 export interface LabelOption {
   key: string;
@@ -10,7 +10,7 @@ export interface LabelOption {
 
 export interface Container {
   id: string;
-  status: 'running' | 'stopped' | 'error' | 'starting';
+  status: "running" | "stopped" | "error" | "starting";
   memory_limit: number;
   storage_quota: number;
   file_limit: number;
@@ -86,7 +86,7 @@ export interface ChatRequest {
   model: number;
   limit: number;
   conversation_history?: Array<{
-    role: 'user' | 'assistant';
+    role: "user" | "assistant";
     content: string;
   }>;
 }
@@ -165,7 +165,7 @@ export interface RecommendationEvent {
   container_id: string;
   user_id: string;
   paths: string[];
-  type?: 'paths_update' | 'complete';
+  type?: "paths_update" | "complete";
   total_paths?: string[];
   count?: number;
 }
@@ -230,7 +230,7 @@ class ApiClient {
     baseURL: API_BASE_URL,
     timeout: 30000,
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
   });
 
@@ -244,22 +244,22 @@ class ApiClient {
 
   private getAuthHeaders() {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     };
-    
+
     if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+      headers["Authorization"] = `Bearer ${this.token}`;
     }
-    
+
     return headers;
   }
 
   connectToRecommendationsStream(
     containerId: string,
-    callbacks: RecommendationStreamCallbacks
+    callbacks: RecommendationStreamCallbacks,
   ): () => void {
     if (!this.token) {
-      throw new Error('No token set');
+      throw new Error("No token set");
     }
 
     const url = `${API_BASE_URL}/recommendations/stream?container_id=${containerId}`;
@@ -277,19 +277,19 @@ class ApiClient {
 
     fetch(url, {
       headers: {
-        'Authorization': `Bearer ${this.token}`,
-        'Accept': 'text/event-stream',
+        Authorization: `Bearer ${this.token}`,
+        Accept: "text/event-stream",
       },
       signal: controller.signal,
     })
-      .then(response => {
+      .then((response) => {
         if (!response.ok || !response.body) {
           throw new Error(`Failed to connect: ${response.status}`);
         }
-        
+
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        let buffer = '';
+        let buffer = "";
 
         const read = async () => {
           try {
@@ -298,44 +298,44 @@ class ApiClient {
               if (done) break;
 
               buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n\n');
-              buffer = lines.pop() || '';
+              const lines = buffer.split("\n\n");
+              buffer = lines.pop() || "";
 
               for (const line of lines) {
-                if (line.startsWith('data:')) {
+                if (line.startsWith("data:")) {
                   try {
                     const data = JSON.parse(line.slice(5));
                     if (data.paths) {
-                      safeCallback('onPathsUpdate', data.paths, data);
+                      safeCallback("onPathsUpdate", data.paths, data);
                     }
                   } catch (e) {
-                    console.error('Error parsing SSE data:', e);
+                    console.error("Error parsing SSE data:", e);
                   }
-                } else if (line.startsWith('event: connected')) {
+                } else if (line.startsWith("event: connected")) {
                   try {
                     const data = JSON.parse(line.slice(14));
-                    safeCallback('onConnected', data.stream_id);
+                    safeCallback("onConnected", data.stream_id);
                   } catch (e) {
-                    console.error('Error parsing connected event:', e);
+                    console.error("Error parsing connected event:", e);
                   }
-                } else if (line.startsWith('event: end')) {
-                  safeCallback('onComplete', [], {} as RecommendationEvent);
+                } else if (line.startsWith("event: end")) {
+                  safeCallback("onComplete", [], {} as RecommendationEvent);
                   return;
                 }
               }
             }
           } catch (readError) {
             if (!isAborted) {
-              safeCallback('onError', readError as Event);
+              safeCallback("onError", readError as Event);
             }
           }
         };
 
         read();
       })
-      .catch(error => {
-        if (error.name !== 'AbortError' && !isAborted) {
-          safeCallback('onError', error);
+      .catch((error) => {
+        if (error.name !== "AbortError" && !isAborted) {
+          safeCallback("onError", error);
         }
       });
 
@@ -347,214 +347,272 @@ class ApiClient {
 
   async getRecommendationsBlocking(
     containerId: string,
-    timeout: number = 30
+    timeout: number = 30,
   ): Promise<RecommendationsBlockingResponse> {
-    const response = await this.client.get<{ data: RecommendationsBlockingResponse }>(
-      `/recommendations/blocking`,
-      {
-        params: { container_id: containerId, timeout },
-        headers: this.getAuthHeaders()
-      }
-    );
+    const response = await this.client.get<{
+      data: RecommendationsBlockingResponse;
+    }>(`/recommendations/blocking`, {
+      params: { container_id: containerId, timeout },
+      headers: this.getAuthHeaders(),
+    });
     return response.data.data;
   }
 
-  async closeRecommendationsStream(streamId: string): Promise<{ stream_id: string; closed: boolean }> {
-    const response = await this.client.post<{ data: { stream_id: string; closed: boolean } }>(
+  async closeRecommendationsStream(
+    streamId: string,
+  ): Promise<{ stream_id: string; closed: boolean }> {
+    const response = await this.client.post<{
+      data: { stream_id: string; closed: boolean };
+    }>(
       `/recommendations/stream/${streamId}/close`,
       {},
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
     return response.data.data;
   }
 
   async chatWithBot(data: ChatRequest): Promise<ChatResponse> {
-    const response = await this.client.post<{ data: ChatResponse }>('/chat', data, {
-      headers: this.getAuthHeaders()
-    });
+    const response = await this.client.post<{ data: ChatResponse }>(
+      "/chat",
+      data,
+      {
+        headers: this.getAuthHeaders(),
+      },
+    );
     return response.data.data;
   }
 
   async ocrProcess(data: OcrProcessRequest): Promise<OcrProcessResponse> {
-    const response = await this.client.post<{ data: OcrProcessResponse }>('/ocr/process', data, {
-      headers: this.getAuthHeaders()
-    });
+    const response = await this.client.post<{ data: OcrProcessResponse }>(
+      "/ocr/process",
+      data,
+      {
+        headers: this.getAuthHeaders(),
+      },
+    );
     return response.data.data;
   }
 
   async getUser(): Promise<User> {
-    const response = await this.client.get<{data: User}>('/auth/user', {
-      headers: this.getAuthHeaders()
+    const response = await this.client.get<{ data: User }>("/auth/user", {
+      headers: this.getAuthHeaders(),
     });
     return response.data.data;
   }
 
   async getSemanticGraph(containerId: string): Promise<SemanticGraphData> {
-    const response = await this.client.get<{ data: SemanticGraphData }>('/search/graph', {
-      headers: this.getAuthHeaders(),
-      params: { container_id: containerId }
-    });
-    console.log('Graph data received:', response.data.data);
+    const response = await this.client.get<{ data: SemanticGraphData }>(
+      "/search/graph",
+      {
+        headers: this.getAuthHeaders(),
+        params: { container_id: containerId },
+      },
+    );
+    console.log("Graph data received:", response.data.data);
     return response.data.data;
   }
 
   async getContainers(): Promise<Container[]> {
-    const response = await this.client.get<{ data: Container[] }>('/containers', {
-      headers: this.getAuthHeaders()
-    });
+    const response = await this.client.get<{ data: Container[] }>(
+      "/containers",
+      {
+        headers: this.getAuthHeaders(),
+      },
+    );
     return response.data.data;
   }
 
   async getContainer(containerId: string): Promise<Container> {
-    const response = await this.client.get<{ data: Container }>(`/containers/${containerId}`, {
-      headers: this.getAuthHeaders()
-    });
+    const response = await this.client.get<{ data: Container }>(
+      `/containers/${containerId}`,
+      {
+        headers: this.getAuthHeaders(),
+      },
+    );
     return response.data.data;
   }
 
   async createContainer(data: CreateContainerRequest): Promise<Container> {
-    const response = await this.client.post<{ data: Container }>('/containers', data, {
-      headers: this.getAuthHeaders()
-    });
+    const response = await this.client.post<{ data: Container }>(
+      "/containers",
+      data,
+      {
+        headers: this.getAuthHeaders(),
+      },
+    );
     return response.data.data;
   }
 
   async deleteContainer(containerId: string): Promise<void> {
     await this.client.delete(`/containers/${containerId}`, {
-      headers: this.getAuthHeaders()
+      headers: this.getAuthHeaders(),
     });
   }
 
   async restartContainer(containerId: string): Promise<void> {
-    await this.client.post(`/containers/${containerId}/restart`, {}, {
-      headers: this.getAuthHeaders()
-    });
+    await this.client.post(
+      `/containers/${containerId}/restart`,
+      {},
+      {
+        headers: this.getAuthHeaders(),
+      },
+    );
   }
 
   async stopContainer(containerId: string): Promise<void> {
-    await this.client.post(`/containers/${containerId}/stop`, {}, {
-      headers: this.getAuthHeaders()
-    });
+    await this.client.post(
+      `/containers/${containerId}/stop`,
+      {},
+      {
+        headers: this.getAuthHeaders(),
+      },
+    );
   }
 
   async getContainerStats(containerId: string): Promise<any> {
     const response = await this.client.get(`/containers/${containerId}/stats`, {
-      headers: this.getAuthHeaders()
+      headers: this.getAuthHeaders(),
     });
     return response.data.data;
   }
 
   async getFiles(containerId: string): Promise<ApiFile[]> {
-    const response = await this.client.get<{ data: ApiFile[] }>(`/containers/${containerId}/files`, {
-      headers: this.getAuthHeaders()
-    });
+    const response = await this.client.get<{ data: ApiFile[] }>(
+      `/containers/${containerId}/files`,
+      {
+        headers: this.getAuthHeaders(),
+      },
+    );
     return response.data.data;
   }
 
   async getFilesRebuildIndex(containerId: string): Promise<ApiFile[]> {
-    const response = await this.client.get<{ data: ApiFile[] }>(`/containers/${containerId}/files/refresh`, {
-      headers: this.getAuthHeaders()
-    });
+    const response = await this.client.get<{ data: ApiFile[] }>(
+      `/containers/${containerId}/files/refresh`,
+      {
+        headers: this.getAuthHeaders(),
+      },
+    );
     return response.data.data;
   }
 
   async getFile(fileId: string, containerId: string): Promise<ApiFile> {
     const response = await this.client.get<{ data: ApiFile }>(
       `/containers/${containerId}/files/${fileId}`,
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
     return response.data.data;
   }
 
-  async getFileContent(containerId: string, fileId: string): Promise<FileContent> {
+  async getFileContent(
+    containerId: string,
+    fileId: string,
+  ): Promise<FileContent> {
     const response = await this.client.get<{ data: FileContent }>(
       `/containers/${containerId}/files/${fileId}/content`,
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
     return response.data.data;
   }
 
-  async getContainerStatus(containerId: string, userId: string): Promise<ContainerStatus> {
+  async getContainerStatus(
+    containerId: string,
+    userId: string,
+  ): Promise<ContainerStatus> {
     const response = await this.client.get<{ data: ContainerStatus }>(
       `/containers/${containerId}/status`,
       {
         headers: this.getAuthHeaders(),
-        params: { user_id: userId }
-      }
+        params: { user_id: userId },
+      },
     );
     return response.data.data;
   }
 
-  async uploadFile(
-    containerId: string, 
-    file: File
-  ): Promise<ApiFile> {
+  async uploadFile(containerId: string, file: File): Promise<ApiFile> {
     const formData = new FormData();
-    formData.append('file', file);
-    
+    formData.append("file", file);
+
     const uploadClient = axios.create({
       baseURL: API_BASE_URL,
       timeout: 30000,
     });
-    
+
     const response = await uploadClient.post<{ data: ApiFile }>(
       `/containers/${containerId}/files`,
       formData,
       {
         headers: {
-          'Authorization': this.token ? `Bearer ${this.token}` : '',
+          Authorization: this.token ? `Bearer ${this.token}` : "",
         },
-      }
+      },
     );
     return response.data.data;
   }
 
   async deleteFile(fileId: string, containerId: string): Promise<void> {
     await this.client.delete(`/containers/${containerId}/files/${fileId}`, {
-      headers: this.getAuthHeaders()
+      headers: this.getAuthHeaders(),
     });
   }
 
   async downloadFile(fileId: string, containerId: string): Promise<Blob> {
-    const response = await this.client.get(`/containers/${containerId}/files/${fileId}/download`, {
-      responseType: 'blob',
-      headers: this.getAuthHeaders()
-    });
+    const response = await this.client.get(
+      `/containers/${containerId}/files/${fileId}/download`,
+      {
+        responseType: "blob",
+        headers: this.getAuthHeaders(),
+      },
+    );
     return response.data;
   }
 
-  async readFile(fileId: string, containerId: string): Promise<{ content: string }> {
+  async readFile(
+    fileId: string,
+    containerId: string,
+  ): Promise<{ content: string }> {
     const response = await this.client.get<{ data: { content: string } }>(
       `/containers/${containerId}/files/${fileId}/content`,
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
     return response.data.data;
   }
 
   async semanticSearch(data: SearchRequest): Promise<SearchResult> {
-    const response = await this.client.post<{ data: SearchResult }>('/search/semantic', data, {
-      headers: this.getAuthHeaders()
-    });
+    const response = await this.client.post<{ data: SearchResult }>(
+      "/search/semantic",
+      data,
+      {
+        headers: this.getAuthHeaders(),
+      },
+    );
     return response.data.data;
   }
 
   async healthCheck(): Promise<{ status: string }> {
-    const response = await this.client.get<{ data: { status: string } }>('/health', {
-      headers: this.getAuthHeaders()
-    });
+    const response = await this.client.get<{ data: { status: string } }>(
+      "/health",
+      {
+        headers: this.getAuthHeaders(),
+      },
+    );
     return response.data.data;
   }
 
   async rebuildIndex(): Promise<{ message: string }> {
-    const response = await this.client.post<{ data: { message: string } }>('/search/rebuild-index', {}, {
-      headers: this.getAuthHeaders()
-    });
+    const response = await this.client.post<{ data: { message: string } }>(
+      "/search/rebuild-index",
+      {},
+      {
+        headers: this.getAuthHeaders(),
+      },
+    );
     return response.data.data;
   }
 
   async getServiceStatus(): Promise<any> {
-    const response = await this.client.get('/system/status', {
-      headers: this.getAuthHeaders()
+    const response = await this.client.get("/system/status", {
+      headers: this.getAuthHeaders(),
     });
     return response.data.data;
   }
@@ -562,16 +620,21 @@ class ApiClient {
   async getContainerGroups(containerId: string): Promise<Group[]> {
     const response = await this.client.get<{ data: Group[] }>(
       `/groups/container/${containerId}`,
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
     return response.data.data;
   }
 
-  async createGroup(containerId: string, name: string, description?: string, color?: string): Promise<Group> {
+  async createGroup(
+    containerId: string,
+    name: string,
+    description?: string,
+    color?: string,
+  ): Promise<Group> {
     const response = await this.client.post<{ data: Group }>(
       `/groups/container/${containerId}`,
-      { name, description: description || '', color: color || '#ff9800' },
-      { headers: this.getAuthHeaders() }
+      { name, description: description || "", color: color || "#ff9800" },
+      { headers: this.getAuthHeaders() },
     );
     return response.data.data;
   }
@@ -580,14 +643,14 @@ class ApiClient {
     await this.client.patch(
       `/groups/${groupId}`,
       { color },
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
   }
 
   async getGroup(groupId: string): Promise<Group> {
     const response = await this.client.get<{ data: Group }>(
       `/groups/${groupId}`,
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
     return response.data.data;
   }
@@ -596,35 +659,38 @@ class ApiClient {
     await this.client.patch(
       `/groups/${groupId}`,
       { description },
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
   }
 
   async deleteGroup(groupId: string): Promise<void> {
     await this.client.delete(`/groups/${groupId}`, {
-      headers: this.getAuthHeaders()
+      headers: this.getAuthHeaders(),
     });
   }
 
-  async addFileToGroup(groupId: string, fileId: string): Promise<FileGroupRelation> {
+  async addFileToGroup(
+    groupId: string,
+    fileId: string,
+  ): Promise<FileGroupRelation> {
     const response = await this.client.post<{ data: FileGroupRelation }>(
       `/groups/${groupId}/files`,
       { file_id: fileId },
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
     return response.data.data;
   }
 
   async removeFileFromGroup(groupId: string, fileId: string): Promise<void> {
     await this.client.delete(`/groups/${groupId}/files/${fileId}`, {
-      headers: this.getAuthHeaders()
+      headers: this.getAuthHeaders(),
     });
   }
 
   async getGroupFiles(groupId: string): Promise<ApiFile[]> {
     const response = await this.client.get<{ data: ApiFile[] }>(
       `/groups/${groupId}/files`,
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
     return response.data.data;
   }
@@ -632,39 +698,49 @@ class ApiClient {
   async getFileGroups(fileId: string): Promise<Group[]> {
     const response = await this.client.get<{ data: Group[] }>(
       `/groups/file/${fileId}/groups`,
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
     return response.data.data;
   }
 
-  async addMultipleFilesToGroup(groupId: string, fileIds: string[]): Promise<FileGroupRelation[]> {
+  async addMultipleFilesToGroup(
+    groupId: string,
+    fileIds: string[],
+  ): Promise<FileGroupRelation[]> {
     const response = await this.client.post<{ data: FileGroupRelation[] }>(
       `/groups/${groupId}/files/batch`,
       { file_ids: fileIds },
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
     return response.data.data;
   }
 
-  async removeMultipleFilesFromGroup(groupId: string, fileIds: string[]): Promise<void> {
+  async removeMultipleFilesFromGroup(
+    groupId: string,
+    fileIds: string[],
+  ): Promise<void> {
     await this.client.delete(`/groups/${groupId}/files/batch`, {
       data: { file_ids: fileIds },
-      headers: this.getAuthHeaders()
+      headers: this.getAuthHeaders(),
     });
   }
 
-  async moveFileBetweenGroups(fileId: string, fromGroupId: string, toGroupId: string): Promise<void> {
+  async moveFileBetweenGroups(
+    fileId: string,
+    fromGroupId: string,
+    toGroupId: string,
+  ): Promise<void> {
     await this.client.post(
       `/groups/${toGroupId}/move/${fileId}`,
       { from_group_id: fromGroupId },
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
   }
 
   async getGroupStats(groupId: string): Promise<GroupStats> {
     const response = await this.client.get<{ data: GroupStats }>(
       `/groups/${groupId}/stats`,
-      { headers: this.getAuthHeaders() }
+      { headers: this.getAuthHeaders() },
     );
     return response.data.data;
   }

@@ -1,17 +1,27 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient, ApiFile, ChatRequest, CreateContainerRequest, OcrProcessRequest, RecommendationEvent, SearchRequest, User, ContainerStatus } from '../api/client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  apiClient,
+  ApiFile,
+  ChatRequest,
+  CreateContainerRequest,
+  OcrProcessRequest,
+  RecommendationEvent,
+  SearchRequest,
+  User,
+  ContainerStatus,
+} from "../api/client";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export const useContainers = () => {
   return useQuery({
-    queryKey: ['containers'],
+    queryKey: ["containers"],
     queryFn: () => apiClient.getContainers(),
   });
 };
 
 export const useContainer = (containerId: string) => {
   return useQuery({
-    queryKey: ['containers', containerId],
+    queryKey: ["containers", containerId],
     queryFn: () => apiClient.getContainer(containerId),
     enabled: !!containerId,
   });
@@ -33,9 +43,10 @@ export const useCreateContainer = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateContainerRequest) => apiClient.createContainer(data),
+    mutationFn: (data: CreateContainerRequest) =>
+      apiClient.createContainer(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['containers'] });
+      queryClient.invalidateQueries({ queryKey: ["containers"] });
     },
   });
 };
@@ -46,37 +57,36 @@ export const useGetUser = () => {
   return useMutation({
     mutationFn: (data: User) => apiClient.getUser(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['user'] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
     },
-  })
-}
+  });
+};
 
 export const useContainerStatus = (containerId: string, userId: string) => {
   return useQuery({
-    queryKey: ['containerStatus', containerId, userId],
+    queryKey: ["containerStatus", containerId, userId],
     queryFn: async () => {
       try {
         if (!containerId || !userId) {
-          throw new Error('containerId and userId are required');
+          throw new Error("containerId and userId are required");
         }
 
         const result = await apiClient.getContainerStatus(containerId, userId);
         return result;
-
       } catch (error) {
         throw error;
       }
-    }
-  })
-}
+    },
+  });
+};
 
 export const useFileContent = (containerId: string, fileId: string) => {
   return useQuery({
-    queryKey: ['fileContent', containerId, fileId],
+    queryKey: ["fileContent", containerId, fileId],
     queryFn: async () => {
       try {
         if (!containerId || !fileId) {
-          throw new Error('containerId and fileId are required');
+          throw new Error("containerId and fileId are required");
         }
         const result = await apiClient.getFileContent(containerId, fileId);
         return result;
@@ -86,7 +96,7 @@ export const useFileContent = (containerId: string, fileId: string) => {
     },
     enabled: !!containerId && !!fileId,
     retry: 1,
-    staleTime: 0
+    staleTime: 0,
   });
 };
 
@@ -96,7 +106,7 @@ export const useDeleteContainer = () => {
   return useMutation({
     mutationFn: (containerId: string) => apiClient.deleteContainer(containerId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['containers'] });
+      queryClient.invalidateQueries({ queryKey: ["containers"] });
     },
   });
 };
@@ -105,9 +115,10 @@ export const useRestartContainer = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (containerId: string) => apiClient.restartContainer(containerId),
+    mutationFn: (containerId: string) =>
+      apiClient.restartContainer(containerId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['containers'] });
+      queryClient.invalidateQueries({ queryKey: ["containers"] });
     },
   });
 };
@@ -116,16 +127,23 @@ export const useNotifications = () => {
   const [notification, setNotification] = useState<{
     open: boolean;
     message: string;
-    severity: 'success' | 'error' | 'info' | 'warning';
+    severity: "success" | "error" | "info" | "warning";
   }>({
     open: false,
-    message: '',
-    severity: 'info',
+    message: "",
+    severity: "info",
   });
 
-  const addNotification = useCallback((n: { open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }) => {
-    setNotification(n);
-  }, []);
+  const addNotification = useCallback(
+    (n: {
+      open: boolean;
+      message: string;
+      severity: "success" | "error" | "info" | "warning";
+    }) => {
+      setNotification(n);
+    },
+    [],
+  );
 
   const closeNotification = useCallback(() => {
     setNotification((prev) => ({ ...prev, open: false }));
@@ -136,7 +154,7 @@ export const useNotifications = () => {
 
 export const useFiles = (containerId: string | undefined) => {
   return useQuery({
-    queryKey: ['files', containerId],
+    queryKey: ["files", containerId],
     queryFn: () => apiClient.getFiles(containerId ? containerId : ""),
     enabled: !!containerId,
   });
@@ -144,7 +162,7 @@ export const useFiles = (containerId: string | undefined) => {
 
 export const useGetSemanticGraph = (containerId: string) => {
   return useQuery({
-    queryKey: ['semanticGraph', containerId],
+    queryKey: ["semanticGraph", containerId],
     queryFn: () => apiClient.getSemanticGraph(containerId),
     enabled: !!containerId,
   });
@@ -152,8 +170,9 @@ export const useGetSemanticGraph = (containerId: string) => {
 
 export const useFilesRebuildIndex = (containerId: string | undefined) => {
   return useQuery({
-    queryKey: ['files', containerId],
-    queryFn: () => apiClient.getFilesRebuildIndex(containerId ? containerId : ""),
+    queryKey: ["files", containerId],
+    queryFn: () =>
+      apiClient.getFilesRebuildIndex(containerId ? containerId : ""),
     enabled: !!containerId,
   });
 };
@@ -162,12 +181,12 @@ export const useUploadFile = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ containerId, file }: {
-      containerId: string;
-      file: File;
-    }) => apiClient.uploadFile(containerId, file),
+    mutationFn: ({ containerId, file }: { containerId: string; file: File }) =>
+      apiClient.uploadFile(containerId, file),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['files', variables.containerId] });
+      queryClient.invalidateQueries({
+        queryKey: ["files", variables.containerId],
+      });
     },
   });
 };
@@ -176,21 +195,31 @@ export const useDownloadFile = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ container_id, file }: {
-      container_id: string,
+    mutationFn: ({
+      container_id,
+      file,
+    }: {
+      container_id: string;
       file: ApiFile;
-    }) => apiClient.downloadFile(file.name, container_id)
-  })
-}
+    }) => apiClient.downloadFile(file.name, container_id),
+  });
+};
 
 export const useDeleteFile = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ fileId, containerId }: { fileId: string; containerId: string }) =>
-      apiClient.deleteFile(fileId, containerId),
+    mutationFn: ({
+      fileId,
+      containerId,
+    }: {
+      fileId: string;
+      containerId: string;
+    }) => apiClient.deleteFile(fileId, containerId),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['files', variables.containerId] });
+      queryClient.invalidateQueries({
+        queryKey: ["files", variables.containerId],
+      });
     },
   });
 };
@@ -203,7 +232,7 @@ export const useSemanticSearch = () => {
 
 export const useHealthCheck = () => {
   return useQuery({
-    queryKey: ['health'],
+    queryKey: ["health"],
     queryFn: () => apiClient.healthCheck(),
     refetchInterval: 30000,
   });
@@ -219,7 +248,7 @@ export const useRecommendationsStream = (
   containerId: string | undefined,
   onPathsUpdate?: (paths: string[], event: RecommendationEvent) => void,
   onComplete?: (paths: string[], event: RecommendationEvent) => void,
-  onError?: (error: Event) => void
+  onError?: (error: Event) => void,
 ) => {
   const [paths, setPaths] = useState<string[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -247,7 +276,7 @@ export const useRecommendationsStream = (
       containerId,
       {
         onPathsUpdate: (newPaths, event) => {
-          setPaths(prev => {
+          setPaths((prev) => {
             const combined = [...prev, ...newPaths];
             const unique = Array.from(new Set(combined));
             return unique;
@@ -272,8 +301,8 @@ export const useRecommendationsStream = (
         onConnected: (id) => {
           setIsConnected(true);
           setStreamId(id);
-        }
-      }
+        },
+      },
     );
 
     return () => {
@@ -288,14 +317,20 @@ export const useRecommendationsStream = (
 
 export const useRecommendationsBlocking = () => {
   return useMutation({
-    mutationFn: ({ containerId, timeout }: { containerId: string; timeout?: number }) =>
-      apiClient.getRecommendationsBlocking(containerId, timeout)
+    mutationFn: ({
+      containerId,
+      timeout,
+    }: {
+      containerId: string;
+      timeout?: number;
+    }) => apiClient.getRecommendationsBlocking(containerId, timeout),
   });
 };
 
 export const useCloseRecommendationsStream = () => {
   return useMutation({
-    mutationFn: (streamId: string) => apiClient.closeRecommendationsStream(streamId)
+    mutationFn: (streamId: string) =>
+      apiClient.closeRecommendationsStream(streamId),
   });
 };
 
@@ -306,21 +341,22 @@ export const useAutoRefreshFiles = (containerId: string | undefined) => {
   const { paths: streamPaths, isConnected } = useRecommendationsStream(
     containerId,
     (newPaths) => {
-      setPaths(prev => [...prev, ...newPaths]);
-      queryClient.invalidateQueries({ queryKey: ['files', containerId] });
-    }
+      setPaths((prev) => [...prev, ...newPaths]);
+      queryClient.invalidateQueries({ queryKey: ["files", containerId] });
+    },
   );
 
   return {
     paths: streamPaths,
     isConnected,
-    refresh: () => queryClient.invalidateQueries({ queryKey: ['files', containerId] })
+    refresh: () =>
+      queryClient.invalidateQueries({ queryKey: ["files", containerId] }),
   };
 };
 
 export const useContainerGroups = (containerId: string | undefined) => {
   return useQuery({
-    queryKey: ['groups', 'container', containerId],
+    queryKey: ["groups", "container", containerId],
     queryFn: () => apiClient.getContainerGroups(containerId!),
     enabled: !!containerId,
   });
@@ -328,7 +364,7 @@ export const useContainerGroups = (containerId: string | undefined) => {
 
 export const useGroup = (groupId: string | undefined) => {
   return useQuery({
-    queryKey: ['groups', groupId],
+    queryKey: ["groups", groupId],
     queryFn: () => apiClient.getGroup(groupId!),
     enabled: !!groupId,
   });
@@ -338,10 +374,21 @@ export const useCreateGroup = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ containerId, name, description, color }: { containerId: string; name: string; description?: string; color: string }) =>
-      apiClient.createGroup(containerId, name, description, color),
+    mutationFn: ({
+      containerId,
+      name,
+      description,
+      color,
+    }: {
+      containerId: string;
+      name: string;
+      description?: string;
+      color: string;
+    }) => apiClient.createGroup(containerId, name, description, color),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['groups', 'container', variables.containerId] });
+      queryClient.invalidateQueries({
+        queryKey: ["groups", "container", variables.containerId],
+      });
     },
   });
 };
@@ -353,7 +400,7 @@ export const useUpdateGroupColor = () => {
     mutationFn: ({ groupId, color }: { groupId: string; color: string }) =>
       apiClient.updateGroupColor(groupId, color),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      queryClient.invalidateQueries({ queryKey: ["groups"] });
     },
   });
 };
@@ -362,10 +409,17 @@ export const useUpdateGroup = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ groupId, description }: { groupId: string; description: string }) =>
-      apiClient.updateGroup(groupId, description),
+    mutationFn: ({
+      groupId,
+      description,
+    }: {
+      groupId: string;
+      description: string;
+    }) => apiClient.updateGroup(groupId, description),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['groups', variables.groupId] });
+      queryClient.invalidateQueries({
+        queryKey: ["groups", variables.groupId],
+      });
     },
   });
 };
@@ -376,14 +430,14 @@ export const useDeleteGroup = () => {
   return useMutation({
     mutationFn: (groupId: string) => apiClient.deleteGroup(groupId),
     onSuccess: (_, groupId) => {
-      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      queryClient.invalidateQueries({ queryKey: ["groups"] });
     },
   });
 };
 
 export const useGroupFiles = (groupId: string | undefined) => {
   return useQuery({
-    queryKey: ['groups', groupId, 'files'],
+    queryKey: ["groups", groupId, "files"],
     queryFn: () => apiClient.getGroupFiles(groupId!),
     enabled: !!groupId,
   });
@@ -391,7 +445,7 @@ export const useGroupFiles = (groupId: string | undefined) => {
 
 export const useFileGroups = (fileId: string | undefined) => {
   return useQuery({
-    queryKey: ['files', fileId, 'groups'],
+    queryKey: ["files", fileId, "groups"],
     queryFn: () => apiClient.getFileGroups(fileId!),
     enabled: !!fileId,
   });
@@ -404,9 +458,9 @@ export const useAddFileToGroup = () => {
     mutationFn: ({ groupId, fileId }: { groupId: string; fileId: string }) =>
       apiClient.addFileToGroup(groupId, fileId),
     onSuccess: (_, { groupId, fileId }) => {
-      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'files'] });
-      queryClient.invalidateQueries({ queryKey: ['files', fileId, 'groups'] });
-      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'stats'] });
+      queryClient.invalidateQueries({ queryKey: ["groups", groupId, "files"] });
+      queryClient.invalidateQueries({ queryKey: ["files", fileId, "groups"] });
+      queryClient.invalidateQueries({ queryKey: ["groups", groupId, "stats"] });
     },
   });
 };
@@ -418,9 +472,9 @@ export const useRemoveFileFromGroup = () => {
     mutationFn: ({ groupId, fileId }: { groupId: string; fileId: string }) =>
       apiClient.removeFileFromGroup(groupId, fileId),
     onSuccess: (_, { groupId, fileId }) => {
-      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'files'] });
-      queryClient.invalidateQueries({ queryKey: ['files', fileId, 'groups'] });
-      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'stats'] });
+      queryClient.invalidateQueries({ queryKey: ["groups", groupId, "files"] });
+      queryClient.invalidateQueries({ queryKey: ["files", fileId, "groups"] });
+      queryClient.invalidateQueries({ queryKey: ["groups", groupId, "stats"] });
     },
   });
 };
@@ -429,14 +483,21 @@ export const useAddMultipleFilesToGroup = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ groupId, fileIds }: { groupId: string; fileIds: string[] }) =>
-      apiClient.addMultipleFilesToGroup(groupId, fileIds),
+    mutationFn: ({
+      groupId,
+      fileIds,
+    }: {
+      groupId: string;
+      fileIds: string[];
+    }) => apiClient.addMultipleFilesToGroup(groupId, fileIds),
     onSuccess: (_, { groupId, fileIds }) => {
-      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'files'] });
-      fileIds.forEach(fileId => {
-        queryClient.invalidateQueries({ queryKey: ['files', fileId, 'groups'] });
+      queryClient.invalidateQueries({ queryKey: ["groups", groupId, "files"] });
+      fileIds.forEach((fileId) => {
+        queryClient.invalidateQueries({
+          queryKey: ["files", fileId, "groups"],
+        });
       });
-      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'stats'] });
+      queryClient.invalidateQueries({ queryKey: ["groups", groupId, "stats"] });
     },
   });
 };
@@ -445,14 +506,21 @@ export const useRemoveMultipleFilesFromGroup = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ groupId, fileIds }: { groupId: string; fileIds: string[] }) =>
-      apiClient.removeMultipleFilesFromGroup(groupId, fileIds),
+    mutationFn: ({
+      groupId,
+      fileIds,
+    }: {
+      groupId: string;
+      fileIds: string[];
+    }) => apiClient.removeMultipleFilesFromGroup(groupId, fileIds),
     onSuccess: (_, { groupId, fileIds }) => {
-      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'files'] });
-      fileIds.forEach(fileId => {
-        queryClient.invalidateQueries({ queryKey: ['files', fileId, 'groups'] });
+      queryClient.invalidateQueries({ queryKey: ["groups", groupId, "files"] });
+      fileIds.forEach((fileId) => {
+        queryClient.invalidateQueries({
+          queryKey: ["files", fileId, "groups"],
+        });
       });
-      queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'stats'] });
+      queryClient.invalidateQueries({ queryKey: ["groups", groupId, "stats"] });
     },
   });
 };
@@ -461,21 +529,36 @@ export const useMoveFileBetweenGroups = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ fileId, fromGroupId, toGroupId }: { fileId: string; fromGroupId: string; toGroupId: string }) =>
-      apiClient.moveFileBetweenGroups(fileId, fromGroupId, toGroupId),
+    mutationFn: ({
+      fileId,
+      fromGroupId,
+      toGroupId,
+    }: {
+      fileId: string;
+      fromGroupId: string;
+      toGroupId: string;
+    }) => apiClient.moveFileBetweenGroups(fileId, fromGroupId, toGroupId),
     onSuccess: (_, { fileId, fromGroupId, toGroupId }) => {
-      queryClient.invalidateQueries({ queryKey: ['groups', fromGroupId, 'files'] });
-      queryClient.invalidateQueries({ queryKey: ['groups', toGroupId, 'files'] });
-      queryClient.invalidateQueries({ queryKey: ['files', fileId, 'groups'] });
-      queryClient.invalidateQueries({ queryKey: ['groups', fromGroupId, 'stats'] });
-      queryClient.invalidateQueries({ queryKey: ['groups', toGroupId, 'stats'] });
+      queryClient.invalidateQueries({
+        queryKey: ["groups", fromGroupId, "files"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["groups", toGroupId, "files"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["files", fileId, "groups"] });
+      queryClient.invalidateQueries({
+        queryKey: ["groups", fromGroupId, "stats"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["groups", toGroupId, "stats"],
+      });
     },
   });
 };
 
 export const useGroupStats = (groupId: string | undefined) => {
   return useQuery({
-    queryKey: ['groups', groupId, 'stats'],
+    queryKey: ["groups", groupId, "stats"],
     queryFn: () => apiClient.getGroupStats(groupId!),
     enabled: !!groupId,
   });
