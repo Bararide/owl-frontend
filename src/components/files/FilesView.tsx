@@ -84,6 +84,8 @@ import {
 } from '../../hooks/useApi';
 import { useWasmGraphLayout } from './useWasmGraph';
 
+import { useFileNotifications } from '../../hooks/useFileNotifications';
+
 type Severity = 'success' | 'error' | 'info' | 'warning';
 
 const MIME_TO_LANGUAGE: Record<string, string> = {
@@ -1277,6 +1279,26 @@ export default function FilesView({ containerId }: { containerId: string }) {
     (newPaths) => addNotification({ message: `Found ${newPaths.length} recommended files`, severity: 'info', open: true }),
     (finalPaths) => addNotification({ message: `Recommendations completed: ${finalPaths.length} files`, severity: 'success', open: true })
   );
+
+  const { isConnected: wsConnected, lastFileNotification } = useFileNotifications(containerId);
+  
+  useEffect(() => {
+    if (lastFileNotification && lastFileNotification.type) {
+      console.log("🌐 WEBSOCKET MESSAGE:", lastFileNotification);
+    }
+  }, [lastFileNotification]);
+
+  console.log("WebSocket status:", wsConnected ? "CONNECTED" : "DISCONNECTED");
+  console.log("Container ID:", containerId);
+  
+  useEffect(() => {
+    if (wsConnected) {
+      console.log("🔌 WebSocket connection established for container:", containerId);
+      console.log("✅ WEBSOCKET IS WORKING - Live updates active");
+    } else {
+      console.log("⚠️ WebSocket disconnected for container:", containerId);
+    }
+  }, [wsConnected, containerId]);
 
   const [fileContentDialog, setFileContentDialog] = useState<{ open: boolean; file: ApiFile | null; currentIndex: number; }>({ open: false, file: null, currentIndex: 0 });
   const [searchQuery, setSearchQuery] = useState('');
