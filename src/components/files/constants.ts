@@ -1,0 +1,47 @@
+export const MIME_TO_LANGUAGE: Record<string, string> = {
+  "text/javascript": "JavaScript",
+  "application/json": "JSON",
+  "text/html": "HTML",
+  "text/css": "CSS",
+  "text/x-python": "Python",
+  "text/x-java": "Java",
+  "text/x-c++": "C++",
+  "text/x-c": "C",
+  "text/x-ruby": "Ruby",
+  "text/x-php": "PHP",
+  "text/x-go": "Go",
+  "text/x-rust": "Rust",
+  "text/x-typescript": "TypeScript",
+  "text/x-yaml": "YAML",
+  "text/x-markdown": "Markdown",
+  "text/plain": "Text",
+};
+
+export const HIGHLIGHT_COLORS = [
+  "rgba(255, 235, 59, 0.3)",
+  "rgba(76, 175, 80, 0.3)",
+  "rgba(33, 150, 243, 0.3)",
+  "rgba(156, 39, 176, 0.3)",
+  "rgba(255, 87, 34, 0.3)",
+  "rgba(233, 30, 99, 0.3)",
+  "rgba(0, 188, 212, 0.3)",
+  "rgba(139, 195, 74, 0.3)",
+];
+
+export const PREDEFINED_COLORS = [
+  "#ff9800",
+  "#f44336",
+  "#e91e63",
+  "#9c27b0",
+  "#673ab7",
+  "#3f51b5",
+  "#2196f3",
+  "#03a9f4",
+  "#00bcd4",
+  "#009688",
+  "#4caf50",
+  "#8bc34a",
+  "#cddc39",
+  "#ffeb3b",
+  "#ffc107",
+];
