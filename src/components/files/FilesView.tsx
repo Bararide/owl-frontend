@@ -82,11 +82,9 @@ export default function FilesView({ containerId }: { containerId: string }) {
   const { addNotification, notification, closeNotification } = useNotifications();
   const semanticSearchMutation = useSemanticSearch();
 
-  // Логируем полученные сообщения
   useEffect(() => {
     if (wsLogs.length > 0) {
       console.log("[LOGS] New log messages:", wsLogs);
-      // Можно добавить уведомление для важных логов
       const lastLog = wsLogs[wsLogs.length - 1];
       if (lastLog && (lastLog.includes("error") || lastLog.includes("ERROR") || lastLog.includes("failed"))) {
         addNotification({
