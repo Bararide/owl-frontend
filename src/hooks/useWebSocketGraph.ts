@@ -13,16 +13,21 @@ interface UseWebSocketGraphReturn {
   groups: any[];
   fileGroupsMap: Record<string, { groupId: string; color: string }[]>;
   recommendations: string[];
+  logs: string[];
   isRecommendationsLoading: boolean;
+  isLogsLoading: boolean;
   isConnected: boolean;
   requestGraphData: () => Promise<void>;
   requestGroups: () => Promise<void>;
   requestFileGroupsMap: () => Promise<void>;
   requestRecommendations: (timeout?: number) => Promise<void>;
+  requestLogs: () => Promise<void>;
   subscribeToGraphUpdates: () => void;
   unsubscribeFromGraphUpdates: () => void;
   subscribeToRecommendations: () => void;
   unsubscribeFromRecommendations: () => void;
+  subscribeToLogs: () => void;
+  unsubscribeFromLogs: () => void;
 }
 
 export const useWebSocketGraph = (
@@ -34,10 +39,13 @@ export const useWebSocketGraph = (
     Record<string, { groupId: string; color: string }[]>
   >({});
   const [recommendations, setRecommendations] = useState<string[]>([]);
+  const [logs, setLogs] = useState<string[]>([]);
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false);
+  const [isLogsLoading, setIsLogsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const requestIdRef = useRef(0);
   const currentRequestIdRef = useRef<string | null>(null);
+  const currentLogsRequestIdRef = useRef<string | null>(null);
   const pendingRequestsRef = useRef<
     Map<
       string,
@@ -95,6 +103,21 @@ export const useWebSocketGraph = (
       return;
     }
 
+    if (type === "log_message") {
+      const logMessage = data?.message || data?.data?.message || "";
+      if (logMessage) {
+        setLogs((prev) => [...prev, logMessage]);
+      }
+      return;
+    }
+
+    if (type === "logs_error") {
+      console.error("[GraphWS] Logs error:", data?.error);
+      setIsLogsLoading(false);
+      currentLogsRequestIdRef.current = null;
+      return;
+    }
+
     if (type === "graph_data" && data) {
       setGraphData(data);
       return;
@@ -143,8 +166,11 @@ export const useWebSocketGraph = (
     onDisconnect: () => {
       setIsConnected(false);
       setRecommendations([]);
+      setLogs([]);
       setIsRecommendationsLoading(false);
+      setIsLogsLoading(false);
       currentRequestIdRef.current = null;
+      currentLogsRequestIdRef.current = null;
       pendingRequestsRef.current.forEach(({ reject, timeout }) => {
         clearTimeout(timeout);
         reject(new Error("Disconnected"));
@@ -243,6 +269,32 @@ export const useWebSocketGraph = (
     [sendRequest, isReady],
   );
 
+  const requestLogs = useCallback(async () => {
+    if (!isReady) return;
+
+    if (currentLogsRequestIdRef.current) {
+      const pending = pendingRequestsRef.current.get(currentLogsRequestIdRef.current);
+      if (pending) {
+        clearTimeout(pending.timeout);
+        pending.reject(new Error("Cancelled by new request"));
+        pendingRequestsRef.current.delete(currentLogsRequestIdRef.current);
+      }
+      currentLogsRequestIdRef.current = null;
+    }
+
+    setIsLogsLoading(true);
+    setLogs([]);
+
+    try {
+      const requestId = await sendRequest("get_logs");
+      currentLogsRequestIdRef.current = requestId;
+    } catch (error) {
+      console.error("[GraphWS] Failed to request logs:", error);
+      setIsLogsLoading(false);
+      currentLogsRequestIdRef.current = null;
+    }
+  }, [sendRequest, isReady]);
+
   const subscribeToGraphUpdates = useCallback(() => {
     sendMessage({
       action: "subscribe_to_graph_updates",
@@ -271,20 +323,39 @@ export const useWebSocketGraph = (
     });
   }, [containerId, sendMessage]);
 
+  const subscribeToLogs = useCallback(() => {
+    sendMessage({
+      action: "subscribe_to_logs",
+      container_id: containerId,
+    });
+  }, [containerId, sendMessage]);
+
+  const unsubscribeFromLogs = useCallback(() => {
+    sendMessage({
+      action: "unsubscribe_from_logs",
+      container_id: containerId,
+    });
+  }, [containerId, sendMessage]);
+
   return {
     graphData,
     groups,
     fileGroupsMap,
     recommendations,
+    logs,
     isRecommendationsLoading,
+    isLogsLoading,
     isConnected: wsConnected && isReady,
     requestGraphData,
     requestGroups,
     requestFileGroupsMap,
     requestRecommendations,
+    requestLogs,
     subscribeToGraphUpdates,
     unsubscribeFromGraphUpdates,
     subscribeToRecommendations,
     unsubscribeFromRecommendations,
+    subscribeToLogs,
+    unsubscribeFromLogs,
   };
 };
