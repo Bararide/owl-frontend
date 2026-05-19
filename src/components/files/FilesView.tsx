@@ -52,7 +52,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
     isLoading: isLoadingFiles,
     refetch: refetchFiles,
   } = useFiles(containerId);
-  
+
   const {
     graphData,
     groups: wsGroups,
@@ -64,17 +64,17 @@ export default function FilesView({ containerId }: { containerId: string }) {
     subscribeToGraphUpdates,
     unsubscribeFromGraphUpdates,
   } = useWebSocketGraph(containerId);
-  
+
   const { data: apiGroups = [], refetch: refetchApiGroups } =
     useContainerGroups(containerId);
-  
+
   const { data: searchHistory, refetch: refetchSearchHistory } = useSearchHistory(containerId);
-  
+
   const addFileToGroup = useAddFileToGroup();
   const removeFileFromGroup = useRemoveFileFromGroup();
   const { addNotification, notification, closeNotification } = useNotifications();
   const semanticSearchMutation = useSemanticSearch();
-  
+
   const { paths: recommendedPaths } = useRecommendationsStream(
     containerId,
     (newPaths) =>
@@ -90,7 +90,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
         open: true,
       }),
   );
-  
+
   useEffect(() => {
     if (graphWsConnected && containerId) {
       const timer = setTimeout(() => {
@@ -98,7 +98,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
         requestGroups();
         requestFileGroupsMap();
         subscribeToGraphUpdates();
-        refetchSearchHistory(); // Загружаем историю при подключении
+        refetchSearchHistory();
       }, 100);
       return () => clearTimeout(timer);
     }
@@ -106,13 +106,13 @@ export default function FilesView({ containerId }: { containerId: string }) {
       if (graphWsConnected) unsubscribeFromGraphUpdates();
     };
   }, [graphWsConnected, containerId, requestGraphData, requestGroups, requestFileGroupsMap, subscribeToGraphUpdates, unsubscribeFromGraphUpdates, refetchSearchHistory]);
-  
+
   const [fileContentDialog, setFileContentDialog] = useState<{
     open: boolean;
     file: ApiFile | null;
     currentIndex: number;
   }>({ open: false, file: null, currentIndex: 0 });
-  
+
   const [searchQuery, setSearchQuery] = useState("");
   const [isSemanticSearch, setIsSemanticSearch] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResultFile[]>([]);
@@ -132,7 +132,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const searchAnchorRef = useRef<HTMLButtonElement>(null);
-  
+
   const groups = useMemo(() => {
     const map = new Map<string, Group>();
     [...(wsGroups || []), ...apiGroups].forEach((g) => {
@@ -140,7 +140,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
     });
     return Array.from(map.values());
   }, [wsGroups, apiGroups]);
-  
+
   const recommendationFiles: RecommendationFile[] = recommendedPaths.map(
     (path) => ({
       path,
@@ -148,7 +148,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
       isRecommended: true,
     }),
   );
-  
+
   const currentFilesList = useMemo(() => {
     if (isSemanticSearch) return [...searchResults].reverse();
     if (!searchQuery) return [...files].reverse();
@@ -161,7 +161,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
       )
       .reverse();
   }, [isSemanticSearch, searchResults, searchQuery, files]);
-  
+
   useEffect(() => {
     const combinedMap = new Map<string, { groupId: string; color: string }[]>();
     Object.entries(wsFileGroupsMap || {}).forEach(([path, grps]) => {
@@ -169,7 +169,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
     });
     setFileGroupsMap(combinedMap);
   }, [wsFileGroupsMap]);
-  
+
   const handleAddToGroup = async (groupId: string, fileId: string) => {
     try {
       await addFileToGroup.mutateAsync({ groupId, fileId });
@@ -179,7 +179,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
       addNotification({ message: "Failed to add file to group", severity: "error", open: true });
     }
   };
-  
+
   const handleRemoveFromGroup = async (groupId: string, fileId: string) => {
     try {
       await removeFileFromGroup.mutateAsync({ groupId, fileId });
@@ -189,7 +189,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
       addNotification({ message: "Failed to remove file from group", severity: "error", open: true });
     }
   };
-  
+
   const handleSemanticSearch = useCallback(
     async (query: string) => {
       if (!query.trim() || !containerId) return;
@@ -225,7 +225,6 @@ export default function FilesView({ containerId }: { containerId: string }) {
               !["container_config.json", "access_policy.json"].includes(f.name),
           );
         setSearchResults(resultFiles);
-        // Обновляем историю после успешного поиска
         await refetchSearchHistory();
         addNotification({
           message: `Found ${resultFiles.length} semantically relevant files`,
@@ -245,7 +244,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
     },
     [containerId, semanticSearchMutation, addNotification, files, refetchSearchHistory],
   );
-  
+
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
     if (!value.trim()) {
@@ -253,11 +252,11 @@ export default function FilesView({ containerId }: { containerId: string }) {
       setSearchResults([]);
     }
   }, []);
-  
+
   const handleSearchSubmit = useCallback(() => {
     if (searchQuery.trim() && containerId) handleSemanticSearch(searchQuery);
   }, [searchQuery, containerId, handleSemanticSearch]);
-  
+
   const handleRefreshFiles = useCallback(async () => {
     if (!containerId) return;
     setIsRebuildingIndex(true);
@@ -290,7 +289,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
       setIsRebuildingIndex(false);
     }
   }, [containerId, refetchFiles, addNotification]);
-  
+
   const openFile = useCallback(
     (file: ApiFile) => {
       const fileIndex = currentFilesList.findIndex(
@@ -304,11 +303,11 @@ export default function FilesView({ containerId }: { containerId: string }) {
     },
     [currentFilesList],
   );
-  
+
   const handleCloseFileContent = useCallback(() => {
     setFileContentDialog({ open: false, file: null, currentIndex: 0 });
   }, []);
-  
+
   const handleNextFile = useCallback(() => {
     if (!fileContentDialog.file || currentFilesList.length === 0) return;
     const nextIndex =
@@ -319,7 +318,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
       currentIndex: nextIndex,
     });
   }, [fileContentDialog, currentFilesList]);
-  
+
   const handlePrevFile = useCallback(() => {
     if (!fileContentDialog.file || currentFilesList.length === 0) return;
     const prevIndex =
@@ -332,44 +331,46 @@ export default function FilesView({ containerId }: { containerId: string }) {
       currentIndex: prevIndex,
     });
   }, [fileContentDialog, currentFilesList]);
-  
+
   const handleToggleCurvedEdges = useCallback(
     () => setUseCurvedEdges((prev) => !prev),
     [],
   );
-  
+
   const handleOpenSearch = useCallback(
     () => setShowSearchPopup((prev) => !prev),
     [],
   );
-  
+
   const handleOpenTools = useCallback(
     (e: React.MouseEvent<HTMLElement>) => setToolsMenuAnchor(e.currentTarget),
     [],
   );
-  
+
   const handleOpenGroupDialog = useCallback(() => setGroupDialogOpen(true), []);
-  
+
   const handleOpenHistory = useCallback(() => {
     setHistoryDrawerOpen(true);
-    refetchSearchHistory(); // Обновляем историю при открытии
+    refetchSearchHistory();
   }, [refetchSearchHistory]);
-  
+
   const handleHistoryFileClick = useCallback((filePath: string) => {
-    // Находим файл по пути
-    const file = files.find(f => f.path === filePath || f.name === filePath);
-    if (file) {
-      openFile(file);
-      setHistoryDrawerOpen(false);
-    } else {
-      addNotification({
-        message: `File not found: ${filePath}`,
-        severity: "warning",
-        open: true,
-      });
-    }
-  }, [files, openFile, addNotification]);
-  
+    const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+
+    const fileToOpen: ApiFile = {
+      path: cleanPath,
+      name: cleanPath,
+      size: 0,
+      container_id: containerId,
+      user_id: "",
+      created_at: new Date().toISOString(),
+      mime_type: "text/plain",
+    };
+
+    openFile(fileToOpen);
+    setHistoryDrawerOpen(false);
+  }, [containerId, openFile]);
+
   if (!containerId)
     return (
       <Box
@@ -404,7 +405,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
         </Typography>
       </Box>
     );
-  
+
   return (
     <Box
       sx={{
@@ -456,7 +457,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
           Settings
         </MenuItem>
       </Menu>
-      
+
       {/* Drawer для истории поиска */}
       <Drawer
         anchor="right"
@@ -487,7 +488,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
             </IconButton>
           </Box>
           <Divider sx={{ mb: 2 }} />
-          
+
           {!searchHistory ? (
             <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", flex: 1 }}>
               <CircularProgress size={40} />
@@ -505,28 +506,22 @@ export default function FilesView({ containerId }: { containerId: string }) {
           ) : (
             <List sx={{ flex: 1, overflow: "auto" }}>
               {searchHistory.history.map((filePath, index) => {
-                const fileName = filePath.split("/").pop() || filePath;
-                const file = files.find(f => f.path === filePath || f.name === filePath);
+                const displayPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+                const fileName = displayPath.split('/').pop() || displayPath;
+
                 return (
                   <ListItem key={`${filePath}-${index}`} disablePadding divider>
                     <ListItemButton onClick={() => handleHistoryFileClick(filePath)}>
                       <ListItemIcon>
-                        <DescriptionIcon sx={{ color: file ? "primary.main" : "text.disabled" }} />
+                        <DescriptionIcon sx={{ color: "primary.main" }} />
                       </ListItemIcon>
                       <ListItemText
                         primary={fileName}
                         secondary={
-                          <Typography variant="caption" color="text.secondary">
-                            {filePath}
-                            {!file && " (file not found)"}
+                          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace", fontSize: "0.7rem" }}>
+                            {displayPath}
                           </Typography>
                         }
-                        primaryTypographyProps={{
-                          style: {
-                            fontFamily: "monospace",
-                            fontSize: "0.9rem",
-                          },
-                        }}
                       />
                     </ListItemButton>
                   </ListItem>
@@ -536,7 +531,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
           )}
         </Box>
       </Drawer>
-      
+
       <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
         {isLoadingFiles ? (
           <Box
