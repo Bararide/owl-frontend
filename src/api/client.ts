@@ -600,9 +600,10 @@ class ApiClient {
   async semanticSearch(data: SearchRequest): Promise<SearchResult> {
     const response = await this.client.post<{ data: SearchResult }>(
       "/search/semantic",
-      data,
+      { query: data.query, limit: data.limit },
       {
         headers: this.getAuthHeaders(),
+        params: { container_id: data.container_id },
       },
     );
     return response.data.data;
