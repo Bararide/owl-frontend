@@ -9,12 +9,24 @@ import {
   Divider,
   Snackbar,
   Alert,
+  IconButton,
+  Badge,
+  Drawer,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  ListItemIcon,
+  Tooltip,
+  Paper,
 } from "@mui/material";
 import {
   Description as DescriptionIcon,
   Refresh as RefreshIcon,
   Settings as SettingsIcon,
   FolderSpecial as FolderSpecialIcon,
+  History as HistoryIcon,
+  Close as CloseIcon,
 } from "@mui/icons-material";
 import type { ApiFile, SearchResultFile, RecommendationFile, Group } from "../../api/client";
 import { apiClient } from "../../api/client";
@@ -26,6 +38,7 @@ import {
   useContainerGroups,
   useAddFileToGroup,
   useRemoveFileFromGroup,
+  useSearchHistory,
 } from "../../hooks/useApi";
 import { useWebSocketGraph } from "../../hooks/useWebSocketGraph";
 import { SemanticGraphCanvas } from "./SemanticGraphCanvas";
@@ -55,6 +68,8 @@ export default function FilesView({ containerId }: { containerId: string }) {
   const { data: apiGroups = [], refetch: refetchApiGroups } =
     useContainerGroups(containerId);
   
+  const { data: searchHistory, refetch: refetchSearchHistory } = useSearchHistory(containerId);
+  
   const addFileToGroup = useAddFileToGroup();
   const removeFileFromGroup = useRemoveFileFromGroup();
   const { addNotification, notification, closeNotification } = useNotifications();
@@ -83,13 +98,14 @@ export default function FilesView({ containerId }: { containerId: string }) {
         requestGroups();
         requestFileGroupsMap();
         subscribeToGraphUpdates();
+        refetchSearchHistory(); // Загружаем историю при подключении
       }, 100);
       return () => clearTimeout(timer);
     }
     return () => {
       if (graphWsConnected) unsubscribeFromGraphUpdates();
     };
-  }, [graphWsConnected, containerId]);
+  }, [graphWsConnected, containerId, requestGraphData, requestGroups, requestFileGroupsMap, subscribeToGraphUpdates, unsubscribeFromGraphUpdates, refetchSearchHistory]);
   
   const [fileContentDialog, setFileContentDialog] = useState<{
     open: boolean;
@@ -114,6 +130,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
     Map<string, { groupId: string; color: string }[]>
   >(new Map());
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const searchAnchorRef = useRef<HTMLButtonElement>(null);
   
   const groups = useMemo(() => {
@@ -208,6 +225,8 @@ export default function FilesView({ containerId }: { containerId: string }) {
               !["container_config.json", "access_policy.json"].includes(f.name),
           );
         setSearchResults(resultFiles);
+        // Обновляем историю после успешного поиска
+        await refetchSearchHistory();
         addNotification({
           message: `Found ${resultFiles.length} semantically relevant files`,
           severity: "success",
@@ -224,7 +243,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
         setIsSearching(false);
       }
     },
-    [containerId, semanticSearchMutation, addNotification, files],
+    [containerId, semanticSearchMutation, addNotification, files, refetchSearchHistory],
   );
   
   const handleSearchChange = useCallback((value: string) => {
@@ -331,6 +350,26 @@ export default function FilesView({ containerId }: { containerId: string }) {
   
   const handleOpenGroupDialog = useCallback(() => setGroupDialogOpen(true), []);
   
+  const handleOpenHistory = useCallback(() => {
+    setHistoryDrawerOpen(true);
+    refetchSearchHistory(); // Обновляем историю при открытии
+  }, [refetchSearchHistory]);
+  
+  const handleHistoryFileClick = useCallback((filePath: string) => {
+    // Находим файл по пути
+    const file = files.find(f => f.path === filePath || f.name === filePath);
+    if (file) {
+      openFile(file);
+      setHistoryDrawerOpen(false);
+    } else {
+      addNotification({
+        message: `File not found: ${filePath}`,
+        severity: "warning",
+        open: true,
+      });
+    }
+  }, [files, openFile, addNotification]);
+  
   if (!containerId)
     return (
       <Box
@@ -417,6 +456,87 @@ export default function FilesView({ containerId }: { containerId: string }) {
           Settings
         </MenuItem>
       </Menu>
+      
+      {/* Drawer для истории поиска */}
+      <Drawer
+        anchor="right"
+        open={historyDrawerOpen}
+        onClose={() => setHistoryDrawerOpen(false)}
+        PaperProps={{
+          sx: {
+            width: 400,
+            background: "rgba(26, 31, 54, 0.98)",
+            backdropFilter: "blur(20px)",
+            borderLeft: "1px solid rgba(255,255,255,0.1)",
+          },
+        }}
+      >
+        <Box sx={{ p: 2, height: "100%", display: "flex", flexDirection: "column" }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+            <Typography variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <HistoryIcon />
+              Search History
+              <Badge
+                badgeContent={searchHistory?.history?.length || 0}
+                color="primary"
+                sx={{ ml: 1 }}
+              />
+            </Typography>
+            <IconButton onClick={() => setHistoryDrawerOpen(false)} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+          <Divider sx={{ mb: 2 }} />
+          
+          {!searchHistory ? (
+            <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", flex: 1 }}>
+              <CircularProgress size={40} />
+            </Box>
+          ) : searchHistory.history.length === 0 ? (
+            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, textAlign: "center" }}>
+              <HistoryIcon sx={{ fontSize: 64, color: "text.secondary", mb: 2, opacity: 0.3 }} />
+              <Typography color="text.secondary">
+                No search history yet
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Perform semantic searches to see history here
+              </Typography>
+            </Box>
+          ) : (
+            <List sx={{ flex: 1, overflow: "auto" }}>
+              {searchHistory.history.map((filePath, index) => {
+                const fileName = filePath.split("/").pop() || filePath;
+                const file = files.find(f => f.path === filePath || f.name === filePath);
+                return (
+                  <ListItem key={`${filePath}-${index}`} disablePadding divider>
+                    <ListItemButton onClick={() => handleHistoryFileClick(filePath)}>
+                      <ListItemIcon>
+                        <DescriptionIcon sx={{ color: file ? "primary.main" : "text.disabled" }} />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={fileName}
+                        secondary={
+                          <Typography variant="caption" color="text.secondary">
+                            {filePath}
+                            {!file && " (file not found)"}
+                          </Typography>
+                        }
+                        primaryTypographyProps={{
+                          style: {
+                            fontFamily: "monospace",
+                            fontSize: "0.9rem",
+                          },
+                        }}
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                );
+              })}
+            </List>
+          )}
+        </Box>
+      </Drawer>
+      
       <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
         {isLoadingFiles ? (
           <Box
@@ -486,6 +606,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
             onToggleCurvedEdges={handleToggleCurvedEdges}
             onOpenSearch={handleOpenSearch}
             onOpenTools={handleOpenTools}
+            onOpenHistory={handleOpenHistory}
             searchPopupOpen={showSearchPopup}
             searchAnchorRef={searchAnchorRef}
             searchQuery={searchQuery}

@@ -53,6 +53,7 @@ export interface SemanticGraphCanvasProps {
   useCurvedEdges: boolean;
   onToggleCurvedEdges: () => void;
   onOpenSearch: () => void;
+  onOpenHistory: () => void;
   onOpenTools: (e: React.MouseEvent<HTMLElement>) => void;
   searchPopupOpen: boolean;
   searchAnchorRef: React.RefObject<HTMLButtonElement | null>;

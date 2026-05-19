@@ -393,6 +393,16 @@ export const useCreateGroup = () => {
   });
 };
 
+export const useSearchHistory = (containerId: string | undefined) => {
+  return useQuery({
+    queryKey: ["searchHistory", containerId],
+    queryFn: () => apiClient.getSearchHistory(containerId!),
+    enabled: !!containerId,
+    staleTime: 1 * 60 * 1000,
+    retry: 1,
+  });
+};
+
 export const useUpdateGroupColor = () => {
   const queryClient = useQueryClient();
 

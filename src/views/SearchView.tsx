@@ -581,6 +581,9 @@ export const SearchView: React.FC<SearchViewProps> = ({
         onClose={handleCloseContentDialog}
         file={selectedFile}
         containerId={selectedContainer?.id || ''}
+        allFiles={files}
+        onFileUpdated={() => {}}
+        onFileDeleted={() => {}}
       />
     </Box>
   );

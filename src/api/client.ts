@@ -224,6 +224,14 @@ export interface SearchResultFile extends ApiFile {
   content_preview?: string;
 }
 
+export interface SearchHistoryResponse {
+  container_id: string;
+  history: string[];
+  request_id?: string;
+  success?: boolean;
+  user_id?: string;
+}
+
 class ApiClient {
   private token: string | null = null;
   private client = axios.create({
@@ -457,6 +465,17 @@ class ApiClient {
         headers: this.getAuthHeaders(),
       },
     );
+  }
+
+  async getSearchHistory(containerId: string): Promise<SearchHistoryResponse> {
+    const response = await this.client.get<{ data: SearchHistoryResponse }>(
+      "/search/history",
+      {
+        headers: this.getAuthHeaders(),
+        params: { container_id: containerId },
+      },
+    );
+    return response.data.data;
   }
 
   async stopContainer(containerId: string): Promise<void> {

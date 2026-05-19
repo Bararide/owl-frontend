@@ -27,6 +27,7 @@ import {
     ZoomOut as ZoomOutIcon,
     CenterFocusStrong as CenterFocusStrongIcon,
     FolderSpecial as FolderSpecialIcon,
+    History as HistoryIcon,
 } from "@mui/icons-material";
 import type { ApiFile, SearchResultFile, RecommendationFile, SemanticGraphData } from "../../api/client";
 import { useWasmGraphLayout } from "./useWasmGraph";
@@ -44,6 +45,7 @@ export const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = React.mem
     useCurvedEdges,
     onToggleCurvedEdges,
     onOpenSearch,
+    onOpenHistory,
     onOpenTools,
     searchPopupOpen,
     searchAnchorRef,
@@ -418,6 +420,28 @@ export const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = React.mem
                                 onClick={onOpenSearch}
                             >
                                 <SearchIcon />
+                            </IconButton>
+                        </Tooltip>
+                    </Paper>
+                    <Paper
+                        elevation={3}
+                        sx={{
+                            p: 0.5,
+                            borderRadius: 2,
+                            background: "rgba(26, 31, 54, 0.9)",
+                            backdropFilter: "blur(10px)",
+                            border: "1px solid rgba(255,255,255,0.1)",
+                            pointerEvents: "auto",
+                            ml: 1,
+                        }}
+                    >
+                        <Tooltip title="Search History">
+                            <IconButton
+                                size="small"
+                                sx={{ color: "white" }}
+                                onClick={onOpenHistory}
+                            >
+                                <HistoryIcon />
                             </IconButton>
                         </Tooltip>
                     </Paper>
