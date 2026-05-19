@@ -7,16 +7,22 @@ interface GraphWebSocketMessage {
   data?: any;
   error?: string;
 }
+
 interface UseWebSocketGraphReturn {
   graphData: any;
   groups: any[];
   fileGroupsMap: Record<string, { groupId: string; color: string }[]>;
+  recommendations: string[];
+  isRecommendationsLoading: boolean;
   isConnected: boolean;
   requestGraphData: () => Promise<void>;
   requestGroups: () => Promise<void>;
   requestFileGroupsMap: () => Promise<void>;
+  requestRecommendations: (timeout?: number) => Promise<void>;
   subscribeToGraphUpdates: () => void;
   unsubscribeFromGraphUpdates: () => void;
+  subscribeToRecommendations: () => void;
+  unsubscribeFromRecommendations: () => void;
 }
 
 export const useWebSocketGraph = (
@@ -27,6 +33,8 @@ export const useWebSocketGraph = (
   const [fileGroupsMap, setFileGroupsMap] = useState<
     Record<string, { groupId: string; color: string }[]>
   >({});
+  const [recommendations, setRecommendations] = useState<string[]>([]);
+  const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const requestIdRef = useRef(0);
   const pendingRequestsRef = useRef<
@@ -102,6 +110,19 @@ export const useWebSocketGraph = (
         console.log("[GraphWS] Updating fileGroups for", fileId);
         setFileGroupsMap((prev) => ({ ...prev, [fileId]: fileGroups }));
       }
+    } else if (type === "recommendations_data" && data) {
+      console.log("[GraphWS] Setting recommendations:", data.paths?.length || 0);
+      setRecommendations(data.paths || []);
+      setIsRecommendationsLoading(false);
+    } else if (type === "recommendations_update" && data) {
+      console.log("[GraphWS] Updating recommendations:", data.paths?.length || 0);
+      setRecommendations((prev) => {
+        const combined = [...prev, ...(data.paths || [])];
+        return Array.from(new Set(combined));
+      });
+    } else if (type === "recommendations_complete") {
+      console.log("[GraphWS] Recommendations complete");
+      setIsRecommendationsLoading(false);
     }
   }, []);
 
@@ -118,6 +139,8 @@ export const useWebSocketGraph = (
     onDisconnect: () => {
       console.log("[GraphWS] onDisconnect: clearing pending requests");
       setIsConnected(false);
+      setRecommendations([]);
+      setIsRecommendationsLoading(false);
       pendingRequestsRef.current.forEach(({ reject, timeout }) => {
         clearTimeout(timeout);
         reject(new Error("Disconnected"));
@@ -209,6 +232,22 @@ export const useWebSocketGraph = (
     }
   }, [sendRequest, isReady]);
 
+  const requestRecommendations = useCallback(async (timeout: number = 30) => {
+    if (!isReady) {
+      console.warn("[GraphWS] Not ready, skipping requestRecommendations");
+      return;
+    }
+    console.log("[GraphWS] Calling requestRecommendations");
+    setIsRecommendationsLoading(true);
+    setRecommendations([]);
+    try {
+      await sendRequest("get_recommendations", { timeout });
+    } catch (error) {
+      console.error("[GraphWS] Failed to request recommendations:", error);
+      setIsRecommendationsLoading(false);
+    }
+  }, [sendRequest, isReady]);
+
   const subscribeToGraphUpdates = useCallback(() => {
     console.log("[GraphWS] Calling subscribeToGraphUpdates");
     sendMessage({
@@ -225,15 +264,36 @@ export const useWebSocketGraph = (
     });
   }, [containerId, sendMessage]);
 
+  const subscribeToRecommendations = useCallback(() => {
+    console.log("[GraphWS] Calling subscribeToRecommendations");
+    sendMessage({
+      action: "subscribe_to_recommendations",
+      container_id: containerId,
+    });
+  }, [containerId, sendMessage]);
+
+  const unsubscribeFromRecommendations = useCallback(() => {
+    console.log("[GraphWS] Calling unsubscribeFromRecommendations");
+    sendMessage({
+      action: "unsubscribe_from_recommendations",
+      container_id: containerId,
+    });
+  }, [containerId, sendMessage]);
+
   return {
     graphData,
     groups,
     fileGroupsMap,
+    recommendations,
+    isRecommendationsLoading,
     isConnected: wsConnected && isReady,
     requestGraphData,
     requestGroups,
     requestFileGroupsMap,
+    requestRecommendations,
     subscribeToGraphUpdates,
     unsubscribeFromGraphUpdates,
+    subscribeToRecommendations,
+    unsubscribeFromRecommendations,
   };
 };

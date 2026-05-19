@@ -1,3 +1,4 @@
+// FilesView.tsx
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Box,
@@ -33,7 +34,6 @@ import { apiClient } from "../../api/client";
 import {
   useFiles,
   useSemanticSearch,
-  useRecommendationsStream,
   useNotifications,
   useContainerGroups,
   useAddFileToGroup,
@@ -57,12 +57,16 @@ export default function FilesView({ containerId }: { containerId: string }) {
     graphData,
     groups: wsGroups,
     fileGroupsMap: wsFileGroupsMap,
+    recommendations: wsRecommendations,
     isConnected: graphWsConnected,
     requestGraphData,
     requestGroups,
     requestFileGroupsMap,
+    requestRecommendations,
     subscribeToGraphUpdates,
     unsubscribeFromGraphUpdates,
+    subscribeToRecommendations,
+    unsubscribeFromRecommendations,
   } = useWebSocketGraph(containerId);
 
   const { data: apiGroups = [], refetch: refetchApiGroups } =
@@ -75,37 +79,26 @@ export default function FilesView({ containerId }: { containerId: string }) {
   const { addNotification, notification, closeNotification } = useNotifications();
   const semanticSearchMutation = useSemanticSearch();
 
-  const { paths: recommendedPaths } = useRecommendationsStream(
-    containerId,
-    (newPaths) =>
-      addNotification({
-        message: `Found ${newPaths.length} recommended files`,
-        severity: "info",
-        open: true,
-      }),
-    (finalPaths) =>
-      addNotification({
-        message: `Recommendations completed: ${finalPaths.length} files`,
-        severity: "success",
-        open: true,
-      }),
-  );
-
   useEffect(() => {
     if (graphWsConnected && containerId) {
       const timer = setTimeout(() => {
         requestGraphData();
         requestGroups();
         requestFileGroupsMap();
+        requestRecommendations();
         subscribeToGraphUpdates();
+        subscribeToRecommendations();
         refetchSearchHistory();
       }, 100);
       return () => clearTimeout(timer);
     }
     return () => {
-      if (graphWsConnected) unsubscribeFromGraphUpdates();
+      if (graphWsConnected) {
+        unsubscribeFromGraphUpdates();
+        unsubscribeFromRecommendations();
+      }
     };
-  }, [graphWsConnected, containerId, requestGraphData, requestGroups, requestFileGroupsMap, subscribeToGraphUpdates, unsubscribeFromGraphUpdates, refetchSearchHistory]);
+  }, [graphWsConnected, containerId, requestGraphData, requestGroups, requestFileGroupsMap, requestRecommendations, subscribeToGraphUpdates, unsubscribeFromGraphUpdates, subscribeToRecommendations, unsubscribeFromRecommendations, refetchSearchHistory]);
 
   const [fileContentDialog, setFileContentDialog] = useState<{
     open: boolean;
@@ -141,7 +134,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
     return Array.from(map.values());
   }, [wsGroups, apiGroups]);
 
-  const recommendationFiles: RecommendationFile[] = recommendedPaths.map(
+  const recommendationFiles: RecommendationFile[] = (wsRecommendations || []).map(
     (path) => ({
       path,
       name: path.split("/").pop() || "unknown",
@@ -458,7 +451,6 @@ export default function FilesView({ containerId }: { containerId: string }) {
         </MenuItem>
       </Menu>
 
-      {/* Drawer для истории поиска */}
       <Drawer
         anchor="right"
         open={historyDrawerOpen}
