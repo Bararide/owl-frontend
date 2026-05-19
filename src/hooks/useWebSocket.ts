@@ -173,5 +173,15 @@ export const useWebSocket = (
     [isReady],
   );
 
+  useEffect(() => {
+    if (!isReady) return;
+
+    const pingInterval = setInterval(() => {
+      sendMessage({ action: "ping" });
+    }, 20000);
+
+    return () => clearInterval(pingInterval);
+  }, [isReady, sendMessage]);
+
   return { isConnected, isReady, sendMessage, disconnect };
 };
