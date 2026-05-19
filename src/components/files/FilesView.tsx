@@ -1,4 +1,3 @@
-// FilesView.tsx
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Box,
