@@ -34,7 +34,8 @@ export const useWebSocketGraph = (
     Record<string, { groupId: string; color: string }[]>
   >({});
   const [recommendations, setRecommendations] = useState<string[]>([]);
-  const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false);
+  const [isRecommendationsLoading, setIsRecommendationsLoading] =
+    useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const requestIdRef = useRef(0);
   const pendingRequestsRef = useRef<
@@ -111,11 +112,32 @@ export const useWebSocketGraph = (
         setFileGroupsMap((prev) => ({ ...prev, [fileId]: fileGroups }));
       }
     } else if (type === "recommendations_data" && data) {
-      console.log("[GraphWS] Setting recommendations:", data.paths?.length || 0);
+      console.log(
+        "[GraphWS] Setting recommendations:",
+        data.paths?.length || 0,
+      );
       setRecommendations(data.paths || []);
       setIsRecommendationsLoading(false);
     } else if (type === "recommendations_update" && data) {
-      console.log("[GraphWS] Updating recommendations:", data.paths?.length || 0);
+      console.log(
+        "[GraphWS] Updating recommendations:",
+        data.paths?.length || 0,
+      );
+      setRecommendations((prev) => {
+        if (prev.length === 0) {
+          return data.paths || [];
+        }
+        const combined = [...prev, ...(data.paths || [])];
+        return Array.from(new Set(combined));
+      });
+    } else if (type === "recommendations_complete") {
+      console.log("[GraphWS] Recommendations complete");
+      setIsRecommendationsLoading(false);
+    } else if (type === "recommendations_update" && data) {
+      console.log(
+        "[GraphWS] Updating recommendations:",
+        data.paths?.length || 0,
+      );
       setRecommendations((prev) => {
         const combined = [...prev, ...(data.paths || [])];
         return Array.from(new Set(combined));
@@ -232,21 +254,24 @@ export const useWebSocketGraph = (
     }
   }, [sendRequest, isReady]);
 
-  const requestRecommendations = useCallback(async (timeout: number = 30) => {
-    if (!isReady) {
-      console.warn("[GraphWS] Not ready, skipping requestRecommendations");
-      return;
-    }
-    console.log("[GraphWS] Calling requestRecommendations");
-    setIsRecommendationsLoading(true);
-    setRecommendations([]);
-    try {
-      await sendRequest("get_recommendations", { timeout });
-    } catch (error) {
-      console.error("[GraphWS] Failed to request recommendations:", error);
-      setIsRecommendationsLoading(false);
-    }
-  }, [sendRequest, isReady]);
+  const requestRecommendations = useCallback(
+    async (timeout: number = 30) => {
+      if (!isReady) {
+        console.warn("[GraphWS] Not ready, skipping requestRecommendations");
+        return;
+      }
+      console.log("[GraphWS] Calling requestRecommendations");
+      setIsRecommendationsLoading(true);
+      setRecommendations([]);
+      try {
+        await sendRequest("get_recommendations", { timeout });
+      } catch (error) {
+        console.error("[GraphWS] Failed to request recommendations:", error);
+        setIsRecommendationsLoading(false);
+      }
+    },
+    [sendRequest, isReady],
+  );
 
   const subscribeToGraphUpdates = useCallback(() => {
     console.log("[GraphWS] Calling subscribeToGraphUpdates");
