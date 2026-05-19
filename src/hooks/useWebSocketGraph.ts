@@ -34,8 +34,7 @@ export const useWebSocketGraph = (
     Record<string, { groupId: string; color: string }[]>
   >({});
   const [recommendations, setRecommendations] = useState<string[]>([]);
-  const [isRecommendationsLoading, setIsRecommendationsLoading] =
-    useState(false);
+  const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const requestIdRef = useRef(0);
   const pendingRequestsRef = useRef<
@@ -117,21 +116,6 @@ export const useWebSocketGraph = (
         data.paths?.length || 0,
       );
       setRecommendations(data.paths || []);
-      setIsRecommendationsLoading(false);
-    } else if (type === "recommendations_update" && data) {
-      console.log(
-        "[GraphWS] Updating recommendations:",
-        data.paths?.length || 0,
-      );
-      setRecommendations((prev) => {
-        if (prev.length === 0) {
-          return data.paths || [];
-        }
-        const combined = [...prev, ...(data.paths || [])];
-        return Array.from(new Set(combined));
-      });
-    } else if (type === "recommendations_complete") {
-      console.log("[GraphWS] Recommendations complete");
       setIsRecommendationsLoading(false);
     } else if (type === "recommendations_update" && data) {
       console.log(

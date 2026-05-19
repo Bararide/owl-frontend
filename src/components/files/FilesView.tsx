@@ -218,6 +218,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
           );
         setSearchResults(resultFiles);
         await refetchSearchHistory();
+        await requestRecommendations(); // Обновляем рекомендации после поиска
         addNotification({
           message: `Found ${resultFiles.length} semantically relevant files`,
           severity: "success",
@@ -234,7 +235,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
         setIsSearching(false);
       }
     },
-    [containerId, semanticSearchMutation, addNotification, files, refetchSearchHistory],
+    [containerId, semanticSearchMutation, addNotification, files, refetchSearchHistory, requestRecommendations],
   );
 
   const handleSearchChange = useCallback((value: string) => {
@@ -265,6 +266,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
         severity: "success",
         open: true,
       });
+      await requestRecommendations(); // Обновляем рекомендации после обновления индекса
     } catch (error) {
       setRebuildNotification({
         open: true,
@@ -280,7 +282,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
     } finally {
       setIsRebuildingIndex(false);
     }
-  }, [containerId, refetchFiles, addNotification]);
+  }, [containerId, refetchFiles, addNotification, requestRecommendations]);
 
   const openFile = useCallback(
     (file: ApiFile) => {
@@ -292,8 +294,10 @@ export default function FilesView({ containerId }: { containerId: string }) {
         file,
         currentIndex: fileIndex >= 0 ? fileIndex : 0,
       });
+      // Обновляем рекомендации после открытия файла
+      requestRecommendations();
     },
-    [currentFilesList],
+    [currentFilesList, requestRecommendations],
   );
 
   const handleCloseFileContent = useCallback(() => {
@@ -309,7 +313,9 @@ export default function FilesView({ containerId }: { containerId: string }) {
       file: currentFilesList[nextIndex],
       currentIndex: nextIndex,
     });
-  }, [fileContentDialog, currentFilesList]);
+    // Обновляем рекомендации при переключении на следующий файл
+    requestRecommendations();
+  }, [fileContentDialog, currentFilesList, requestRecommendations]);
 
   const handlePrevFile = useCallback(() => {
     if (!fileContentDialog.file || currentFilesList.length === 0) return;
@@ -322,7 +328,9 @@ export default function FilesView({ containerId }: { containerId: string }) {
       file: currentFilesList[prevIndex],
       currentIndex: prevIndex,
     });
-  }, [fileContentDialog, currentFilesList]);
+    // Обновляем рекомендации при переключении на предыдущий файл
+    requestRecommendations();
+  }, [fileContentDialog, currentFilesList, requestRecommendations]);
 
   const handleToggleCurvedEdges = useCallback(
     () => setUseCurvedEdges((prev) => !prev),
