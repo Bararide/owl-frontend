@@ -37,6 +37,7 @@ export const useWebSocketGraph = (
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const requestIdRef = useRef(0);
+  const currentRequestIdRef = useRef<string | null>(null);
   const pendingRequestsRef = useRef<
     Map<
       string,
@@ -49,13 +50,8 @@ export const useWebSocketGraph = (
   >(new Map());
 
   const handleMessage = useCallback((message: GraphWebSocketMessage) => {
-    console.log(
-      "[GraphWS] handleMessage:",
-      message.type,
-      "request_id:",
-      message.request_id,
-    );
     const { type, request_id, data, error } = message;
+
     if (error) {
       console.error("[GraphWS] Error in message:", error);
       if (request_id && pendingRequestsRef.current.has(request_id)) {
@@ -66,69 +62,72 @@ export const useWebSocketGraph = (
       }
       return;
     }
+
     if (request_id && pendingRequestsRef.current.has(request_id)) {
-      console.log("[GraphWS] Resolving pending request:", request_id);
       const { resolve, timeout } = pendingRequestsRef.current.get(request_id)!;
       clearTimeout(timeout);
       pendingRequestsRef.current.delete(request_id);
       resolve(data);
+    }
+
+    if (type === "recommendations_data") {
+      const paths = data?.paths || data?.data?.paths || [];
+      setRecommendations(paths);
+      setIsRecommendationsLoading(false);
+      currentRequestIdRef.current = null;
       return;
     }
+
+    if (type === "recommendations_update") {
+      const newPaths = data?.paths || data?.data?.paths || [];
+      if (newPaths.length > 0) {
+        setRecommendations((prev) => {
+          const combined = [...prev, ...newPaths];
+          return Array.from(new Set(combined));
+        });
+      }
+      return;
+    }
+
+    if (type === "recommendations_complete") {
+      setIsRecommendationsLoading(false);
+      currentRequestIdRef.current = null;
+      return;
+    }
+
     if (type === "graph_data" && data) {
-      console.log(
-        "[GraphWS] Setting graphData:",
-        data.count,
-        "nodes,",
-        data.edges?.length,
-        "edges",
-      );
       setGraphData(data);
-    } else if (type === "groups_data" && data) {
-      console.log(
-        "[GraphWS] Setting groups:",
-        Array.isArray(data) ? data.length : 0,
-      );
+      return;
+    }
+
+    if (type === "groups_data" && data) {
       setGroups(Array.isArray(data) ? data : data.groups || []);
-    } else if (type === "file_groups_map_data" && data) {
-      console.log(
-        "[GraphWS] Setting fileGroupsMap:",
-        Object.keys(data.file_groups_map || {}).length,
-        "entries",
-      );
+      return;
+    }
+
+    if (type === "file_groups_map_data" && data) {
       setFileGroupsMap(data.file_groups_map || {});
-    } else if (type === "graph_update" && data) {
-      console.log("[GraphWS] Updating graphData");
+      return;
+    }
+
+    if (type === "graph_update" && data) {
       setGraphData((prev: any) => ({ ...prev, ...data }));
-    } else if (type === "groups_update" && data) {
-      console.log("[GraphWS] Updating groups");
+      return;
+    }
+
+    if (type === "groups_update" && data) {
       setGroups(data.groups || []);
       if (data.file_groups_map) setFileGroupsMap(data.file_groups_map);
-    } else if (type === "file_groups_data" && data) {
+      return;
+    }
+
+    if (type === "file_groups_data" && data) {
       const fileId = data.file_id;
       const fileGroups = data.groups || [];
       if (fileId) {
-        console.log("[GraphWS] Updating fileGroups for", fileId);
         setFileGroupsMap((prev) => ({ ...prev, [fileId]: fileGroups }));
       }
-    } else if (type === "recommendations_data" && data) {
-      console.log(
-        "[GraphWS] Setting recommendations:",
-        data.paths?.length || 0,
-      );
-      setRecommendations(data.paths || []);
-      setIsRecommendationsLoading(false);
-    } else if (type === "recommendations_update" && data) {
-      console.log(
-        "[GraphWS] Updating recommendations:",
-        data.paths?.length || 0,
-      );
-      setRecommendations((prev) => {
-        const combined = [...prev, ...(data.paths || [])];
-        return Array.from(new Set(combined));
-      });
-    } else if (type === "recommendations_complete") {
-      console.log("[GraphWS] Recommendations complete");
-      setIsRecommendationsLoading(false);
+      return;
     }
   }, []);
 
@@ -139,14 +138,13 @@ export const useWebSocketGraph = (
   } = useWebSocket(containerId, {
     onMessage: handleMessage,
     onConnect: () => {
-      console.log("[GraphWS] onConnect: setting isConnected=true");
       setIsConnected(true);
     },
     onDisconnect: () => {
-      console.log("[GraphWS] onDisconnect: clearing pending requests");
       setIsConnected(false);
       setRecommendations([]);
       setIsRecommendationsLoading(false);
+      currentRequestIdRef.current = null;
       pendingRequestsRef.current.forEach(({ reject, timeout }) => {
         clearTimeout(timeout);
         reject(new Error("Disconnected"));
@@ -159,15 +157,8 @@ export const useWebSocketGraph = (
     async (action: string, payload: any = {}): Promise<any> =>
       new Promise((resolve, reject) => {
         const request_id = `req_${Date.now()}_${requestIdRef.current++}`;
-        console.log(
-          "[GraphWS] sendRequest:",
-          action,
-          "request_id:",
-          request_id,
-        );
         const timeout = setTimeout(() => {
           if (pendingRequestsRef.current.has(request_id)) {
-            console.warn("[GraphWS] Request timeout:", request_id);
             pendingRequestsRef.current.delete(request_id);
             reject(new Error("Request timeout"));
           }
@@ -184,12 +175,9 @@ export const useWebSocketGraph = (
           ...payload,
         }).then((sent) => {
           if (!sent) {
-            console.error("[GraphWS] Failed to send request:", request_id);
             clearTimeout(timeout);
             pendingRequestsRef.current.delete(request_id);
             reject(new Error("WebSocket not ready"));
-          } else {
-            console.log("[GraphWS] Request sent:", request_id);
           }
         });
       }),
@@ -197,11 +185,7 @@ export const useWebSocketGraph = (
   );
 
   const requestGraphData = useCallback(async () => {
-    if (!isReady) {
-      console.warn("[GraphWS] Not ready, skipping requestGraphData");
-      return;
-    }
-    console.log("[GraphWS] Calling requestGraphData");
+    if (!isReady) return;
     try {
       const data = await sendRequest("get_graph_data");
       if (data) setGraphData(data);
@@ -211,11 +195,7 @@ export const useWebSocketGraph = (
   }, [sendRequest, isReady]);
 
   const requestGroups = useCallback(async () => {
-    if (!isReady) {
-      console.warn("[GraphWS] Not ready, skipping requestGroups");
-      return;
-    }
-    console.log("[GraphWS] Calling requestGroups");
+    if (!isReady) return;
     try {
       const data = await sendRequest("get_groups");
       if (data) setGroups(Array.isArray(data) ? data : data.groups || []);
@@ -225,11 +205,7 @@ export const useWebSocketGraph = (
   }, [sendRequest, isReady]);
 
   const requestFileGroupsMap = useCallback(async () => {
-    if (!isReady) {
-      console.warn("[GraphWS] Not ready, skipping requestFileGroupsMap");
-      return;
-    }
-    console.log("[GraphWS] Calling requestFileGroupsMap");
+    if (!isReady) return;
     try {
       const data = await sendRequest("get_file_groups_map");
       if (data?.file_groups_map) setFileGroupsMap(data.file_groups_map);
@@ -240,25 +216,34 @@ export const useWebSocketGraph = (
 
   const requestRecommendations = useCallback(
     async (timeout: number = 30) => {
-      if (!isReady) {
-        console.warn("[GraphWS] Not ready, skipping requestRecommendations");
-        return;
+      if (!isReady) return;
+
+      if (currentRequestIdRef.current) {
+        const pending = pendingRequestsRef.current.get(currentRequestIdRef.current);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          pending.reject(new Error("Cancelled by new request"));
+          pendingRequestsRef.current.delete(currentRequestIdRef.current);
+        }
+        currentRequestIdRef.current = null;
       }
-      console.log("[GraphWS] Calling requestRecommendations");
+
       setIsRecommendationsLoading(true);
       setRecommendations([]);
+
       try {
-        await sendRequest("get_recommendations", { timeout });
+        const requestId = await sendRequest("get_recommendations", { timeout });
+        currentRequestIdRef.current = requestId;
       } catch (error) {
         console.error("[GraphWS] Failed to request recommendations:", error);
         setIsRecommendationsLoading(false);
+        currentRequestIdRef.current = null;
       }
     },
     [sendRequest, isReady],
   );
 
   const subscribeToGraphUpdates = useCallback(() => {
-    console.log("[GraphWS] Calling subscribeToGraphUpdates");
     sendMessage({
       action: "subscribe_to_graph_updates",
       container_id: containerId,
@@ -266,7 +251,6 @@ export const useWebSocketGraph = (
   }, [containerId, sendMessage]);
 
   const unsubscribeFromGraphUpdates = useCallback(() => {
-    console.log("[GraphWS] Calling unsubscribeFromGraphUpdates");
     sendMessage({
       action: "unsubscribe_from_graph_updates",
       container_id: containerId,
@@ -274,7 +258,6 @@ export const useWebSocketGraph = (
   }, [containerId, sendMessage]);
 
   const subscribeToRecommendations = useCallback(() => {
-    console.log("[GraphWS] Calling subscribeToRecommendations");
     sendMessage({
       action: "subscribe_to_recommendations",
       container_id: containerId,
@@ -282,7 +265,6 @@ export const useWebSocketGraph = (
   }, [containerId, sendMessage]);
 
   const unsubscribeFromRecommendations = useCallback(() => {
-    console.log("[GraphWS] Calling unsubscribeFromRecommendations");
     sendMessage({
       action: "unsubscribe_from_recommendations",
       container_id: containerId,

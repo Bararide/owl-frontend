@@ -218,7 +218,6 @@ export default function FilesView({ containerId }: { containerId: string }) {
           );
         setSearchResults(resultFiles);
         await refetchSearchHistory();
-        await requestRecommendations(); // Обновляем рекомендации после поиска
         addNotification({
           message: `Found ${resultFiles.length} semantically relevant files`,
           severity: "success",
@@ -235,7 +234,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
         setIsSearching(false);
       }
     },
-    [containerId, semanticSearchMutation, addNotification, files, refetchSearchHistory, requestRecommendations],
+    [containerId, semanticSearchMutation, addNotification, files, refetchSearchHistory],
   );
 
   const handleSearchChange = useCallback((value: string) => {
@@ -266,7 +265,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
         severity: "success",
         open: true,
       });
-      await requestRecommendations(); // Обновляем рекомендации после обновления индекса
+      await requestRecommendations();
     } catch (error) {
       setRebuildNotification({
         open: true,
@@ -294,7 +293,6 @@ export default function FilesView({ containerId }: { containerId: string }) {
         file,
         currentIndex: fileIndex >= 0 ? fileIndex : 0,
       });
-      // Обновляем рекомендации после открытия файла
       requestRecommendations();
     },
     [currentFilesList, requestRecommendations],
@@ -306,46 +304,33 @@ export default function FilesView({ containerId }: { containerId: string }) {
 
   const handleNextFile = useCallback(() => {
     if (!fileContentDialog.file || currentFilesList.length === 0) return;
-    const nextIndex =
-      (fileContentDialog.currentIndex + 1) % currentFilesList.length;
+    const nextIndex = (fileContentDialog.currentIndex + 1) % currentFilesList.length;
     setFileContentDialog({
       open: true,
       file: currentFilesList[nextIndex],
       currentIndex: nextIndex,
     });
-    // Обновляем рекомендации при переключении на следующий файл
     requestRecommendations();
   }, [fileContentDialog, currentFilesList, requestRecommendations]);
 
   const handlePrevFile = useCallback(() => {
     if (!fileContentDialog.file || currentFilesList.length === 0) return;
-    const prevIndex =
-      fileContentDialog.currentIndex > 0
-        ? fileContentDialog.currentIndex - 1
-        : currentFilesList.length - 1;
+    const prevIndex = fileContentDialog.currentIndex > 0
+      ? fileContentDialog.currentIndex - 1
+      : currentFilesList.length - 1;
     setFileContentDialog({
       open: true,
       file: currentFilesList[prevIndex],
       currentIndex: prevIndex,
     });
-    // Обновляем рекомендации при переключении на предыдущий файл
     requestRecommendations();
   }, [fileContentDialog, currentFilesList, requestRecommendations]);
 
-  const handleToggleCurvedEdges = useCallback(
-    () => setUseCurvedEdges((prev) => !prev),
-    [],
-  );
+  const handleToggleCurvedEdges = useCallback(() => setUseCurvedEdges((prev) => !prev), []);
 
-  const handleOpenSearch = useCallback(
-    () => setShowSearchPopup((prev) => !prev),
-    [],
-  );
+  const handleOpenSearch = useCallback(() => setShowSearchPopup((prev) => !prev), []);
 
-  const handleOpenTools = useCallback(
-    (e: React.MouseEvent<HTMLElement>) => setToolsMenuAnchor(e.currentTarget),
-    [],
-  );
+  const handleOpenTools = useCallback((e: React.MouseEvent<HTMLElement>) => setToolsMenuAnchor(e.currentTarget), []);
 
   const handleOpenGroupDialog = useCallback(() => setGroupDialogOpen(true), []);
 
@@ -356,7 +341,6 @@ export default function FilesView({ containerId }: { containerId: string }) {
 
   const handleHistoryFileClick = useCallback((filePath: string) => {
     const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
-
     const fileToOpen: ApiFile = {
       path: cleanPath,
       name: cleanPath,
@@ -366,162 +350,58 @@ export default function FilesView({ containerId }: { containerId: string }) {
       created_at: new Date().toISOString(),
       mime_type: "text/plain",
     };
-
     openFile(fileToOpen);
     setHistoryDrawerOpen(false);
   }, [containerId, openFile]);
 
-  if (!containerId)
+  if (!containerId) {
     return (
-      <Box
-        sx={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100vh",
-          textAlign: "center",
-          background: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)",
-        }}
-      >
-        <DescriptionIcon
-          sx={{ fontSize: 96, color: "text.secondary", mb: 3, opacity: 0.3 }}
-        />
-        <Typography
-          variant="h4"
-          color="text.secondary"
-          gutterBottom
-          sx={{ fontWeight: 300 }}
-        >
-          No Container Selected
-        </Typography>
-        <Typography
-          variant="body1"
-          color="text.secondary"
-          sx={{ maxWidth: 400 }}
-        >
-          Please select a container from the sidebar to view and manage its
-          files
-        </Typography>
+      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", textAlign: "center", background: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)" }}>
+        <DescriptionIcon sx={{ fontSize: 96, color: "text.secondary", mb: 3, opacity: 0.3 }} />
+        <Typography variant="h4" color="text.secondary" gutterBottom sx={{ fontWeight: 300 }}>No Container Selected</Typography>
+        <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 400 }}>Please select a container from the sidebar to view and manage its files</Typography>
       </Box>
     );
+  }
 
   return (
-    <Box
-      sx={{
-        height: "100%",
-        width: "100%",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-        background: "#000",
-        position: "relative",
-      }}
-    >
-      <Menu
-        anchorEl={toolsMenuAnchor}
-        open={Boolean(toolsMenuAnchor)}
-        onClose={() => setToolsMenuAnchor(null)}
-        PaperProps={{
-          sx: {
-            mt: 1,
-            borderRadius: 2,
-            border: "1px solid rgba(255,255,255,0.1)",
-            background: "rgba(26, 31, 54, 0.98)",
-            backdropFilter: "blur(20px)",
-          },
-        }}
-      >
-        <MenuItem
-          onClick={() => {
-            setToolsMenuAnchor(null);
-            handleRefreshFiles();
-          }}
-          disabled={isRebuildingIndex}
-        >
-          <RefreshIcon sx={{ mr: 1, fontSize: 20 }} />
-          {isRebuildingIndex ? "Rebuilding Index..." : "Rebuild Index"}
+    <Box sx={{ height: "100%", width: "100%", display: "flex", flexDirection: "column", overflow: "hidden", background: "#000", position: "relative" }}>
+      <Menu anchorEl={toolsMenuAnchor} open={Boolean(toolsMenuAnchor)} onClose={() => setToolsMenuAnchor(null)} PaperProps={{ sx: { mt: 1, borderRadius: 2, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(26, 31, 54, 0.98)", backdropFilter: "blur(20px)" } }}>
+        <MenuItem onClick={() => { setToolsMenuAnchor(null); handleRefreshFiles(); }} disabled={isRebuildingIndex}>
+          <RefreshIcon sx={{ mr: 1, fontSize: 20 }} /> {isRebuildingIndex ? "Rebuilding Index..." : "Rebuild Index"}
         </MenuItem>
-        <MenuItem
-          onClick={() => {
-            setToolsMenuAnchor(null);
-            handleOpenGroupDialog();
-          }}
-        >
-          <FolderSpecialIcon sx={{ mr: 1, fontSize: 20 }} />
-          Manage Groups
+        <MenuItem onClick={() => { setToolsMenuAnchor(null); handleOpenGroupDialog(); }}>
+          <FolderSpecialIcon sx={{ mr: 1, fontSize: 20 }} /> Manage Groups
         </MenuItem>
         <Divider sx={{ my: 1 }} />
-        <MenuItem onClick={() => setToolsMenuAnchor(null)}>
-          <SettingsIcon sx={{ mr: 1, fontSize: 20 }} />
-          Settings
-        </MenuItem>
+        <MenuItem onClick={() => setToolsMenuAnchor(null)}><SettingsIcon sx={{ mr: 1, fontSize: 20 }} /> Settings</MenuItem>
       </Menu>
 
-      <Drawer
-        anchor="right"
-        open={historyDrawerOpen}
-        onClose={() => setHistoryDrawerOpen(false)}
-        PaperProps={{
-          sx: {
-            width: 400,
-            background: "rgba(26, 31, 54, 0.98)",
-            backdropFilter: "blur(20px)",
-            borderLeft: "1px solid rgba(255,255,255,0.1)",
-          },
-        }}
-      >
+      <Drawer anchor="right" open={historyDrawerOpen} onClose={() => setHistoryDrawerOpen(false)} PaperProps={{ sx: { width: 400, background: "rgba(26, 31, 54, 0.98)", backdropFilter: "blur(20px)", borderLeft: "1px solid rgba(255,255,255,0.1)" } }}>
         <Box sx={{ p: 2, height: "100%", display: "flex", flexDirection: "column" }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-            <Typography variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <HistoryIcon />
-              Search History
-              <Badge
-                badgeContent={searchHistory?.history?.length || 0}
-                color="primary"
-                sx={{ ml: 1 }}
-              />
-            </Typography>
-            <IconButton onClick={() => setHistoryDrawerOpen(false)} size="small">
-              <CloseIcon />
-            </IconButton>
+            <Typography variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1 }}><HistoryIcon /> Search History <Badge badgeContent={searchHistory?.history?.length || 0} color="primary" sx={{ ml: 1 }} /></Typography>
+            <IconButton onClick={() => setHistoryDrawerOpen(false)} size="small"><CloseIcon /></IconButton>
           </Box>
           <Divider sx={{ mb: 2 }} />
-
           {!searchHistory ? (
-            <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", flex: 1 }}>
-              <CircularProgress size={40} />
-            </Box>
+            <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", flex: 1 }}><CircularProgress size={40} /></Box>
           ) : searchHistory.history.length === 0 ? (
             <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, textAlign: "center" }}>
               <HistoryIcon sx={{ fontSize: 64, color: "text.secondary", mb: 2, opacity: 0.3 }} />
-              <Typography color="text.secondary">
-                No search history yet
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Perform semantic searches to see history here
-              </Typography>
+              <Typography color="text.secondary">No search history yet</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Perform semantic searches to see history here</Typography>
             </Box>
           ) : (
             <List sx={{ flex: 1, overflow: "auto" }}>
               {searchHistory.history.map((filePath, index) => {
                 const displayPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
                 const fileName = displayPath.split('/').pop() || displayPath;
-
                 return (
                   <ListItem key={`${filePath}-${index}`} disablePadding divider>
                     <ListItemButton onClick={() => handleHistoryFileClick(filePath)}>
-                      <ListItemIcon>
-                        <DescriptionIcon sx={{ color: "primary.main" }} />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={fileName}
-                        secondary={
-                          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace", fontSize: "0.7rem" }}>
-                            {displayPath}
-                          </Typography>
-                        }
-                      />
+                      <ListItemIcon><DescriptionIcon sx={{ color: "primary.main" }} /></ListItemIcon>
+                      <ListItemText primary={fileName} secondary={<Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace", fontSize: "0.7rem" }}>{displayPath}</Typography>} />
                     </ListItemButton>
                   </ListItem>
                 );
@@ -533,60 +413,13 @@ export default function FilesView({ containerId }: { containerId: string }) {
 
       <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
         {isLoadingFiles ? (
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              height: "100%",
-            }}
-          >
-            <CircularProgress />
-          </Box>
+          <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%" }}><CircularProgress /></Box>
         ) : files.length === 0 ? (
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              height: "100%",
-              textAlign: "center",
-              p: 4,
-            }}
-          >
-            <DescriptionIcon
-              sx={{
-                fontSize: 96,
-                color: "text.secondary",
-                mb: 3,
-                opacity: 0.3,
-              }}
-            />
-            <Typography
-              variant="h5"
-              color="text.secondary"
-              gutterBottom
-              sx={{ fontWeight: 300 }}
-            >
-              No Files Available
-            </Typography>
-            <Typography
-              variant="body1"
-              color="text.secondary"
-              sx={{ mb: 3, maxWidth: 500 }}
-            >
-              This container doesn&apos;t have any files yet. Try rebuilding the
-              index or uploading files.
-            </Typography>
-            <Button
-              variant="contained"
-              onClick={handleRefreshFiles}
-              startIcon={<RefreshIcon />}
-              disabled={isRebuildingIndex}
-            >
-              {isRebuildingIndex ? "Rebuilding Index..." : "Rebuild Index"}
-            </Button>
+          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", p: 4 }}>
+            <DescriptionIcon sx={{ fontSize: 96, color: "text.secondary", mb: 3, opacity: 0.3 }} />
+            <Typography variant="h5" color="text.secondary" gutterBottom sx={{ fontWeight: 300 }}>No Files Available</Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 3, maxWidth: 500 }}>This container doesn&apos;t have any files yet. Try rebuilding the index or uploading files.</Typography>
+            <Button variant="contained" onClick={handleRefreshFiles} startIcon={<RefreshIcon />} disabled={isRebuildingIndex}>{isRebuildingIndex ? "Rebuilding Index..." : "Rebuild Index"}</Button>
           </Box>
         ) : (
           <SemanticGraphCanvas
@@ -627,46 +460,12 @@ export default function FilesView({ containerId }: { containerId: string }) {
         onAddToGroup={handleAddToGroup}
         onRemoveFromGroup={handleRemoveFromGroup}
       />
-      <GroupManagementDialog
-        open={groupDialogOpen}
-        onClose={() => setGroupDialogOpen(false)}
-        containerId={containerId}
-        groups={groups}
-        refetchGroups={refetchApiGroups}
-      />
-      <Snackbar
-        open={rebuildNotification.open}
-        autoHideDuration={6000}
-        onClose={() =>
-          setRebuildNotification((prev) => ({ ...prev, open: false }))
-        }
-        anchorOrigin={{ vertical: "top", horizontal: "right" }}
-      >
-        <Alert
-          severity={rebuildNotification.severity}
-          onClose={() =>
-            setRebuildNotification((prev) => ({ ...prev, open: false }))
-          }
-          variant="filled"
-          sx={{ width: "100%" }}
-        >
-          {rebuildNotification.message}
-        </Alert>
+      <GroupManagementDialog open={groupDialogOpen} onClose={() => setGroupDialogOpen(false)} containerId={containerId} groups={groups} refetchGroups={refetchApiGroups} />
+      <Snackbar open={rebuildNotification.open} autoHideDuration={6000} onClose={() => setRebuildNotification((prev) => ({ ...prev, open: false }))} anchorOrigin={{ vertical: "top", horizontal: "right" }}>
+        <Alert severity={rebuildNotification.severity} onClose={() => setRebuildNotification((prev) => ({ ...prev, open: false }))} variant="filled" sx={{ width: "100%" }}>{rebuildNotification.message}</Alert>
       </Snackbar>
-      <Snackbar
-        open={notification.open}
-        autoHideDuration={4000}
-        onClose={closeNotification}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-      >
-        <Alert
-          severity={notification.severity}
-          onClose={closeNotification}
-          variant="filled"
-          sx={{ width: "100%" }}
-        >
-          {notification.message}
-        </Alert>
+      <Snackbar open={notification.open} autoHideDuration={4000} onClose={closeNotification} anchorOrigin={{ vertical: "bottom", horizontal: "right" }}>
+        <Alert severity={notification.severity} onClose={closeNotification} variant="filled" sx={{ width: "100%" }}>{notification.message}</Alert>
       </Snackbar>
     </Box>
   );
