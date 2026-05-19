@@ -57,15 +57,19 @@ export default function FilesView({ containerId }: { containerId: string }) {
     groups: wsGroups,
     fileGroupsMap: wsFileGroupsMap,
     recommendations: wsRecommendations,
+    logs: wsLogs,
     isConnected: graphWsConnected,
     requestGraphData,
     requestGroups,
     requestFileGroupsMap,
     requestRecommendations,
+    requestLogs,
     subscribeToGraphUpdates,
     unsubscribeFromGraphUpdates,
     subscribeToRecommendations,
     unsubscribeFromRecommendations,
+    subscribeToLogs,
+    unsubscribeFromLogs,
   } = useWebSocketGraph(containerId);
 
   const { data: apiGroups = [], refetch: refetchApiGroups } =
@@ -78,6 +82,22 @@ export default function FilesView({ containerId }: { containerId: string }) {
   const { addNotification, notification, closeNotification } = useNotifications();
   const semanticSearchMutation = useSemanticSearch();
 
+  // Логируем полученные сообщения
+  useEffect(() => {
+    if (wsLogs.length > 0) {
+      console.log("[LOGS] New log messages:", wsLogs);
+      // Можно добавить уведомление для важных логов
+      const lastLog = wsLogs[wsLogs.length - 1];
+      if (lastLog && (lastLog.includes("error") || lastLog.includes("ERROR") || lastLog.includes("failed"))) {
+        addNotification({
+          message: `Log: ${lastLog.substring(0, 100)}`,
+          severity: "info",
+          open: true,
+        });
+      }
+    }
+  }, [wsLogs, addNotification]);
+
   useEffect(() => {
     if (graphWsConnected && containerId) {
       const timer = setTimeout(() => {
@@ -85,8 +105,10 @@ export default function FilesView({ containerId }: { containerId: string }) {
         requestGroups();
         requestFileGroupsMap();
         requestRecommendations();
+        requestLogs(); // Запрашиваем логи
         subscribeToGraphUpdates();
         subscribeToRecommendations();
+        subscribeToLogs(); // Подписываемся на логи
         refetchSearchHistory();
       }, 100);
       return () => clearTimeout(timer);
@@ -95,9 +117,10 @@ export default function FilesView({ containerId }: { containerId: string }) {
       if (graphWsConnected) {
         unsubscribeFromGraphUpdates();
         unsubscribeFromRecommendations();
+        unsubscribeFromLogs();
       }
     };
-  }, [graphWsConnected, containerId, requestGraphData, requestGroups, requestFileGroupsMap, requestRecommendations, subscribeToGraphUpdates, unsubscribeFromGraphUpdates, subscribeToRecommendations, unsubscribeFromRecommendations, refetchSearchHistory]);
+  }, [graphWsConnected, containerId, requestGraphData, requestGroups, requestFileGroupsMap, requestRecommendations, requestLogs, subscribeToGraphUpdates, unsubscribeFromGraphUpdates, subscribeToRecommendations, unsubscribeFromRecommendations, subscribeToLogs, unsubscribeFromLogs, refetchSearchHistory]);
 
   const [fileContentDialog, setFileContentDialog] = useState<{
     open: boolean;
