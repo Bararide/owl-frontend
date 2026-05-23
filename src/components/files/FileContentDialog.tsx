@@ -63,6 +63,25 @@ import { ExplanationPanel } from "./ExplanationPanel";
 import { formatFileSize, getLanguageFromMimeType } from "./utils";
 import { HIGHLIGHT_COLORS } from "./constants";
 import type { FileContentDialogProps, SearchMatch } from "./types";
+import { MarkdownRenderer } from "./MarkdownRenderer";
+
+const isMarkdownFile = (filename: string): boolean => {
+  return filename.endsWith('.md') || 
+         filename.endsWith('.markdown') || 
+         filename.endsWith('.mdown') ||
+         filename.endsWith('.mkd');
+};
+
+const isLatexFile = (filename: string): boolean => {
+  return filename.endsWith('.tex') || 
+         filename.endsWith('.latex');
+};
+
+const shouldRenderAsMarkdown = (filename: string, mimeType: string, content?: string): boolean => {
+  if (isMarkdownFile(filename) || mimeType === 'text/markdown') return true;
+  if (isLatexFile(filename) && content?.includes('\\(')) return true;
+  return false;
+};
 
 export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   open,
@@ -110,6 +129,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [matchCase, setMatchCase] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
+  const [renderMode, setRenderMode] = useState<'raw' | 'rendered'>('rendered');
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
   const isTextFile =
     file?.mime_type?.startsWith("text/") ||
@@ -173,6 +193,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
       setCopied(false);
       setMatchCase(false);
       setWholeWord(false);
+      setRenderMode('rendered');
       setTimeout(() => {
         refetch();
         refetchFileGroups();
@@ -199,6 +220,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
       setCopied(false);
       setMatchCase(false);
       setWholeWord(false);
+      setRenderMode('rendered');
     }
   }, [open]);
 
@@ -432,6 +454,10 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
     }
   };
 
+  const handleToggleRenderMode = () => {
+    setRenderMode(prev => prev === 'rendered' ? 'raw' : 'rendered');
+  };
+
   const renderTextWithHighlights = () => {
     if (!editedContent) return null;
     if (flattenRanges.length === 0) return editedContent;
@@ -620,6 +646,17 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
                       {isEditing ? "Cancel Edit" : "Edit"}
                     </Button>
                   </>
+                )}
+                {shouldRenderAsMarkdown(file?.name || '', file?.mime_type || '', editedContent) && !isEditing && (
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    startIcon={renderMode === 'rendered' ? <CodeIcon /> : <TextFieldsIcon />}
+                    onClick={handleToggleRenderMode}
+                  >
+                    {renderMode === 'rendered' ? 'Show Raw' : 'Show Rendered'}
+                  </Button>
                 )}
                 <Button
                   fullWidth
@@ -992,9 +1029,11 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
                           useFlexGap
                         >
                           <Chip
-                            label={getLanguageFromMimeType(
-                              file?.mime_type || "",
-                            )}
+                            label={
+                              shouldRenderAsMarkdown(file?.name || '', file?.mime_type || '', editedContent)
+                                ? (isLatexFile(file?.name || '') ? 'LaTeX' : 'Markdown')
+                                : getLanguageFromMimeType(file?.mime_type || "")
+                            }
                             size="small"
                             color="primary"
                           />
@@ -1042,6 +1081,10 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
                           }}
                           InputProps={{ style: { height: "100%" } }}
                         />
+                      </Box>
+                    ) : shouldRenderAsMarkdown(file?.name || '', file?.mime_type || '', editedContent) && renderMode === 'rendered' ? (
+                      <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+                        <MarkdownRenderer content={editedContent} />
                       </Box>
                     ) : (
                       <Box
