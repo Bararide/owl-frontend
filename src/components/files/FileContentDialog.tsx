@@ -38,7 +38,6 @@ import {
   Edit as EditIcon,
   Save as SaveIcon,
   Delete as DeleteIcon,
-  MoreVert as MoreVertIcon,
   Clear as ClearIcon,
   NavigateNext as NavigateNextIcon,
   NavigateBefore as NavigateBeforeIcon,
@@ -66,15 +65,15 @@ import type { FileContentDialogProps, SearchMatch } from "./types";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 const isMarkdownFile = (filename: string): boolean => {
-  return filename.endsWith('.md') ||
-    filename.endsWith('.markdown') ||
-    filename.endsWith('.mdown') ||
-    filename.endsWith('.mkd');
+  return filename.endsWith('.md') || 
+         filename.endsWith('.markdown') || 
+         filename.endsWith('.mdown') ||
+         filename.endsWith('.mkd');
 };
 
 const isLatexFile = (filename: string): boolean => {
-  return filename.endsWith('.tex') ||
-    filename.endsWith('.latex');
+  return filename.endsWith('.tex') || 
+         filename.endsWith('.latex');
 };
 
 const shouldRenderAsMarkdown = (filename: string, mimeType: string, content?: string): boolean => {
@@ -546,23 +545,6 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
         }}
       >
         <Box sx={{ position: "relative", height: "100%", display: "flex", flexDirection: "column" }}>
-          <Box sx={{ position: "absolute", top: 16, left: 16, zIndex: 10, display: "flex", gap: 1 }}>
-            {totalFiles > 1 && (
-              <>
-                <Tooltip title="Previous file">
-                  <IconButton onClick={onPrevFile} size="small" sx={{ bgcolor: "rgba(0,0,0,0.5)", "&:hover": { bgcolor: "rgba(0,0,0,0.7)" } }}>
-                    <ChevronLeftIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Next file">
-                  <IconButton onClick={onNextFile} size="small" sx={{ bgcolor: "rgba(0,0,0,0.5)", "&:hover": { bgcolor: "rgba(0,0,0,0.7)" } }}>
-                    <ChevronRightIcon />
-                  </IconButton>
-                </Tooltip>
-              </>
-            )}
-          </Box>
-
           <Box sx={{ position: "absolute", top: 16, right: 16, zIndex: 10, display: "flex", gap: 1 }}>
             <Tooltip title="Close (Esc)">
               <IconButton onClick={onClose} size="small" sx={{ bgcolor: "rgba(0,0,0,0.5)", "&:hover": { bgcolor: "rgba(0,0,0,0.7)" } }}>
@@ -572,13 +554,40 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
           </Box>
 
           <Box sx={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
-            <Box sx={{ position: "relative", width: 56, borderRight: "1px solid rgba(255,255,255,0.08)", bgcolor: "rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", alignItems: "center", py: 2, gap: 1, flexShrink: 0 }}>
+            <Box sx={{ 
+              width: 56, 
+              borderRight: "1px solid rgba(255,255,255,0.08)", 
+              bgcolor: "rgba(0,0,0,0.3)", 
+              display: "flex", 
+              flexDirection: "column", 
+              alignItems: "center", 
+              py: 2, 
+              gap: 1, 
+              flexShrink: 0,
+              overflowY: "auto"
+            }}>
+              {totalFiles > 1 && (
+                <>
+                  <Tooltip title="Previous file" placement="right">
+                    <IconButton onClick={onPrevFile} size="small" sx={{ color: "rgba(255,255,255,0.7)" }}>
+                      <ChevronLeftIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Next file" placement="right">
+                    <IconButton onClick={onNextFile} size="small" sx={{ color: "rgba(255,255,255,0.7)" }}>
+                      <ChevronRightIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Divider sx={{ width: 32, my: 1, bgcolor: "rgba(255,255,255,0.1)" }} />
+                </>
+              )}
+
               <Tooltip title={isEditing ? "Cancel Edit" : "Edit file"} placement="right">
                 <IconButton onClick={handleEditToggle} size="small" sx={{ color: isEditing ? "#ff9800" : "rgba(255,255,255,0.7)" }}>
                   <EditIcon />
                 </IconButton>
               </Tooltip>
-
+              
               {isTextFile && !isEditing && (
                 <Tooltip title="Search (Ctrl+F)" placement="right">
                   <IconButton onClick={() => setShowSearchBar(true)} size="small" sx={{ color: showSearchBar ? "#ff9800" : "rgba(255,255,255,0.7)" }}>
@@ -595,7 +604,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
                 </Tooltip>
               )}
 
-              {isTextFile && !isEditing && shouldRenderAsMarkdown(file?.name || '', file?.mime_type || '', editedContent) && (
+              {isTextFile && !isEditing && (
                 <Tooltip title="Copy content" placement="right">
                   <IconButton onClick={handleCopyContent} size="small" sx={{ color: copied ? "#4caf50" : "rgba(255,255,255,0.7)" }}>
                     {copied ? <CheckCircleIcon /> : <ContentCopyIcon />}
@@ -624,6 +633,8 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
                   </Badge>
                 </Tooltip>
               )}
+
+              <Divider sx={{ width: 32, my: 1, bgcolor: "rgba(255,255,255,0.1)" }} />
 
               <Tooltip title="Delete file" placement="right">
                 <IconButton onClick={() => setShowDeleteConfirm(true)} size="small" sx={{ color: "error.main", "&:hover": { color: "#f44336" } }}>
