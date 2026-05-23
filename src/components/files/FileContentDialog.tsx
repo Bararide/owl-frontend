@@ -66,15 +66,15 @@ import type { FileContentDialogProps, SearchMatch } from "./types";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 const isMarkdownFile = (filename: string): boolean => {
-  return filename.endsWith('.md') || 
-         filename.endsWith('.markdown') || 
-         filename.endsWith('.mdown') ||
-         filename.endsWith('.mkd');
+  return filename.endsWith('.md') ||
+    filename.endsWith('.markdown') ||
+    filename.endsWith('.mdown') ||
+    filename.endsWith('.mkd');
 };
 
 const isLatexFile = (filename: string): boolean => {
-  return filename.endsWith('.tex') || 
-         filename.endsWith('.latex');
+  return filename.endsWith('.tex') ||
+    filename.endsWith('.latex');
 };
 
 const shouldRenderAsMarkdown = (filename: string, mimeType: string, content?: string): boolean => {
@@ -116,12 +116,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState("");
   const [saveError, setSaveError] = useState("");
-  const [actionMenuAnchor, setActionMenuAnchor] = useState<null | HTMLElement>(
-    null,
-  );
-  const [groupMenuAnchor, setGroupMenuAnchor] = useState<null | HTMLElement>(
-    null,
-  );
+  const [groupMenuAnchor, setGroupMenuAnchor] = useState<null | HTMLElement>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([]);
@@ -130,7 +125,9 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   const [matchCase, setMatchCase] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
   const [renderMode, setRenderMode] = useState<'raw' | 'rendered'>('rendered');
+  const [showSearchBar, setShowSearchBar] = useState(false);
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const isTextFile =
     file?.mime_type?.startsWith("text/") ||
     file?.mime_type === "application/json";
@@ -183,7 +180,6 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
       setIsEditing(false);
       setEditedContent("");
       setSaveError("");
-      setActionMenuAnchor(null);
       setGroupMenuAnchor(null);
       setShowDeleteConfirm(false);
       setSearchQuery(initialSearchQuery);
@@ -194,6 +190,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
       setMatchCase(false);
       setWholeWord(false);
       setRenderMode('rendered');
+      setShowSearchBar(false);
       setTimeout(() => {
         refetch();
         refetchFileGroups();
@@ -210,7 +207,6 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
       setIsEditing(false);
       setEditedContent("");
       setSaveError("");
-      setActionMenuAnchor(null);
       setGroupMenuAnchor(null);
       setShowDeleteConfirm(false);
       setSearchQuery("");
@@ -221,6 +217,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
       setMatchCase(false);
       setWholeWord(false);
       setRenderMode('rendered');
+      setShowSearchBar(false);
     }
   }, [open]);
 
@@ -267,6 +264,12 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
       current.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [currentMatchIndex, flattenRanges]);
 
+  useEffect(() => {
+    if (showSearchBar && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [showSearchBar]);
+
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
     setIsSearchActive(!!e.target.value.trim());
@@ -277,6 +280,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
     setSearchMatches([]);
     setCurrentMatchIndex(-1);
     setIsSearchActive(false);
+    setShowSearchBar(false);
   };
 
   const handleNextMatch = () => {
@@ -500,11 +504,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!open) return;
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        e.key.toLowerCase() === "s" &&
-        isEditing
-      ) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && isEditing) {
         e.preventDefault();
         handleSave();
       }
@@ -512,6 +512,10 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
         e.preventDefault();
         setIsEditing(false);
         setEditedContent(data?.content || "");
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f" && !isEditing) {
+        e.preventDefault();
+        setShowSearchBar(true);
       }
     };
     window.addEventListener("keydown", handler);
@@ -528,8 +532,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
         PaperProps={{
           sx: {
             borderRadius: 3,
-            background:
-              "linear-gradient(135deg, rgba(26, 31, 54, 0.98) 0%, rgba(26, 31, 54, 0.95) 100%)",
+            background: "linear-gradient(135deg, rgba(26, 31, 54, 0.98) 0%, rgba(26, 31, 54, 0.95) 100%)",
             backdropFilter: "blur(20px)",
             border: "1px solid rgba(255,255,255,0.1)",
             width: "96vw",
@@ -542,661 +545,315 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
           },
         }}
       >
-        <DialogContent
-          sx={{
-            p: 0,
-            flex: 1,
-            display: "flex",
-            minHeight: 0,
-            overflow: "hidden",
-          }}
-        >
-          <Paper
-            elevation={0}
-            sx={{
-              width: 260,
-              minWidth: 260,
-              maxWidth: 260,
-              borderRight: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(0,0,0,0.22)",
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-            }}
-          >
-            <Box
-              sx={{ p: 2, borderBottom: "1px solid rgba(255,255,255,0.08)" }}
-            >
-              <Stack spacing={1}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  {file?.name || file?.path.split("/").pop()}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ wordBreak: "break-word" }}
-                >
-                  {file?.path}
-                </Typography>
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  <Chip
-                    label={getLanguageFromMimeType(file?.mime_type || "")}
-                    size="small"
-                    color="primary"
-                  />
-                  <Chip
-                    label={formatFileSize(file?.size || 0)}
-                    size="small"
-                    variant="outlined"
-                  />
-                </Stack>
-                {totalFiles > 1 && (
-                  <Typography variant="caption" color="text.secondary">
-                    File {currentFileIndex + 1} of {totalFiles}
-                  </Typography>
-                )}
-              </Stack>
-            </Box>
-            <Box sx={{ p: 2, overflow: "auto" }}>
-              <Stack spacing={1.2}>
-                {totalFiles > 1 && (
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      size="small"
-                      startIcon={<ChevronLeftIcon />}
-                      onClick={onPrevFile}
-                    >
-                      Prev
-                    </Button>
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      size="small"
-                      endIcon={<ChevronRightIcon />}
-                      onClick={onNextFile}
-                    >
-                      Next
-                    </Button>
-                  </Stack>
-                )}
-                {isTextFile && (
-                  <>
-                    <Button
-                      fullWidth
-                      variant={copied ? "contained" : "outlined"}
-                      size="small"
-                      startIcon={
-                        copied ? <CheckCircleIcon /> : <ContentCopyIcon />
-                      }
-                      onClick={handleCopyContent}
-                      color={copied ? "success" : "primary"}
-                    >
-                      {copied ? "Copied" : "Copy"}
-                    </Button>
-                    <Button
-                      fullWidth
-                      variant={isEditing ? "contained" : "outlined"}
-                      size="small"
-                      startIcon={<EditIcon />}
-                      color={isEditing ? "warning" : "primary"}
-                      onClick={handleEditToggle}
-                    >
-                      {isEditing ? "Cancel Edit" : "Edit"}
-                    </Button>
-                  </>
-                )}
-                {shouldRenderAsMarkdown(file?.name || '', file?.mime_type || '', editedContent) && !isEditing && (
-                  <Button
-                    fullWidth
-                    variant="outlined"
-                    size="small"
-                    startIcon={renderMode === 'rendered' ? <CodeIcon /> : <TextFieldsIcon />}
-                    onClick={handleToggleRenderMode}
-                  >
-                    {renderMode === 'rendered' ? 'Show Raw' : 'Show Rendered'}
-                  </Button>
-                )}
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  startIcon={<DownloadIcon />}
-                  onClick={handleDownload}
-                >
-                  Download
-                </Button>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  startIcon={<DeleteIcon />}
-                  color="error"
-                  onClick={() => setShowDeleteConfirm(true)}
-                >
-                  Delete
-                </Button>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  startIcon={<FolderSpecialIcon />}
-                  onClick={(e) => setGroupMenuAnchor(e.currentTarget)}
-                >
-                  Groups
-                </Button>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  startIcon={<MoreVertIcon />}
-                  onClick={(e) => setActionMenuAnchor(e.currentTarget)}
-                >
-                  More
-                </Button>
-                <Divider sx={{ my: 1 }} />
-                {fileGroups && fileGroups.length > 0 && (
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Current groups:
-                    </Typography>
-                    <Stack
-                      direction="row"
-                      spacing={0.5}
-                      flexWrap="wrap"
-                      sx={{ mt: 0.5 }}
-                    >
-                      {fileGroups.map((group: Group) => (
-                        <Chip
-                          key={group.id}
-                          label={group.id}
-                          size="small"
-                          onDelete={() => handleRemoveFromGroup(group.id)}
-                          deleteIcon={<CloseIcon />}
-                          sx={{
-                            backgroundColor: group.color || "#ff9800",
-                            color: "#fff",
-                          }}
-                        />
-                      ))}
-                    </Stack>
-                  </Box>
-                )}
-                {isSearchActive && searchMatches.length > 0 && (
-                  <Chip
-                    icon={<SearchIcon />}
-                    label={`${totalMatches} matches`}
-                    size="small"
-                    color="secondary"
-                    variant="outlined"
-                  />
-                )}
-                {isEditing && (
-                  <Alert severity="warning" sx={{ mt: 1 }}>
-                    Ctrl/Cmd + S to save
-                  </Alert>
-                )}
-                {saveError && (
-                  <Alert severity="error" onClose={() => setSaveError("")}>
-                    {saveError}
-                  </Alert>
-                )}
-              </Stack>
-            </Box>
-          </Paper>
-          <Box
-            sx={{ flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}
-          >
-            <Box
-              sx={{
-                flex: 1,
-                minWidth: 0,
-                display: "flex",
-                flexDirection: "column",
-                borderRight: {
-                  xs: "none",
-                  lg: "1px solid rgba(255,255,255,0.08)",
-                },
-                overflow: "hidden",
-              }}
-            >
+        <Box sx={{ position: "relative", height: "100%", display: "flex", flexDirection: "column" }}>
+          <Box sx={{ position: "absolute", top: 16, left: 16, zIndex: 10, display: "flex", gap: 1 }}>
+            {totalFiles > 1 && (
+              <>
+                <Tooltip title="Previous file">
+                  <IconButton onClick={onPrevFile} size="small" sx={{ bgcolor: "rgba(0,0,0,0.5)", "&:hover": { bgcolor: "rgba(0,0,0,0.7)" } }}>
+                    <ChevronLeftIcon />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Next file">
+                  <IconButton onClick={onNextFile} size="small" sx={{ bgcolor: "rgba(0,0,0,0.5)", "&:hover": { bgcolor: "rgba(0,0,0,0.7)" } }}>
+                    <ChevronRightIcon />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+          </Box>
+
+          <Box sx={{ position: "absolute", top: 16, right: 16, zIndex: 10, display: "flex", gap: 1 }}>
+            <Tooltip title="Close (Esc)">
+              <IconButton onClick={onClose} size="small" sx={{ bgcolor: "rgba(0,0,0,0.5)", "&:hover": { bgcolor: "rgba(0,0,0,0.7)" } }}>
+                <CloseIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          <Box sx={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
+            <Box sx={{ position: "relative", width: 56, borderRight: "1px solid rgba(255,255,255,0.08)", bgcolor: "rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", alignItems: "center", py: 2, gap: 1, flexShrink: 0 }}>
+              <Tooltip title={isEditing ? "Cancel Edit" : "Edit file"} placement="right">
+                <IconButton onClick={handleEditToggle} size="small" sx={{ color: isEditing ? "#ff9800" : "rgba(255,255,255,0.7)" }}>
+                  <EditIcon />
+                </IconButton>
+              </Tooltip>
+
               {isTextFile && !isEditing && (
-                <Paper
-                  elevation={0}
-                  sx={{
-                    mx: 2,
-                    mt: 2,
-                    mb: 1,
-                    borderRadius: 2,
-                    backgroundColor: "rgba(0,0,0,0.2)",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    overflow: "hidden",
-                    flexShrink: 0,
-                  }}
-                >
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <TextField
-                      fullWidth
-                      variant="standard"
-                      placeholder="Search within file..."
-                      value={searchQuery}
-                      onChange={handleSearchChange}
-                      InputProps={{
-                        disableUnderline: true,
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <SearchIcon
-                              fontSize="small"
-                              sx={{ opacity: 0.7, mr: 1 }}
-                            />
-                          </InputAdornment>
-                        ),
-                        sx: {
-                          fontSize: "0.875rem",
-                          "& input::placeholder": {
-                            color: "text.secondary",
-                            opacity: 0.7,
-                          },
-                        },
-                      }}
-                      size="small"
-                    />
-                    {searchQuery && (
-                      <Stack
-                        direction="row"
-                        alignItems="center"
-                        spacing={1}
-                        sx={{ flexShrink: 0 }}
-                      >
-                        <Badge
-                          badgeContent={parseSearchQuery.length}
-                          color="primary"
-                          sx={{
-                            "& .MuiBadge-badge": {
-                              fontSize: "0.6rem",
-                              height: 16,
-                              minWidth: 16,
-                            },
-                          }}
-                        >
-                          <TextFieldsIcon
-                            fontSize="small"
-                            sx={{ opacity: 0.7 }}
-                          />
-                        </Badge>
-                        <Typography
-                          variant="caption"
-                          sx={{ whiteSpace: "nowrap", opacity: 0.8 }}
-                        >
-                          {totalMatches > 0
-                            ? `${currentMatchIndex + 1}/${totalMatches}`
-                            : "No matches"}
-                        </Typography>
-                        <Stack direction="row" spacing={0.5}>
-                          <Tooltip title="Previous match">
-                            <span>
-                              <IconButton
-                                size="small"
-                                onClick={handlePrevMatch}
-                                disabled={totalMatches === 0}
-                              >
-                                <NavigateBeforeIcon fontSize="small" />
-                              </IconButton>
-                            </span>
-                          </Tooltip>
-                          <Tooltip title="Next match">
-                            <span>
-                              <IconButton
-                                size="small"
-                                onClick={handleNextMatch}
-                                disabled={totalMatches === 0}
-                              >
-                                <NavigateNextIcon fontSize="small" />
-                              </IconButton>
-                            </span>
-                          </Tooltip>
-                          <Tooltip title="Clear search">
-                            <IconButton
-                              size="small"
-                              onClick={handleClearSearch}
-                            >
-                              <ClearIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
-                      </Stack>
-                    )}
-                    {searchQuery && (
-                      <Fade in={!!searchQuery}>
-                        <Stack
-                          direction="row"
-                          spacing={2}
-                          sx={{ mt: 1, ml: 4 }}
-                        >
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                size="small"
-                                checked={matchCase}
-                                onChange={(e) => setMatchCase(e.target.checked)}
-                              />
-                            }
-                            label={
-                              <Typography variant="caption">
-                                Match case
-                              </Typography>
-                            }
-                          />
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                size="small"
-                                checked={wholeWord}
-                                onChange={(e) => setWholeWord(e.target.checked)}
-                              />
-                            }
-                            label={
-                              <Typography variant="caption">
-                                Whole word
-                              </Typography>
-                            }
-                          />
-                        </Stack>
-                      </Fade>
-                    )}
-                  </Stack>
-                </Paper>
+                <Tooltip title="Search (Ctrl+F)" placement="right">
+                  <IconButton onClick={() => setShowSearchBar(true)} size="small" sx={{ color: showSearchBar ? "#ff9800" : "rgba(255,255,255,0.7)" }}>
+                    <SearchIcon />
+                  </IconButton>
+                </Tooltip>
               )}
-              <Box
-                sx={{
-                  flex: 1,
-                  minHeight: 0,
-                  p: 2,
-                  pt: isTextFile && !isEditing ? 0 : 2,
-                  overflow: "hidden",
-                }}
-              >
-                {isLoading ? (
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      height: "100%",
-                    }}
-                  >
-                    <Stack alignItems="center" spacing={2}>
-                      <CircularProgress />
-                      <Typography variant="body2" color="text.secondary">
-                        Loading file content...
-                      </Typography>
-                    </Stack>
-                  </Box>
-                ) : error ? (
-                  <Box
-                    sx={{
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      height: "100%",
-                      textAlign: "center",
-                      p: 4,
-                    }}
-                  >
-                    <CodeIcon sx={{ fontSize: 96, mb: 2, opacity: 0.3 }} />
-                    <Typography
-                      variant="h5"
-                      gutterBottom
-                      sx={{ fontWeight: 300 }}
-                    >
-                      Unable to Load File
-                    </Typography>
-                    <Typography variant="body1" sx={{ maxWidth: 400 }}>
-                      {error instanceof Error
-                        ? error.message
-                        : "An unknown error occurred while loading the file"}
-                    </Typography>
-                  </Box>
-                ) : !isTextFile ? (
-                  <Box
-                    sx={{
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      height: "100%",
-                      textAlign: "center",
-                      p: 4,
-                    }}
-                  >
-                    <DescriptionIcon
-                      sx={{ fontSize: 96, mb: 3, opacity: 0.3 }}
-                    />
-                    <Typography
-                      variant="h5"
-                      gutterBottom
-                      sx={{ fontWeight: 300 }}
-                    >
-                      Binary File Preview
-                    </Typography>
-                    <Typography variant="body1" sx={{ mb: 3, maxWidth: 400 }}>
-                      This file type cannot be displayed in the text viewer.
-                      Download the file to view its contents with an appropriate
-                      application.
-                    </Typography>
-                    <Button
-                      variant="contained"
-                      size="large"
-                      startIcon={<DownloadIcon />}
-                      onClick={handleDownload}
-                    >
-                      Download File
-                    </Button>
-                  </Box>
-                ) : data && editedContent !== undefined ? (
-                  <Paper
-                    elevation={0}
-                    sx={{
-                      height: "100%",
-                      display: "flex",
-                      flexDirection: "column",
-                      background: "rgba(0,0,0,0.3)",
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      borderRadius: 2,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <Box
+
+              {isTextFile && !isEditing && (
+                <Tooltip title={renderMode === 'rendered' ? "Show raw content" : "Show rendered content"} placement="right">
+                  <IconButton onClick={handleToggleRenderMode} size="small" sx={{ color: "rgba(255,255,255,0.7)" }}>
+                    {renderMode === 'rendered' ? <CodeIcon /> : <TextFieldsIcon />}
+                  </IconButton>
+                </Tooltip>
+              )}
+
+              {isTextFile && !isEditing && shouldRenderAsMarkdown(file?.name || '', file?.mime_type || '', editedContent) && (
+                <Tooltip title="Copy content" placement="right">
+                  <IconButton onClick={handleCopyContent} size="small" sx={{ color: copied ? "#4caf50" : "rgba(255,255,255,0.7)" }}>
+                    {copied ? <CheckCircleIcon /> : <ContentCopyIcon />}
+                  </IconButton>
+                </Tooltip>
+              )}
+
+              <Tooltip title="Download file" placement="right">
+                <IconButton onClick={handleDownload} size="small" sx={{ color: "rgba(255,255,255,0.7)" }}>
+                  <DownloadIcon />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="Manage groups" placement="right">
+                <IconButton onClick={(e) => setGroupMenuAnchor(e.currentTarget)} size="small" sx={{ color: "rgba(255,255,255,0.7)" }}>
+                  <FolderSpecialIcon />
+                </IconButton>
+              </Tooltip>
+
+              {fileGroups && fileGroups.length > 0 && (
+                <Tooltip title={`In ${fileGroups.length} group${fileGroups.length > 1 ? 's' : ''}`} placement="right">
+                  <Badge badgeContent={fileGroups.length} color="primary" sx={{ "& .MuiBadge-badge": { fontSize: 10, height: 16, minWidth: 16 } }}>
+                    <IconButton size="small" disabled sx={{ opacity: 0.5 }}>
+                      <FolderSpecialIcon />
+                    </IconButton>
+                  </Badge>
+                </Tooltip>
+              )}
+
+              <Tooltip title="Delete file" placement="right">
+                <IconButton onClick={() => setShowDeleteConfirm(true)} size="small" sx={{ color: "error.main", "&:hover": { color: "#f44336" } }}>
+                  <DeleteIcon />
+                </IconButton>
+              </Tooltip>
+            </Box>
+
+            <DialogContent sx={{ p: 0, flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}>
+              <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                {isTextFile && !isEditing && showSearchBar && (
+                  <Fade in={showSearchBar}>
+                    <Paper
+                      elevation={0}
                       sx={{
-                        px: 2,
-                        py: 1.25,
-                        borderBottom: "1px solid rgba(255,255,255,0.08)",
-                        background: "rgba(255,255,255,0.03)",
+                        mx: 2,
+                        mt: 2,
+                        mb: 1,
+                        p: 1.5,
+                        borderRadius: 2,
+                        backgroundColor: "rgba(0,0,0,0.4)",
+                        border: "1px solid rgba(255,255,255,0.1)",
                         flexShrink: 0,
                       }}
                     >
-                      <Stack
-                        direction="row"
-                        justifyContent="space-between"
-                        alignItems="center"
-                      >
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          flexWrap="wrap"
-                          useFlexGap
-                        >
-                          <Chip
-                            label={
-                              shouldRenderAsMarkdown(file?.name || '', file?.mime_type || '', editedContent)
-                                ? (isLatexFile(file?.name || '') ? 'LaTeX' : 'Markdown')
-                                : getLanguageFromMimeType(file?.mime_type || "")
-                            }
-                            size="small"
-                            color="primary"
+                      <Stack direction="row" alignItems="center" spacing={2}>
+                        <TextField
+                          inputRef={searchInputRef}
+                          size="small"
+                          placeholder="Search..."
+                          value={searchQuery}
+                          onChange={handleSearchChange}
+                          variant="outlined"
+                          sx={{ flex: 1 }}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <SearchIcon fontSize="small" sx={{ opacity: 0.7 }} />
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                        {searchQuery && (
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <Typography variant="body2" sx={{ minWidth: 60 }}>
+                              {totalMatches > 0 ? `${currentMatchIndex + 1}/${totalMatches}` : "0 matches"}
+                            </Typography>
+                            <Tooltip title="Previous">
+                              <IconButton size="small" onClick={handlePrevMatch} disabled={totalMatches === 0}>
+                                <NavigateBeforeIcon />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Next">
+                              <IconButton size="small" onClick={handleNextMatch} disabled={totalMatches === 0}>
+                                <NavigateNextIcon />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        )}
+                        <Stack direction="row" spacing={1}>
+                          <FormControlLabel
+                            control={<Switch size="small" checked={matchCase} onChange={(e) => setMatchCase(e.target.checked)} />}
+                            label={<Typography variant="caption">Case</Typography>}
                           />
-                          {explanation && (
-                            <Chip
-                              icon={<AutoAwesomeIcon sx={{ fontSize: 14 }} />}
-                              label="AI Explained"
-                              size="small"
-                              sx={{
-                                backgroundColor: "rgba(255, 152, 0, 0.15)",
-                                color: "#ff9800",
-                                border: "1px solid rgba(255, 152, 0, 0.3)",
-                              }}
-                            />
-                          )}
+                          <FormControlLabel
+                            control={<Switch size="small" checked={wholeWord} onChange={(e) => setWholeWord(e.target.checked)} />}
+                            label={<Typography variant="caption">Whole word</Typography>}
+                          />
                         </Stack>
-                        <Typography variant="caption" color="text.secondary">
-                          {data.encoding} • {formatFileSize(data.size)} •{" "}
-                          {editedContent.split("\n").length} lines
-                        </Typography>
+                        <Tooltip title="Close search">
+                          <IconButton size="small" onClick={handleClearSearch}>
+                            <CloseIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </Paper>
+                  </Fade>
+                )}
+
+                <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 3 }}>
+                  {isLoading ? (
+                    <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%" }}>
+                      <Stack alignItems="center" spacing={2}>
+                        <CircularProgress />
+                        <Typography variant="body2" color="text.secondary">Loading file content...</Typography>
                       </Stack>
                     </Box>
-                    {isEditing ? (
-                      <Box sx={{ flex: 1, minHeight: 0, p: 2 }}>
-                        <TextField
-                          value={editedContent}
-                          onChange={(e) => setEditedContent(e.target.value)}
-                          multiline
-                          fullWidth
-                          sx={{
-                            height: "100%",
-                            "& .MuiOutlinedInput-root": {
-                              height: "100%",
-                              alignItems: "flex-start",
-                              borderRadius: 2,
-                            },
-                            "& .MuiOutlinedInput-input": {
-                              fontFamily: '"Fira Code", monospace',
-                              fontSize: "0.875rem",
-                              lineHeight: 1.6,
-                              p: 3,
-                              height: "100% !important",
-                              overflow: "auto !important",
-                            },
-                          }}
-                          InputProps={{ style: { height: "100%" } }}
-                        />
-                      </Box>
-                    ) : shouldRenderAsMarkdown(file?.name || '', file?.mime_type || '', editedContent) && renderMode === 'rendered' ? (
-                      <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-                        <MarkdownRenderer content={editedContent} />
-                      </Box>
-                    ) : (
+                  ) : error ? (
+                    <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100%", textAlign: "center" }}>
+                      <CodeIcon sx={{ fontSize: 96, mb: 2, opacity: 0.3 }} />
+                      <Typography variant="h5" gutterBottom sx={{ fontWeight: 300 }}>Unable to Load File</Typography>
+                      <Typography variant="body1" sx={{ maxWidth: 400 }}>
+                        {error instanceof Error ? error.message : "An unknown error occurred while loading the file"}
+                      </Typography>
+                    </Box>
+                  ) : !isTextFile ? (
+                    <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100%", textAlign: "center" }}>
+                      <DescriptionIcon sx={{ fontSize: 96, mb: 3, opacity: 0.3 }} />
+                      <Typography variant="h5" gutterBottom sx={{ fontWeight: 300 }}>Binary File Preview</Typography>
+                      <Typography variant="body1" sx={{ mb: 3, maxWidth: 400 }}>
+                        This file type cannot be displayed in the text viewer. Download the file to view its contents.
+                      </Typography>
+                      <Button variant="contained" size="large" startIcon={<DownloadIcon />} onClick={handleDownload}>
+                        Download File
+                      </Button>
+                    </Box>
+                  ) : data && editedContent !== undefined ? (
+                    <Paper
+                      elevation={0}
+                      sx={{
+                        height: "100%",
+                        display: "flex",
+                        flexDirection: "column",
+                        background: "rgba(0,0,0,0.3)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: 2,
+                        overflow: "hidden",
+                      }}
+                    >
                       <Box
-                        ref={contentScrollRef}
                         sx={{
-                          flex: 1,
-                          minHeight: 0,
-                          overflow: "auto",
-                          p: 3,
-                          fontFamily: '"Fira Code", monospace',
-                          fontSize: "0.875rem",
-                          lineHeight: 1.6,
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
-                          "&::-webkit-scrollbar": { width: 8, height: 8 },
-                          "&::-webkit-scrollbar-track": {
-                            background: "rgba(255,255,255,0.05)",
-                            borderRadius: 4,
-                          },
-                          "&::-webkit-scrollbar-thumb": {
-                            background: "rgba(255,255,255,0.2)",
-                            borderRadius: 4,
-                          },
-                          "& mark": {
-                            transition: "all 0.2s ease",
-                            borderRadius: "3px",
-                          },
+                          px: 2,
+                          py: 1.25,
+                          borderBottom: "1px solid rgba(255,255,255,0.08)",
+                          background: "rgba(255,255,255,0.03)",
+                          flexShrink: 0,
                         }}
                       >
-                        {renderTextWithHighlights()}
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                              {file?.name}
+                            </Typography>
+                            <Chip
+                              label={
+                                shouldRenderAsMarkdown(file?.name || '', file?.mime_type || '', editedContent)
+                                  ? (isLatexFile(file?.name || '') ? 'LaTeX' : 'Markdown')
+                                  : getLanguageFromMimeType(file?.mime_type || "")
+                              }
+                              size="small"
+                              color="primary"
+                            />
+                            {explanation && (
+                              <Chip
+                                icon={<AutoAwesomeIcon sx={{ fontSize: 14 }} />}
+                                label="AI Explained"
+                                size="small"
+                                sx={{ backgroundColor: "rgba(255, 152, 0, 0.15)", color: "#ff9800" }}
+                              />
+                            )}
+                          </Stack>
+                          <Typography variant="caption" color="text.secondary">
+                            {formatFileSize(data.size)} • {editedContent.split("\n").length} lines
+                          </Typography>
+                        </Stack>
                       </Box>
-                    )}
-                  </Paper>
-                ) : (
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      height: "100%",
-                    }}
-                  >
-                    <CircularProgress />
-                  </Box>
-                )}
-              </Box>
-            </Box>
-            <Box
-              sx={{
-                display: { xs: "none", lg: "block" },
-                width: 380,
-                minWidth: 380,
-                maxWidth: 420,
-                p: 2,
-                pl: 0,
-                overflow: "hidden",
-              }}
-            >
-              <ExplanationPanel
-                explanation={explanation}
-                query={initialSearchQuery}
-              />
-            </Box>
-          </Box>
-        </DialogContent>
-        <DialogActions
-          sx={{
-            borderTop: "1px solid rgba(255,255,255,0.1)",
-            p: 2,
-            background: "rgba(0,0,0,0.1)",
-            justifyContent: "space-between",
-          }}
-        >
-          <Typography variant="caption" color="text.secondary">
-            {explanation
-              ? "AI explanation available in the right panel"
-              : "Perform semantic search to generate explanations"}
-          </Typography>
-          <Stack direction="row" spacing={1.5}>
-            {isEditing ? (
-              <>
-                <Button onClick={handleEditToggle} variant="outlined">
-                  Cancel
-                </Button>
-                <Button
-                  variant="contained"
-                  onClick={handleSave}
-                  startIcon={<SaveIcon />}
-                  disabled={
-                    deleteFileMutation.isPending || uploadFileMutation.isPending
-                  }
-                >
-                  {deleteFileMutation.isPending ||
-                  uploadFileMutation.isPending ? (
-                    <CircularProgress size={18} sx={{ color: "white" }} />
+                      {isEditing ? (
+                        <Box sx={{ flex: 1, minHeight: 0, p: 2 }}>
+                          <TextField
+                            value={editedContent}
+                            onChange={(e) => setEditedContent(e.target.value)}
+                            multiline
+                            fullWidth
+                            sx={{
+                              height: "100%",
+                              "& .MuiOutlinedInput-root": { height: "100%", alignItems: "flex-start", borderRadius: 2 },
+                              "& .MuiOutlinedInput-input": {
+                                fontFamily: '"Fira Code", monospace',
+                                fontSize: "0.875rem",
+                                lineHeight: 1.6,
+                                p: 3,
+                                height: "100% !important",
+                                overflow: "auto !important",
+                              },
+                            }}
+                          />
+                        </Box>
+                      ) : shouldRenderAsMarkdown(file?.name || '', file?.mime_type || '', editedContent) && renderMode === 'rendered' ? (
+                        <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+                          <MarkdownRenderer content={editedContent} />
+                        </Box>
+                      ) : (
+                        <Box
+                          ref={contentScrollRef}
+                          sx={{
+                            flex: 1,
+                            minHeight: 0,
+                            overflow: "auto",
+                            p: 3,
+                            fontFamily: '"Fira Code", monospace',
+                            fontSize: "0.875rem",
+                            lineHeight: 1.6,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                            "&::-webkit-scrollbar": { width: 8, height: 8 },
+                            "&::-webkit-scrollbar-track": { background: "rgba(255,255,255,0.05)", borderRadius: 4 },
+                            "&::-webkit-scrollbar-thumb": { background: "rgba(255,255,255,0.2)", borderRadius: 4 },
+                          }}
+                        >
+                          {renderTextWithHighlights()}
+                        </Box>
+                      )}
+                    </Paper>
                   ) : (
-                    "Save Changes"
+                    <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%" }}>
+                      <CircularProgress />
+                    </Box>
                   )}
-                </Button>
-              </>
-            ) : (
-              <Button
-                onClick={onClose}
-                variant="outlined"
-                startIcon={<CloseIcon />}
-              >
-                Close
+                </Box>
+              </Box>
+
+              {explanation && (
+                <Box sx={{ display: { xs: "none", lg: "block" }, width: 380, minWidth: 380, maxWidth: 420, p: 2, pl: 0, overflow: "hidden" }}>
+                  <ExplanationPanel explanation={explanation} query={initialSearchQuery} />
+                </Box>
+              )}
+            </DialogContent>
+          </Box>
+
+          {isEditing && (
+            <Box sx={{ position: "absolute", bottom: 20, right: 20, zIndex: 20, display: "flex", gap: 1 }}>
+              <Button variant="outlined" onClick={handleEditToggle}>Cancel</Button>
+              <Button variant="contained" onClick={handleSave} startIcon={<SaveIcon />} disabled={deleteFileMutation.isPending || uploadFileMutation.isPending}>
+                {deleteFileMutation.isPending || uploadFileMutation.isPending ? <CircularProgress size={18} sx={{ color: "white" }} /> : "Save"}
               </Button>
-            )}
-          </Stack>
-        </DialogActions>
+            </Box>
+          )}
+        </Box>
       </Dialog>
+
       <Menu
         anchorEl={groupMenuAnchor}
         open={Boolean(groupMenuAnchor)}
@@ -1213,74 +870,29 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
         }}
       >
         {containerGroups
-          .filter(
-            (g) => !fileGroups?.some((fg: { id: string }) => fg.id === g.id),
-          )
+          .filter((g) => !fileGroups?.some((fg: { id: string }) => fg.id === g.id))
           .map((group) => (
             <MenuItem key={group.id} onClick={() => handleAddToGroup(group.id)}>
-              <Box
-                sx={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: "50%",
-                  backgroundColor: group.color || "#ff9800",
-                  mr: 1.5,
-                }}
-              />
+              <Box sx={{ width: 12, height: 12, borderRadius: "50%", backgroundColor: group.color || "#ff9800", mr: 1.5 }} />
               {group.id}
             </MenuItem>
           ))}
-        {containerGroups.filter(
-          (g) => !fileGroups?.some((fg: { id: string }) => fg.id === g.id),
-        ).length === 0 && <MenuItem disabled>No available groups</MenuItem>}
-      </Menu>
-      <Menu
-        anchorEl={actionMenuAnchor}
-        open={Boolean(actionMenuAnchor)}
-        onClose={() => setActionMenuAnchor(null)}
-        PaperProps={{
-          sx: {
-            mt: 1,
-            borderRadius: 2,
-            border: "1px solid rgba(255,255,255,0.1)",
-            background: "rgba(26, 31, 54, 0.98)",
-            backdropFilter: "blur(20px)",
-            minWidth: 180,
-          },
-        }}
-      >
-        <MenuItem
-          onClick={() => {
-            setActionMenuAnchor(null);
-            handleDownload();
-          }}
-        >
-          <DownloadIcon fontSize="small" sx={{ mr: 1.5 }} />
-          Download File
-        </MenuItem>
-        {isTextFile && (
-          <MenuItem
-            onClick={() => {
-              setActionMenuAnchor(null);
-              handleCopyContent();
-            }}
-          >
-            <ContentCopyIcon fontSize="small" sx={{ mr: 1.5 }} />
-            Copy Content
-          </MenuItem>
+        {containerGroups.filter((g) => !fileGroups?.some((fg: { id: string }) => fg.id === g.id)).length === 0 && (
+          <MenuItem disabled>No available groups</MenuItem>
         )}
-        <Divider sx={{ my: 1 }} />
-        <MenuItem
-          onClick={() => {
-            setActionMenuAnchor(null);
-            setShowDeleteConfirm(true);
-          }}
-          sx={{ color: "error.main" }}
-        >
-          <DeleteIcon fontSize="small" sx={{ mr: 1.5 }} />
-          Delete File
-        </MenuItem>
+        {fileGroups && fileGroups.length > 0 && (
+          <>
+            <Divider />
+            {fileGroups.map((group: Group) => (
+              <MenuItem key={group.id} onClick={() => handleRemoveFromGroup(group.id)} sx={{ color: "error.main" }}>
+                <DeleteIcon fontSize="small" sx={{ mr: 1.5 }} />
+                Remove from {group.id}
+              </MenuItem>
+            ))}
+          </>
+        )}
       </Menu>
+
       <Dialog
         open={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}
@@ -1299,34 +911,16 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
             <Typography variant="h6">Delete File</Typography>
           </Stack>
           <Typography>
-            Are you sure you want to permanently delete{" "}
-            <strong>{file?.name}</strong>?
+            Are you sure you want to permanently delete <strong>{file?.name}</strong>?
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
             This action cannot be undone.
           </Typography>
         </Box>
         <DialogActions sx={{ p: 3, pt: 0 }}>
-          <Button
-            onClick={() => setShowDeleteConfirm(false)}
-            variant="outlined"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={() => {
-              setShowDeleteConfirm(false);
-              handleDelete();
-            }}
-            color="error"
-            variant="contained"
-            disabled={deleteFileMutation.isPending}
-          >
-            {deleteFileMutation.isPending ? (
-              <CircularProgress size={18} sx={{ color: "white" }} />
-            ) : (
-              "Delete"
-            )}
+          <Button onClick={() => setShowDeleteConfirm(false)} variant="outlined">Cancel</Button>
+          <Button onClick={() => { setShowDeleteConfirm(false); handleDelete(); }} color="error" variant="contained" disabled={deleteFileMutation.isPending}>
+            {deleteFileMutation.isPending ? <CircularProgress size={18} sx={{ color: "white" }} /> : "Delete"}
           </Button>
         </DialogActions>
       </Dialog>
