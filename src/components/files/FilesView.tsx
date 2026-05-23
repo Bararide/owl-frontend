@@ -275,6 +275,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
     setIsRebuildingIndex(true);
     try {
       const result = await apiClient.getFilesRebuildIndex(containerId);
+      console.log(result)
       refetchFiles();
       setRebuildNotification({
         open: true,
