@@ -137,7 +137,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   );
 
   const findSearchMatches = useMemo(() => {
-    if (!searchQuery.trim() || !editedContent || parseSearchQuery.length === 0)
+    if (!searchQuery.trim() || !editedContent || parseSearchQuery?.length === 0)
       return [];
     const matches: SearchMatch[] = [];
     const content = matchCase ? editedContent : editedContent.toLowerCase();
