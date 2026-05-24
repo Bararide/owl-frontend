@@ -6,7 +6,7 @@ export function useWorkerRenderer() {
   const renderCallbackRef = useRef<((imageBitmap: ImageBitmap) => void) | null>(
     null,
   );
-  const sharedBufferRef = useRef<SharedArrayBuffer | null>(null);
+  const sharedBufferRef = useRef<ArrayBuffer | null>(null);
 
   useEffect(() => {
     const worker = new Worker(new URL("./graphWorker.ts", import.meta.url));
@@ -30,12 +30,15 @@ export function useWorkerRenderer() {
 
   const initSharedBuffer = useCallback((nodeCount: number) => {
     if (!workerRef.current) return null;
-    const buffer = new SharedArrayBuffer(nodeCount * 3 * 4);
+    
+    const buffer = new ArrayBuffer(nodeCount * 3 * 4);
     sharedBufferRef.current = buffer;
+    
     workerRef.current.postMessage({
       type: "INIT",
       payload: { buffer, nodeCount },
-    });
+    }, [buffer]);
+    
     return new Float32Array(buffer);
   }, []);
 

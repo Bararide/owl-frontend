@@ -9,5 +9,14 @@ module.exports = {
     host: '127.0.0.1',
     port: 3000,
     allowedHosts: 'all',
+    
+    client: {
+      webSocketURL: {
+        hostname: 'container-hub.local',
+        port: 80, 
+        pathname: '/ws', 
+        protocol: 'ws',
+      },
+    },
   },
 };
