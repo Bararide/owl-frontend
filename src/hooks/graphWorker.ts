@@ -33,7 +33,6 @@ export interface RenderData {
 
 declare const self: Worker;
 
-let sharedBuffer: SharedArrayBuffer | null = null;
 let positionsBuffer: Float32Array | null = null;
 let nodeCount = 0;
 
