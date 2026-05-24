@@ -6,6 +6,7 @@ export function useWorkerRenderer() {
   const renderCallbackRef = useRef<((imageBitmap: ImageBitmap) => void) | null>(
     null,
   );
+  
   const sharedBufferRef = useRef<ArrayBuffer | null>(null);
 
   useEffect(() => {
@@ -30,15 +31,15 @@ export function useWorkerRenderer() {
 
   const initSharedBuffer = useCallback((nodeCount: number) => {
     if (!workerRef.current) return null;
-    
+
     const buffer = new ArrayBuffer(nodeCount * 3 * 4);
     sharedBufferRef.current = buffer;
-    
+
     workerRef.current.postMessage({
       type: "INIT",
       payload: { buffer, nodeCount },
-    }, [buffer]);
-    
+    });
+
     return new Float32Array(buffer);
   }, []);
 
