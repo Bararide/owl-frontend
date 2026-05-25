@@ -11,9 +11,71 @@ interface MarkdownRendererProps {
   content: string;
 }
 
+const fixCodeBlocks = (content: string): string => {
+  const lines = content.split('\n');
+  const result = [];
+  let inCodeBlock = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    
+    if (line.match(/^```[^\s`]/)) {
+      const backticks = '```';
+      const restText = line.substring(3);
+      
+      if (inCodeBlock) {
+        result.push(backticks);
+        inCodeBlock = false;
+        result.push(restText);
+      } else {
+        result.push(backticks);
+        result.push(backticks);
+        inCodeBlock = false;
+        result.push(restText);
+      }
+    } 
+    else if (line.startsWith('```') && line.length > 3) {
+      const backticks = '```';
+      const lang = line.substring(3).trim();
+      if (lang) {
+        result.push(`${backticks}${lang}`);
+      } else {
+        result.push(backticks);
+      }
+      inCodeBlock = !inCodeBlock;
+    }
+    else if (line.startsWith('```')) {
+      result.push(line);
+      inCodeBlock = !inCodeBlock;
+    }
+    else {
+      result.push(line);
+    }
+  }
+  
+  return result.join('\n');
+};
+
+const wrapCodeInMarkdown = (content: string): string => {
+  let fixed = content.replace(/^```(\S+)/gm, (match, p1) => {
+    if (p1.length > 0 && !['cpp', 'c++', 'python', 'javascript', 'typescript', 'java', 'go', 'rust'].includes(p1.toLowerCase())) {
+      return `\`\`\`\n\`\`\`\n${p1}`;
+    }
+    return match;
+  });
+  
+  return fixed;
+};
+
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
+  
+  const safeContent = React.useMemo(() => {
+    let processed = fixCodeBlocks(content);
+    processed = wrapCodeInMarkdown(processed);
+    return processed;
+  }, [content]);
 
   return (
     <Paper
@@ -64,7 +126,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
           [rehypeHighlight, { ignoreMissing: true }]
         ]}
       >
-        {content}
+        {safeContent}
       </ReactMarkdown>
     </Paper>
   );
