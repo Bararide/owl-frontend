@@ -98,7 +98,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   }, [messages]);
 
   useEffect(() => {
-    const allUsedFiles = messages.flatMap(msg => 
+    const allUsedFiles = messages.flatMap(msg =>
       msg.used_files?.map(usedFile => ({
         file_path: usedFile.file_path,
         file_name: usedFile.file_name,
@@ -169,7 +169,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
         severity: 'error',
         open: true,
       });
-      
+
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
@@ -197,7 +197,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
             container_id: file.container_id,
             file: file,
           });
-          
+
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
@@ -206,7 +206,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
           a.click();
           window.URL.revokeObjectURL(url);
           document.body.removeChild(a);
-          
+
           addNotification({
             message: `File "${file.name}" downloaded successfully`,
             severity: 'success',
@@ -220,12 +220,12 @@ export const SearchView: React.FC<SearchViewProps> = ({
           });
         }
         break;
-      
+
       case 'view':
         setSelectedFile(file);
         setContentDialogOpen(true);
         break;
-      
+
       default:
         console.log(`Action ${action} on file ${file.name}`);
     }
@@ -307,7 +307,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
             <BotIcon />
             AI Assistant
           </Typography>
-          
+
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             {/* Кнопка выбора модели */}
             <Button
@@ -330,8 +330,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
               >
                 <MenuItem value={0}>All files</MenuItem>
                 {[1, 2, 3, 4, 5, 10, 15, 20].map(limit => (
-                  <MenuItem 
-                    key={limit} 
+                  <MenuItem
+                    key={limit}
                     value={limit}
                     disabled={limit > maxFileLimit}
                   >
@@ -350,10 +350,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
       <Grid container spacing={3} sx={{ flex: 1, minHeight: 0 }}>
         <Grid sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <Paper 
-            sx={{ 
+          <Paper
+            sx={{
               flex: 1,
-              display: 'flex', 
+              display: 'flex',
               flexDirection: 'column',
               minHeight: 0,
               background: 'linear-gradient(135deg, rgba(26, 31, 54, 0.8) 0%, rgba(26, 31, 54, 0.6) 100%)',
@@ -363,10 +363,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
             <Box sx={{ flex: 1, p: 2, overflow: 'auto', minHeight: 0 }}>
               <AnimatePresence>
                 {messages.length === 0 ? (
-                  <Box sx={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
+                  <Box sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
                     justifyContent: 'center',
                     height: '100%',
                     color: 'text.secondary',
@@ -440,7 +440,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   ))
                 )}
               </AnimatePresence>
-              
+
               {isLoading && (
                 <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 2, ml: 4 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -460,7 +460,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   </Box>
                 </Box>
               )}
-              
+
               <div ref={messagesEndRef} />
             </Box>
 
@@ -502,8 +502,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
         </Grid>
 
         <Grid sx={{ display: 'flex', flexDirection: 'column', minWidth: 0, width: 350 }}>
-          <Paper 
-            sx={{ 
+          <Paper
+            sx={{
               flex: 1,
               display: 'flex',
               flexDirection: 'column',
@@ -527,8 +527,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 <Box sx={{ textAlign: 'center', color: 'text.secondary', py: 4 }}>
                   <DescriptionIcon sx={{ fontSize: 48, mb: 1, opacity: 0.5 }} />
                   <Typography variant="body2">
-                    {messages.length === 0 
-                      ? "Send a message to see relevant files" 
+                    {messages.length === 0
+                      ? "Send a message to see relevant files"
                       : "No files used yet"}
                   </Typography>
                 </Box>
@@ -562,13 +562,13 @@ export const SearchView: React.FC<SearchViewProps> = ({
         open={Boolean(settingsAnchorEl)}
         onClose={handleSettingsClose}
       >
-        <MenuItem 
+        <MenuItem
           onClick={() => handleModelChange('mistral')}
           selected={selectedModel === 'mistral'}
         >
           Mistral
         </MenuItem>
-        <MenuItem 
+        <MenuItem
           onClick={() => handleModelChange('deepseek')}
           selected={selectedModel === 'deepseek'}
         >
@@ -582,8 +582,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
         file={selectedFile}
         containerId={selectedContainer?.id || ''}
         allFiles={files}
-        onFileUpdated={() => {}}
-        onFileDeleted={() => {}}
+        onFileUpdated={() => { }}
+        onFileDeleted={() => { }}
       />
     </Box>
   );

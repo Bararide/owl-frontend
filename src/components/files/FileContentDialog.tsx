@@ -1,3 +1,4 @@
+// FileContentDialog.tsx
 import React, {
   useState,
   useEffect,
@@ -13,7 +14,6 @@ import {
   Chip,
   CircularProgress,
   Tooltip,
-  Alert,
   Paper,
   Menu,
   MenuItem,
@@ -38,7 +38,6 @@ import {
   Edit as EditIcon,
   Save as SaveIcon,
   Delete as DeleteIcon,
-  Clear as ClearIcon,
   NavigateNext as NavigateNextIcon,
   NavigateBefore as NavigateBeforeIcon,
   Code as CodeIcon,
@@ -65,15 +64,15 @@ import type { FileContentDialogProps, SearchMatch } from "./types";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 const isMarkdownFile = (filename: string): boolean => {
-  return filename.endsWith('.md') || 
-         filename.endsWith('.markdown') || 
-         filename.endsWith('.mdown') ||
-         filename.endsWith('.mkd');
+  return filename.endsWith('.md') ||
+    filename.endsWith('.markdown') ||
+    filename.endsWith('.mdown') ||
+    filename.endsWith('.mkd');
 };
 
 const isLatexFile = (filename: string): boolean => {
-  return filename.endsWith('.tex') || 
-         filename.endsWith('.latex');
+  return filename.endsWith('.tex') ||
+    filename.endsWith('.latex');
 };
 
 const shouldRenderAsMarkdown = (filename: string, mimeType: string, content?: string): boolean => {
@@ -82,23 +81,41 @@ const shouldRenderAsMarkdown = (filename: string, mimeType: string, content?: st
   return false;
 };
 
+const extractFileNumber = (filename: string): number => {
+  const match = filename.match(/_(\d+)\.(md|markdown|mdown|mkd)$/);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+  const lastNumberMatch = filename.match(/(\d+)(?=[^0-9]*$)/);
+  if (lastNumberMatch) {
+    return parseInt(lastNumberMatch[1], 10);
+  }
+  return 0;
+};
+
+const sortFilesByNumber = (files: ApiFile[]): ApiFile[] => {
+  return [...files].sort((a, b) => {
+    const numA = extractFileNumber(a.name);
+    const numB = extractFileNumber(b.name);
+    return numA - numB;
+  });
+};
+
 export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   open,
   onClose,
   file,
   containerId,
-  allFiles,
+  allFiles = [],
   onFileUpdated,
   onFileDeleted,
+  onFileChange,
   searchQuery: initialSearchQuery = "",
-  currentFileIndex = 0,
-  totalFiles = 0,
-  onNextFile,
-  onPrevFile,
   containerGroups = [],
   onAddToGroup,
   onRemoveFromGroup,
 }) => {
+
   const { data, isLoading, error, refetch } = useFileContent(
     containerId,
     file?.name || "",
@@ -127,6 +144,47 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
   const [showSearchBar, setShowSearchBar] = useState(false);
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const sortedFiles = useMemo(() => {
+    if (!allFiles || allFiles.length === 0) return [];
+    return sortFilesByNumber(allFiles);
+  }, [allFiles]);
+
+  const currentSortedIndex = useMemo(() => {
+    if (!file || sortedFiles.length === 0) return -1;
+    return sortedFiles.findIndex(f => f.name === file.name);
+  }, [file, sortedFiles]);
+
+  const currentFileNumber = useMemo(() => {
+    if (!file) return 0;
+    return extractFileNumber(file.name);
+  }, [file]);
+
+  const handleNextFile = useCallback(() => {
+    if (currentSortedIndex !== -1 && currentSortedIndex < sortedFiles.length - 1) {
+      const nextFile = sortedFiles[currentSortedIndex + 1];
+      if (nextFile && onFileUpdated) {
+        // Вызываем onFileUpdated без аргументов, а обновление файла делаем через проп
+        onFileUpdated();
+        // Нужен отдельный проп для смены файла
+        if (onFileChange) {
+          onFileChange(nextFile);
+        }
+      }
+    }
+  }, [sortedFiles, currentSortedIndex, onFileUpdated, onFileChange]);
+
+  const handlePrevFile = useCallback(() => {
+    if (currentSortedIndex !== -1 && currentSortedIndex > 0) {
+      const prevFile = sortedFiles[currentSortedIndex - 1];
+      if (prevFile && onFileUpdated) {
+        onFileUpdated();
+        if (onFileChange) {
+          onFileChange(prevFile);
+        }
+      }
+    }
+  }, [sortedFiles, currentSortedIndex, onFileUpdated, onFileChange]);
   const isTextFile =
     file?.mime_type?.startsWith("text/") ||
     file?.mime_type === "application/json";
@@ -554,30 +612,35 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
           </Box>
 
           <Box sx={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
-            <Box sx={{ 
-              width: 56, 
-              borderRight: "1px solid rgba(255,255,255,0.08)", 
-              bgcolor: "rgba(0,0,0,0.3)", 
-              display: "flex", 
-              flexDirection: "column", 
-              alignItems: "center", 
-              py: 2, 
-              gap: 1, 
+            <Box sx={{
+              width: 56,
+              borderRight: "1px solid rgba(255,255,255,0.08)",
+              bgcolor: "rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              py: 2,
+              gap: 1,
               flexShrink: 0,
               overflowY: "auto"
             }}>
-              {totalFiles > 1 && (
+              {sortedFiles.length > 1 && (
                 <>
                   <Tooltip title="Previous file" placement="right">
-                    <IconButton onClick={onPrevFile} size="small" sx={{ color: "rgba(255,255,255,0.7)" }}>
+                    <IconButton onClick={handlePrevFile} size="small" sx={{ color: "rgba(255,255,255,0.7)" }}>
                       <ChevronLeftIcon />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Next file" placement="right">
-                    <IconButton onClick={onNextFile} size="small" sx={{ color: "rgba(255,255,255,0.7)" }}>
+                    <IconButton onClick={handleNextFile} size="small" sx={{ color: "rgba(255,255,255,0.7)" }}>
                       <ChevronRightIcon />
                     </IconButton>
                   </Tooltip>
+                  {currentFileNumber > 0 && (
+                    <Typography variant="caption" sx={{ mt: 0.5, color: "rgba(255,255,255,0.5)", fontSize: "10px" }}>
+                      #{currentFileNumber}
+                    </Typography>
+                  )}
                   <Divider sx={{ width: 32, my: 1, bgcolor: "rgba(255,255,255,0.1)" }} />
                 </>
               )}
@@ -587,7 +650,7 @@ export const FileContentDialog: React.FC<FileContentDialogProps> = ({
                   <EditIcon />
                 </IconButton>
               </Tooltip>
-              
+
               {isTextFile && !isEditing && (
                 <Tooltip title="Search (Ctrl+F)" placement="right">
                   <IconButton onClick={() => setShowSearchBar(true)} size="small" sx={{ color: showSearchBar ? "#ff9800" : "rgba(255,255,255,0.7)" }}>

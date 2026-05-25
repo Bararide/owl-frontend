@@ -471,13 +471,15 @@ export default function FilesView({ containerId }: { containerId: string }) {
         file={fileContentDialog.file}
         containerId={containerId}
         allFiles={files}
-        onFileUpdated={refetchFiles}
-        onFileDeleted={refetchFiles}
+        onFileUpdated={() => refetchFiles()}
+        onFileDeleted={() => refetchFiles()}
+        onFileChange={(newFile) => {
+          setFileContentDialog(prev => ({
+            ...prev,
+            file: newFile,
+          }));
+        }}
         searchQuery={searchQuery}
-        currentFileIndex={fileContentDialog.currentIndex}
-        totalFiles={currentFilesList.length}
-        onNextFile={handleNextFile}
-        onPrevFile={handlePrevFile}
         containerGroups={groups}
         onAddToGroup={handleAddToGroup}
         onRemoveFromGroup={handleRemoveFromGroup}

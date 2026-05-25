@@ -16,11 +16,8 @@ export interface FileContentDialogProps {
   allFiles: ApiFile[];
   onFileUpdated?: () => void;
   onFileDeleted?: () => void;
+  onFileChange?: (file: ApiFile) => void;
   searchQuery?: string;
-  currentFileIndex?: number;
-  totalFiles?: number;
-  onNextFile?: () => void;
-  onPrevFile?: () => void;
   containerGroups?: Group[];
   onAddToGroup?: (groupId: string, fileId: string) => void;
   onRemoveFromGroup?: (groupId: string, fileId: string) => void;
