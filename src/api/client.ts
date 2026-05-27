@@ -420,6 +420,33 @@ class ApiClient {
     return response.data.data;
   }
 
+  async adminLogin(
+    email: string,
+    password: string,
+  ): Promise<{ access_token: string; user: User }> {
+    const response = await this.client.post<{
+      access_token: string;
+      token_type: string;
+      user: User;
+      expires_in: number;
+    }>("/api/admin/login", { email, password });
+
+    this.setToken(response.data.access_token);
+
+    return {
+      access_token: response.data.access_token,
+      user: response.data.user,
+    };
+  }
+
+  async verifyAdminToken(): Promise<{ valid: boolean; user: User }> {
+    const response = await this.client.get<{ valid: boolean; user: User }>(
+      "/api/admin/verify",
+      { headers: this.getAuthHeaders() },
+    );
+    return response.data;
+  }
+
   async getContainers(): Promise<Container[]> {
     const response = await this.client.get<{ data: Container[] }>(
       "/containers",

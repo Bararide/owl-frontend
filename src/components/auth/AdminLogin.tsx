@@ -1,4 +1,3 @@
-// AdminLogin.tsx
 import React, { useState } from 'react';
 import {
   Box,
@@ -15,22 +14,15 @@ import {
 import {
   AdminPanelSettings as AdminIcon,
   Visibility as VisibilityIcon,
-  VisibilityOff as VisibilityOffIcon
+  VisibilityOff as VisibilityOffIcon,
+  ArrowBack as ArrowBackIcon
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 
-// Изменяем тип onLogin - теперь он принимает email и password
 interface AdminLoginProps {
-  onLogin: (email: string, password: string) => Promise<void>; // или просто void
+  onLogin: (email: string, password: string) => Promise<void>;
   isLoading?: boolean;
   error?: string;
-}
-
-export interface AdminUserData {
-  id: number;
-  username: string;
-  email: string;
-  role: string;
-  permissions: string[];
 }
 
 export const AdminLogin: React.FC<AdminLoginProps> = ({ 
@@ -42,6 +34,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState('');
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,7 +60,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
       return;
     }
 
-    // Теперь передаём email и password
     await onLogin(email, password);
   };
 
@@ -79,20 +71,20 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
         minHeight: '100vh',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+        justifyContent: 'center'
       }}
     >
       <Paper
-        elevation={24}
+        elevation={8}
         sx={{
           p: 4,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          background: 'rgba(255, 255, 255, 0.95)',
+          background: 'rgba(255, 255, 255, 0.05)',
           backdropFilter: 'blur(10px)',
-          borderRadius: 4,
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: 2,
           width: '100%'
         }}
       >
@@ -101,28 +93,36 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
             display: 'flex',
             alignItems: 'center',
             mb: 3,
-            p: 2,
-            borderRadius: '50%',
-            bgcolor: 'rgba(103, 126, 234, 0.1)'
+            width: '100%',
+            justifyContent: 'center',
+            position: 'relative'
           }}
         >
-          <AdminIcon sx={{ fontSize: 48, color: '#667eea' }} />
+          <IconButton
+            onClick={() => navigate('/login')}
+            sx={{
+              position: 'absolute',
+              left: 0,
+              color: 'rgba(255, 255, 255, 0.7)',
+              '&:hover': {
+                color: 'white'
+              }
+            }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
+          <AdminIcon sx={{ fontSize: 32, mr: 1, color: 'primary.main' }} />
+          <Typography component="h1" variant="h4" color="white">
+            Admin Access
+          </Typography>
         </Box>
 
-        <Typography component="h1" variant="h4" color="text.primary" gutterBottom>
-          Admin Portal
-        </Typography>
-
         <Typography variant="body1" color="text.secondary" textAlign="center" mb={3}>
-          Enter your administrator credentials to access the dashboard
+          Enter your administrator credentials
         </Typography>
 
         {(error || localError) && (
-          <Alert 
-            severity="error" 
-            sx={{ width: '100%', mb: 2, borderRadius: 2 }}
-            onClose={() => setLocalError('')}
-          >
+          <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
             {error || localError}
           </Alert>
         )}
@@ -141,10 +141,19 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
             autoFocus
             sx={{
               '& .MuiOutlinedInput-root': {
-                borderRadius: 2,
-                '&:hover fieldset': {
-                  borderColor: '#667eea',
+                color: 'white',
+                '& fieldset': {
+                  borderColor: 'rgba(255, 255, 255, 0.3)',
                 },
+                '&:hover fieldset': {
+                  borderColor: 'rgba(255, 255, 255, 0.5)',
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: 'primary.main',
+                },
+              },
+              '& .MuiInputLabel-root': {
+                color: 'rgba(255, 255, 255, 0.7)',
               },
             }}
           />
@@ -166,6 +175,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                     aria-label="toggle password visibility"
                     onClick={() => setShowPassword(!showPassword)}
                     edge="end"
+                    sx={{ color: 'rgba(255, 255, 255, 0.7)' }}
                   >
                     {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
                   </IconButton>
@@ -174,10 +184,19 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
             }}
             sx={{
               '& .MuiOutlinedInput-root': {
-                borderRadius: 2,
-                '&:hover fieldset': {
-                  borderColor: '#667eea',
+                color: 'white',
+                '& fieldset': {
+                  borderColor: 'rgba(255, 255, 255, 0.3)',
                 },
+                '&:hover fieldset': {
+                  borderColor: 'rgba(255, 255, 255, 0.5)',
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: 'primary.main',
+                },
+              },
+              '& .MuiInputLabel-root': {
+                color: 'rgba(255, 255, 255, 0.7)',
               },
             }}
           />
@@ -191,22 +210,17 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
               mt: 3,
               mb: 2,
               py: 1.5,
-              fontSize: '1.1rem',
-              borderRadius: 2,
-              background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
-              '&:hover': {
-                background: 'linear-gradient(45deg, #5a67d8 30%, #6b46a0 90%)',
-              },
+              fontSize: '1.1rem'
             }}
           >
             {isLoading ? (
               <CircularProgress size={24} color="inherit" />
             ) : (
-              'Sign In to Admin Panel'
+              'Sign In as Admin'
             )}
           </Button>
 
-          <Box sx={{ mt: 3, textAlign: 'center' }}>
+          <Box sx={{ mt: 2, textAlign: 'center' }}>
             <Typography variant="caption" color="text.secondary">
               This area is restricted to authorized administrators only
             </Typography>

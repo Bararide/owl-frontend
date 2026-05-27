@@ -1,3 +1,4 @@
+// App.tsx (обновленная версия)
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -110,32 +111,21 @@ const AppContent: React.FC = () => {
     setAuthLoading(true);
     setAuthError('');
     try {
-      const response = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
+      const { access_token, user: userData } = await apiClient.adminLogin(email, password);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Admin login failed');
-      }
-
-      apiClient.setToken(data.access_token);
-      const userData = {
-        id: data.user.id,
-        name: data.user.username,
-        email: data.user.email,
-        role: data.user.role
+      const finalUser = {
+        id: userData.id,
+        name: userData.name,
+        email: userData.email,
+        role: userData.role
       };
 
-      setUser(userData);
+      setUser(finalUser);
       setIsAuthenticated(true);
-      localStorage.setItem('auth_token', data.access_token);
+      localStorage.setItem('auth_token', access_token);
       navigate('/admin');
     } catch (error: any) {
-      setAuthError(error?.message || 'Admin login failed');
+      setAuthError(error?.response?.data?.detail || error?.message || 'Admin login failed');
       apiClient.setToken('');
       localStorage.removeItem('auth_token');
     } finally {
