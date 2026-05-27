@@ -202,7 +202,7 @@ const AppContent: React.FC = () => {
 
       <Route path="/admin" element={
         <ProtectedRoute isAuthenticated={isAuthenticated} userRole={user?.role} allowedRoles={['admin', 'super_admin']}>
-          <AdminDashboard user={user} />
+          {user ? <AdminDashboard user={user} /> : <CircularProgress />}
         </ProtectedRoute>
       } />
 
