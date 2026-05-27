@@ -429,7 +429,7 @@ class ApiClient {
       token_type: string;
       user: User;
       expires_in: number;
-    }>("/api/admin/login", { email, password });
+    }>("/admin/login", { email, password });
 
     this.setToken(response.data.access_token);
 
@@ -441,7 +441,7 @@ class ApiClient {
 
   async verifyAdminToken(): Promise<{ valid: boolean; user: User }> {
     const response = await this.client.get<{ valid: boolean; user: User }>(
-      "/api/admin/verify",
+      "/admin/verify",
       { headers: this.getAuthHeaders() },
     );
     return response.data;
