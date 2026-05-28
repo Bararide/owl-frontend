@@ -1,4 +1,3 @@
-// views/admin/AdminDashboard.tsx
 import React, { useState } from 'react';
 import {
     Box,
@@ -6,18 +5,14 @@ import {
     Grid,
     Drawer,
     List,
-    ListItem,
     ListItemText,
     ListItemAvatar,
     Avatar,
     Chip,
     Divider,
     IconButton,
-    Tooltip,
-    Badge,
     Collapse,
     Paper,
-    Stack,
     LinearProgress,
     Card,
     CardContent,
@@ -31,26 +26,17 @@ import {
     Speed as SpeedIcon,
     ExpandLess,
     ExpandMore,
-    FolderSpecial as FolderIcon,
-    Assignment as AssignmentIcon,
     AdminPanelSettings as AdminIcon,
-    Security as SecurityIcon,
     ChevronLeft as ChevronLeftIcon,
     ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 
-// Используем существующие хуки
-import { useContainers, useContainerGroups } from '../../hooks/useApi';
+import { useAllContainersForAdmin, useAllUsers } from '../../hooks/useApi';
 import { ContainerCard } from '../../components/containers/ContainerCard';
 import type { User, Container } from '../../api/client';
 
 interface AdminDashboardProps {
     user: User;
-}
-
-interface UserWithDetails extends User {
-    containers?: Container[];
-    groups?: string[];
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
@@ -59,26 +45,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
     const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
 
-    // Получаем все контейнеры
-    const { data: containers = [], isLoading: containersLoading, refetch: refetchContainers } = useContainers();
+    const { data: containers = [], isLoading: containersLoading } = useAllContainersForAdmin();
+    const { data: usersList = [], isLoading: usersLoading } = useAllUsers();
 
-    // Группируем контейнеры по пользователям
-    const containersByUser = containers.reduce((acc, container) => {
-        const userId = container.user_id;
-        if (!acc[userId]) {
-            acc[userId] = [];
-        }
-        acc[userId].push(container);
-        return acc;
-    }, {} as Record<string, Container[]>);
-
-    // Получаем список уникальных пользователей из контейнеров
-    const users = Object.keys(containersByUser).map(userId => ({
-        id: userId,
-        name: userId, // TODO: получить реальное имя пользователя из API
-        email: `${userId}@example.com`,
-        role: userId === user.id ? user.role : 'user',
-        containers: containersByUser[userId] || [],
+    const users = usersList.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        containers: containers.filter(c => c.user_id === u.id),
     }));
 
     const toggleDrawer = () => setDrawerOpen(!drawerOpen);
@@ -96,24 +71,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     };
 
     const handleContainerAction = async (action: string, container: Container) => {
-        // TODO: реализовать действия с контейнерами
         console.log('Action:', action, container);
     };
 
     const handleContainerSelect = (container: Container) => {
-        // TODO: навигация к файлам контейнера
         console.log('Select container:', container);
     };
 
-    // Статистика
     const totalContainers = containers.length;
     const runningContainers = containers.filter(c => c.status === 'running').length;
     const totalStorage = containers.reduce((sum, c) => sum + c.storage_quota, 0);
     const totalMemory = containers.reduce((sum, c) => sum + c.memory_limit, 0);
 
+    if (usersLoading || containersLoading) {
+        return (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+                <LinearProgress />
+            </Box>
+        );
+    }
+
     return (
         <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-            {/* Левая панель - пользователи */}
             <Drawer
                 variant="permanent"
                 anchor="left"
@@ -264,7 +243,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             </Drawer>
 
             <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
-                {/* Статистика */}
                 <Grid container spacing={3} sx={{ mb: 4 }}>
                     <Grid>
                         <Card sx={{ bgcolor: 'rgba(18, 22, 40, 0.8)', backdropFilter: 'blur(10px)' }}>
@@ -327,29 +305,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                     </Grid>
                 </Grid>
 
-                {/* Список контейнеров */}
                 <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
                     All Containers
                     <Chip label={totalContainers} size="small" sx={{ ml: 2 }} />
                 </Typography>
 
-                {containersLoading ? (
-                    <LinearProgress />
-                ) : (
-                    <Grid container spacing={3}>
-                        {containers.map((container) => (
-                            <Grid key={container.id}>
-                                <ContainerCard
-                                    container={container}
-                                    onSelect={handleContainerSelect}
-                                    onAction={handleContainerAction}
-                                />
-                            </Grid>
-                        ))}
-                    </Grid>
-                )}
+                <Grid container spacing={3}>
+                    {containers.map((container) => (
+                        <Grid key={container.id}>
+                            <ContainerCard
+                                container={container}
+                                onSelect={handleContainerSelect}
+                                onAction={handleContainerAction}
+                            />
+                        </Grid>
+                    ))}
+                </Grid>
 
-                {containers.length === 0 && !containersLoading && (
+                {containers.length === 0 && (
                     <Box sx={{ textAlign: 'center', py: 8 }}>
                         <StorageIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
                         <Typography variant="h6" color="text.secondary">

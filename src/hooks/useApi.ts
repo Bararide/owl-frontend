@@ -19,6 +19,20 @@ export const useContainers = () => {
   });
 };
 
+export const useAllContainersForAdmin = () => {
+  return useQuery({
+    queryKey: ["all-containers"],
+    queryFn: () => apiClient.getAllContainersForAdmin(),
+  });
+};
+
+export const useAllUsers = () => {
+  return useQuery({
+    queryKey: ["all-users"],
+    queryFn: () => apiClient.getAllUsers(),
+  });
+};
+
 export const useContainer = (containerId: string) => {
   return useQuery({
     queryKey: ["containers", containerId],

@@ -401,6 +401,23 @@ class ApiClient {
     return response.data.data;
   }
 
+  async getAllContainersForAdmin(): Promise<Container[]> {
+    const response = await this.client.get<{ data: Container[] }>(
+      "/containers/admin/all",
+      {
+        headers: this.getAuthHeaders(),
+      },
+    );
+    return response.data.data;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    const response = await this.client.get<{ data: User[] }>("/admin/users", {
+      headers: this.getAuthHeaders(),
+    });
+    return response.data.data;
+  }
+
   async getUser(): Promise<User> {
     const response = await this.client.get<{ data: User }>("/auth/user", {
       headers: this.getAuthHeaders(),
