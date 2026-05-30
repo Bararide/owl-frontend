@@ -473,18 +473,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
                             <Collapse in={expandedUsers.has(u.id) && drawerOpen} timeout="auto" unmountOnExit>
                                 <Box sx={{ pl: 7, pr: 2, py: 1 }}>
-                                    <Paper elevation={0} sx={{ p: 1.5, mb: 1.5, background: 'rgba(255,255,255,0.04)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.06)' }}>
-                                        <Box sx={{ display: 'flex', gap: 2 }}>
-                                            <Box>
-                                                <Typography variant="caption" color="text.secondary">Хранилище</Typography>
-                                                <Typography variant="body2" fontWeight="600">{formatBytes(u.totalStorage)}</Typography>
-                                            </Box>
-                                            <Box>
-                                                <Typography variant="caption" color="text.secondary">Память</Typography>
-                                                <Typography variant="body2" fontWeight="600">{formatBytes(u.totalMemory)}</Typography>
-                                            </Box>
-                                        </Box>
-                                    </Paper>
                                     <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block', fontWeight: 500 }}>Контейнеры ({u.containers?.length || 0})</Typography>
                                     {u.containers?.map((container) => (
                                         <Paper key={container.id} elevation={0} sx={{ p: 1.5, mb: 1, background: 'rgba(255,255,255,0.03)', borderRadius: 2, cursor: 'pointer', border: '1px solid transparent', transition: 'all 0.2s', '&:hover': { background: 'rgba(255,255,255,0.08)', borderColor: 'rgba(103, 126, 234, 0.3)' } }} onClick={() => handleContainerSelect(container)}>
