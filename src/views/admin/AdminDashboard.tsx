@@ -29,6 +29,10 @@ import {
     Alert,
     Stack,
     useMediaQuery,
+    TextField,
+    FormControl,
+    Select,
+    MenuItem,
 } from '@mui/material';
 import {
     People as PeopleIcon,
@@ -48,6 +52,9 @@ import {
     GraphicEq as GpuIcon,
     Refresh as RefreshIcon,
     Info as InfoIcon,
+    Search as SearchIcon,
+    Download as DownloadIcon,
+    Delete as DeleteIcon,
 } from '@mui/icons-material';
 import {
     LineChart,
@@ -62,10 +69,10 @@ import {
     Legend,
 } from 'recharts';
 
-import { useAllContainersForAdmin, useAllUsers } from '../../hooks/useApi';
+import { useAllContainersForAdmin, useAllUsers, useFiles } from '../../hooks/useApi';
 import { ContainerCard } from '../../components/containers/ContainerCard';
 import { apiClient } from '../../api/client';
-import type { User, Container, Group, GroupStats } from '../../api/client';
+import type { User, Container, Group, GroupStats, ApiFile } from '../../api/client';
 
 interface AdminDashboardProps {
     user: User;
@@ -97,7 +104,7 @@ interface EnrichedUser {
     name: string;
     email: string;
     role: string;
-    tg_id: string;
+    tg_id?: string | number;
     is_active: boolean;
     containers: Container[];
     totalStorage: number;
@@ -120,14 +127,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const [activeTab, setActiveTab] = useState(0);
     const [autoRefresh, setAutoRefresh] = useState(true);
     
+    const [fileSearchQuery, setFileSearchQuery] = useState('');
+    const [selectedFileGroup, setSelectedFileGroup] = useState<string>('all');
+    const [viewingFile, setViewingFile] = useState<ApiFile | null>(null);
+    const [fileContent, setFileContent] = useState<string>('');
+    const [fileContentLoading, setFileContentLoading] = useState(false);
+    
     const { data: containers = [], isLoading: containersLoading, refetch: refetchContainers } = useAllContainersForAdmin();
     const { data: usersList = [], isLoading: usersLoading } = useAllUsers();
+    const { data: files = [], isLoading: filesLoading, refetch: refetchFiles } = useFiles(selectedContainer?.id);
 
     const users = useMemo((): EnrichedUser[] => {
         return usersList.map(u => {
-            const userIdForMatch = u.tg_id || u.id;
-            
-            const userContainers = containers.filter(c => c.user_id === userIdForMatch);
+            const userIdForMatch = u.tg_id != null ? String(u.tg_id) : u.id;
+            const userContainers = containers.filter(c => String(c.user_id) === userIdForMatch);
             
             return {
                 id: u.id,
@@ -148,8 +161,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         if (users.length > 0 && containers.length > 0) {
             const usersWithContainers = new Set<string>();
             users.forEach(u => {
-                const userIdForMatch = u.tg_id || u.id;
-                const hasContainers = containers.some(c => String(c.user_id) === String(userIdForMatch));
+                const userIdForMatch = u.tg_id != null ? String(u.tg_id) : u.id;
+                const hasContainers = containers.some(c => String(c.user_id) === userIdForMatch);
                 if (hasContainers) {
                     usersWithContainers.add(u.id);
                 }
@@ -183,7 +196,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                     const groupFiles = await apiClient.getGroupFiles(group.id);
                     for (const file of groupFiles) {
                         if (!fileGroupsMap[file.name]) fileGroupsMap[file.name] = [];
-                        fileGroupsMap[file.name].push(group.id || group.id);
+                        fileGroupsMap[file.name].push(group.id);
                     }
                 } catch (e) {
                     console.warn(`Failed to load stats for group ${group.id}`, e);
@@ -246,6 +259,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         setSelectedContainer(null);
         setContainerDetails(null);
         setDetailsError(null);
+        setViewingFile(null);
+        setFileContent('');
     };
 
     const handleRefreshDetails = () => {
@@ -257,6 +272,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         if (action === 'refresh') refetchContainers();
     };
 
+    const handleFileClick = async (file: ApiFile) => {
+        if (file.mime_type.startsWith('text/') || 
+            file.mime_type.includes('json') || 
+            file.mime_type.includes('javascript') ||
+            file.mime_type.includes('python')) {
+            
+            setFileContentLoading(true);
+            try {
+                const content = await apiClient.getFileContent(selectedContainer!.id, file.name);
+                setFileContent(content.content || '');
+            } catch (error) {
+                console.error('Failed to load file content:', error);
+                setFileContent('');
+            } finally {
+                setFileContentLoading(false);
+            }
+        }
+        setViewingFile(file);
+    };
+
+    const handleDownloadFile = async (file: ApiFile) => {
+        try {
+            const blob = await apiClient.downloadFile(file.name, selectedContainer!.id);
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = file.name;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (error) {
+            console.error('Download failed:', error);
+        }
+    };
+
+    const handleDeleteFile = async (file: ApiFile) => {
+        if (!window.confirm(`Удалить файл "${file.name}"?`)) return;
+        
+        try {
+            await apiClient.deleteFile(file.name, selectedContainer!.id);
+            refetchFiles();
+            if (containerDetails) {
+                loadContainerDetails(selectedContainer!);
+            }
+        } catch (error) {
+            console.error('Delete failed:', error);
+        }
+    };
+
     const totalContainers = containers.length;
     const runningContainers = containers.filter(c => c.status === 'running').length;
     const totalStorage = containers.reduce((sum, c) => sum + (c.storage_quota || 0), 0);
@@ -264,7 +329,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const activeUsers = users.filter(u => u.runningContainers > 0).length;
 
     const chartColors = { cpu: '#ff6b6b', memory: '#4ecdc4', storage: '#45b7d1', gpu: '#f9ca24' };
-    const pieColors = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
     const formatBytes = (bytes: number): string => {
         if (bytes === 0) return '0 B';
@@ -275,6 +339,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     };
 
     const formatPercent = (value: number) => `${Math.round(value)}%`;
+
+    const getFileIcon = (mimeType: string): string => {
+        if (mimeType.includes('image')) return '🖼';
+        if (mimeType.includes('video')) return '🎬';
+        if (mimeType.includes('audio')) return '🎵';
+        if (mimeType.includes('pdf')) return '📄';
+        if (mimeType.includes('json')) return '{}';
+        if (mimeType.includes('text') || mimeType.includes('code')) return '📝';
+        if (mimeType.includes('zip') || mimeType.includes('archive')) return '📦';
+        return '📁';
+    };
+
+    const getFileColor = (mimeType: string): string => {
+        if (mimeType.includes('image')) return '#e91e63';
+        if (mimeType.includes('video')) return '#9c27b0';
+        if (mimeType.includes('audio')) return '#673ab7';
+        if (mimeType.includes('pdf')) return '#f44336';
+        if (mimeType.includes('json')) return '#ff9800';
+        if (mimeType.includes('text') || mimeType.includes('code')) return '#4caf50';
+        if (mimeType.includes('zip') || mimeType.includes('archive')) return '#795548';
+        return '#607d8b';
+    };
+
+    const filteredFiles = useMemo(() => {
+        return files.filter(file => {
+            const matchesSearch = !fileSearchQuery || 
+                file.name.toLowerCase().includes(fileSearchQuery.toLowerCase()) ||
+                file.path.toLowerCase().includes(fileSearchQuery.toLowerCase());
+            
+            const fileGroups = containerDetails?.fileGroups?.[file.name] || [];
+            const matchesGroup = selectedFileGroup === 'all' || fileGroups.includes(selectedFileGroup);
+            
+            return matchesSearch && matchesGroup;
+        });
+    }, [files, fileSearchQuery, selectedFileGroup, containerDetails?.fileGroups]);
 
     if (usersLoading || containersLoading) {
         return (
@@ -289,7 +388,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     return (
         <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: 'background.default' }}>
-            {/* Sidebar */}
             <Drawer
                 variant={isMobile ? 'temporary' : 'permanent'}
                 anchor="left"
@@ -362,7 +460,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                                 {u.runningContainers > 0 && <Chip label={`${u.runningContainers} актив.`} size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'success.main/20', color: 'success.light' }} />}
                                             </Box>
                                         </Box>
-                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            {u.containers.length > 0 && (
+                                                <Tooltip title={`${u.containers.length} контейнеров`}>
+                                                    <Chip 
+                                                        label={u.containers.length} 
+                                                        size="small" 
+                                                        sx={{ 
+                                                            height: 20, 
+                                                            minWidth: 20, 
+                                                            p: 0, 
+                                                            bgcolor: 'primary.main/20',
+                                                            color: 'primary.light',
+                                                            fontWeight: 600,
+                                                            fontSize: '0.65rem'
+                                                        }} 
+                                                    />
+                                                </Tooltip>
+                                            )}
                                             {expandedUsers.has(u.id) ? <ExpandLess sx={{ color: 'text.secondary' }} /> : <ExpandMore sx={{ color: 'text.secondary' }} />}
                                         </Box>
                                     </Box>
@@ -429,9 +544,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 </Box>
             </Drawer>
 
-            {/* Main Content */}
             <Box sx={{ flexGrow: 1, overflow: 'auto', p: { xs: 2, md: 3 } }}>
-                {/* Stats Cards - Flexbox layout instead of Grid */}
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 2, md: 3 }, mb: 4 }}>
                     {[
                         { title: 'Всего контейнеров', value: totalContainers, sub: `${runningContainers} запущено`, icon: <StorageIcon />, color: 'primary', progress: totalContainers > 0 ? (runningContainers / totalContainers) * 100 : 0 },
@@ -459,7 +572,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                     ))}
                 </Box>
 
-                {/* Section Header */}
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
                     <Box>
                         <Typography variant="h5" fontWeight={600}>Все контейнеры</Typography>
@@ -471,7 +583,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                     </Box>
                 </Box>
 
-                {/* Containers List - Flexbox layout */}
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 2, md: 3 } }}>
                     {containers.map((container) => (
                         <Box key={container.id} sx={{ 
@@ -493,7 +604,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 )}
             </Box>
 
-            {/* Container Details Modal */}
             <Dialog open={!!selectedContainer} onClose={handleCloseDetails} maxWidth="lg" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, m: { xs: 1, md: 2 } } }}>
                 {selectedContainer && (
                     <>
@@ -525,7 +635,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
                             {detailsError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDetailsError(null)}>{detailsError}</Alert>}
 
-                            {/* Tab 1: Charts */}
                             {activeTab === 0 && (
                                 <Box>
                                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3 }}>
@@ -591,7 +700,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                 </Box>
                             )}
 
-                            {/* Tab 2: Groups */}
                             {activeTab === 1 && (
                                 <Box>
                                     {containerDetails?.groups && containerDetails.groups.length > 0 ? (
@@ -629,15 +737,256 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                 </Box>
                             )}
 
-                            {/* Tab 3: Files */}
-                            {activeTab === 2 && (
+                            {activeTab === 2 && selectedContainer && (
                                 <Box>
-                                    <Alert severity="info" sx={{ mb: 2 }} icon={<FolderIcon />}><Typography variant="body2">Здесь будет отображаться список файлов контейнера с возможностью фильтрации по группам</Typography></Alert>
-                                    <Paper elevation={0} sx={{ p: 3, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)' }}><Typography color="text.secondary" sx={{ fontStyle: 'italic' }}>Загрузка списка файлов... (интеграция с API файлов)</Typography></Paper>
+                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3, alignItems: 'center' }}>
+                                        <Box sx={{ flexGrow: 1, minWidth: 200 }}>
+                                            <TextField
+                                                size="small"
+                                                placeholder="Поиск файлов..."
+                                                value={fileSearchQuery}
+                                                onChange={(e) => setFileSearchQuery(e.target.value)}
+                                                InputProps={{
+                                                    startAdornment: <SearchIcon fontSize="small" sx={{ color: 'text.secondary', mr: 1 }} />,
+                                                    sx: { bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 2 }
+                                                }}
+                                                sx={{ '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } } }}
+                                            />
+                                        </Box>
+                                        
+                                        <FormControl size="small" sx={{ minWidth: 150, bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 2 }}>
+                                            <Select
+                                                value={selectedFileGroup}
+                                                onChange={(e) => setSelectedFileGroup(e.target.value)}
+                                                displayEmpty
+                                                sx={{ 
+                                                    color: 'text.primary', 
+                                                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' },
+                                                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' }
+                                                }}
+                                            >
+                                                <MenuItem value="all">Все группы</MenuItem>
+                                                {containerDetails?.groups?.map(group => (
+                                                    <MenuItem key={group.id} value={group.id}>
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                            <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: group.color }} />
+                                                            {group.id}
+                                                        </Box>
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                        
+                                        <Tooltip title="Обновить список">
+                                            <IconButton 
+                                                onClick={() => refetchFiles()} 
+                                                disabled={filesLoading}
+                                                size="small"
+                                                sx={{ bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}
+                                            >
+                                                {filesLoading ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+                                            </IconButton>
+                                        </Tooltip>
+                                        
+                                        <Chip 
+                                            label={`${filteredFiles.length} файлов`} 
+                                            size="small" 
+                                            sx={{ bgcolor: 'primary.main/20', color: 'primary.light' }} 
+                                        />
+                                    </Box>
+
+                                    {filesLoading ? (
+                                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                                            <CircularProgress />
+                                        </Box>
+                                    ) : filteredFiles.length === 0 ? (
+                                        <Paper elevation={0} sx={{ p: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)', textAlign: 'center' }}>
+                                            <FolderIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.5, mb: 2 }} />
+                                            <Typography color="text.secondary">
+                                                {fileSearchQuery || selectedFileGroup !== 'all' ? 'Файлы не найдены по заданным фильтрам' : 'В контейнере нет файлов'}
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                                Загрузите файлы через API или интерфейс пользователя
+                                            </Typography>
+                                        </Paper>
+                                    ) : (
+                                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 500, overflow: 'auto', pr: 1 }}>
+                                            {filteredFiles.map((file) => {
+                                                const fileGroups = containerDetails?.fileGroups?.[file.name] || [];
+                                                const groupColors = containerDetails?.groups?.filter(g => fileGroups.includes(g.id)).map(g => g.color) || [];
+                                                
+                                                return (
+                                                    <Paper
+                                                        key={file.name}
+                                                        elevation={0}
+                                                        sx={{
+                                                            p: 2,
+                                                            borderRadius: 2,
+                                                            bgcolor: 'rgba(255,255,255,0.03)',
+                                                            border: '1px solid rgba(255,255,255,0.08)',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.2s',
+                                                            '&:hover': {
+                                                                bgcolor: 'rgba(255,255,255,0.06)',
+                                                                borderColor: 'rgba(103, 126, 234, 0.3)',
+                                                                transform: 'translateX(2px)'
+                                                            }
+                                                        }}
+                                                        onClick={() => handleFileClick(file)}
+                                                    >
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1 }}>
+                                                            <Box sx={{ 
+                                                                width: 40, height: 40, borderRadius: 2, 
+                                                                bgcolor: getFileColor(file.mime_type),
+                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                color: 'white', fontWeight: 600, fontSize: '0.75rem'
+                                                            }}>
+                                                                {getFileIcon(file.mime_type)}
+                                                            </Box>
+                                                            
+                                                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                                                                <Typography variant="body2" fontWeight={500} noWrap>
+                                                                    {file.name}
+                                                                </Typography>
+                                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 0.5 }}>
+                                                                    <Typography variant="caption" color="text.secondary">
+                                                                        {formatBytes(file.size)}
+                                                                    </Typography>
+                                                                    <Typography variant="caption" color="text.secondary">
+                                                                        {file.mime_type}
+                                                                    </Typography>
+                                                                    <Typography variant="caption" color="text.secondary">
+                                                                        {new Date(file.created_at).toLocaleDateString('ru-RU')}
+                                                                    </Typography>
+                                                                </Box>
+                                                            </Box>
+                                                        </Box>
+                                                        
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
+                                                            {fileGroups.slice(0, 3).map(groupId => {
+                                                                const group = containerDetails?.groups?.find(g => g.id === groupId);
+                                                                return group ? (
+                                                                    <Tooltip key={groupId} title={group.id}>
+                                                                        <Box sx={{ 
+                                                                            width: 14, height: 14, borderRadius: '50%', 
+                                                                            bgcolor: group.color, border: '2px solid rgba(0,0,0,0.3)'
+                                                                        }} />
+                                                                    </Tooltip>
+                                                                ) : null;
+                                                            })}
+                                                            {fileGroups.length > 3 && (
+                                                                <Typography variant="caption" color="text.secondary">+{fileGroups.length - 3}</Typography>
+                                                            )}
+                                                        </Box>
+                                                        
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 2 }}>
+                                                            <Tooltip title="Скачать">
+                                                                <IconButton 
+                                                                    size="small" 
+                                                                    onClick={(e) => { e.stopPropagation(); handleDownloadFile(file); }}
+                                                                    sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
+                                                                >
+                                                                    <DownloadIcon fontSize="small" />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                            <Tooltip title="Удалить">
+                                                                <IconButton 
+                                                                    size="small"
+                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteFile(file); }}
+                                                                    sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+                                                                >
+                                                                    <DeleteIcon fontSize="small" />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        </Box>
+                                                    </Paper>
+                                                );
+                                            })}
+                                        </Box>
+                                    )}
+
+                                    <Dialog
+                                        open={!!viewingFile}
+                                        onClose={() => { setViewingFile(null); setFileContent(''); }}
+                                        maxWidth="md"
+                                        fullWidth
+                                        PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', borderRadius: 3 } }}
+                                    >
+                                        {viewingFile && (
+                                            <>
+                                                <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                        <Box sx={{ 
+                                                            width: 36, height: 36, borderRadius: 2, 
+                                                            bgcolor: getFileColor(viewingFile.mime_type),
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                            color: 'white', fontWeight: 600, fontSize: '0.7rem'
+                                                        }}>
+                                                            {getFileIcon(viewingFile.mime_type)}
+                                                        </Box>
+                                                        <Box>
+                                                            <Typography variant="h6" fontWeight={600}>{viewingFile.name}</Typography>
+                                                            <Typography variant="caption" color="text.secondary">
+                                                                {formatBytes(viewingFile.size)} • {viewingFile.mime_type}
+                                                            </Typography>
+                                                        </Box>
+                                                    </Box>
+                                                    <IconButton onClick={() => { setViewingFile(null); setFileContent(''); }} size="small">
+                                                        <CloseIcon />
+                                                    </IconButton>
+                                                </DialogTitle>
+                                                
+                                                <DialogContent sx={{ pt: 2 }}>
+                                                    {fileContentLoading ? (
+                                                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                                                            <CircularProgress />
+                                                        </Box>
+                                                    ) : fileContent ? (
+                                                        <Paper 
+                                                            elevation={0} 
+                                                            sx={{ 
+                                                                p: 2, 
+                                                                borderRadius: 2, 
+                                                                bgcolor: 'rgba(0,0,0,0.2)', 
+                                                                fontFamily: 'monospace',
+                                                                fontSize: '0.85rem',
+                                                                maxHeight: 400,
+                                                                overflow: 'auto',
+                                                                whiteSpace: 'pre-wrap',
+                                                                wordBreak: 'break-word'
+                                                            }}
+                                                        >
+                                                            {fileContent}
+                                                        </Paper>
+                                                    ) : (
+                                                        <Alert severity="info">
+                                                            Содержимое файла не может быть отображено (бинарный или неподдерживаемый формат)
+                                                        </Alert>
+                                                    )}
+                                                </DialogContent>
+                                                
+                                                <DialogActions sx={{ px: 3, pb: 2 }}>
+                                                    <Button onClick={() => { setViewingFile(null); setFileContent(''); }} variant="outlined" color="inherit">
+                                                        Закрыть
+                                                    </Button>
+                                                    <Box sx={{ flexGrow: 1 }} />
+                                                    <Button 
+                                                        variant="contained" 
+                                                        startIcon={<DownloadIcon />}
+                                                        onClick={() => handleDownloadFile(viewingFile)}
+                                                    >
+                                                        Скачать
+                                                    </Button>
+                                                </DialogActions>
+                                            </>
+                                        )}
+                                    </Dialog>
                                 </Box>
                             )}
 
-                            {/* Tab 4: Info */}
                             {activeTab === 3 && (
                                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                                     <Box sx={{ flex: '1 1 calc(50% - 12px)', minWidth: { xs: '100%', md: 'calc(50% - 12px)' } }}>
