@@ -53,6 +53,7 @@ import {
     Refresh as RefreshIcon,
     Info as InfoIcon,
     Search as SearchIcon,
+    Description as DescriptionIcon,
     Download as DownloadIcon,
     Delete as DeleteIcon,
 } from '@mui/icons-material';
@@ -73,6 +74,7 @@ import { useAllContainersForAdmin, useAllUsers, useFiles } from '../../hooks/use
 import { ContainerCard } from '../../components/containers/ContainerCard';
 import { apiClient } from '../../api/client';
 import type { User, Container, Group, GroupStats, ApiFile } from '../../api/client';
+import { AdminFileViewer } from '../../components/files/AdminFileViewer';
 
 interface AdminDashboardProps {
     user: User;
@@ -115,24 +117,24 @@ interface EnrichedUser {
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-    
+
     const [drawerOpen, setDrawerOpen] = useState(!isMobile);
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
     const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
-    
+
     const [selectedContainer, setSelectedContainer] = useState<Container | null>(null);
     const [containerDetails, setContainerDetails] = useState<ContainerDetails | null>(null);
     const [detailsLoading, setDetailsLoading] = useState(false);
     const [detailsError, setDetailsError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState(0);
     const [autoRefresh, setAutoRefresh] = useState(true);
-    
+
     const [fileSearchQuery, setFileSearchQuery] = useState('');
     const [selectedFileGroup, setSelectedFileGroup] = useState<string>('all');
-    const [viewingFile, setViewingFile] = useState<ApiFile | null>(null);
     const [fileContent, setFileContent] = useState<string>('');
-    const [fileContentLoading, setFileContentLoading] = useState(false);
-    
+    const [viewingFile, setViewingFile] = useState<ApiFile | null>(null);
+    const [fileViewerOpen, setFileViewerOpen] = useState(false);
+
     const { data: containers = [], isLoading: containersLoading, refetch: refetchContainers } = useAllContainersForAdmin();
     const { data: usersList = [], isLoading: usersLoading } = useAllUsers();
     const { data: files = [], isLoading: filesLoading, refetch: refetchFiles } = useFiles(selectedContainer?.id);
@@ -141,7 +143,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         return usersList.map(u => {
             const userIdForMatch = u.tg_id != null ? String(u.tg_id) : u.id;
             const userContainers = containers.filter(c => String(c.user_id) === userIdForMatch);
-            
+
             return {
                 id: u.id,
                 name: u.name,
@@ -176,7 +178,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const loadContainerDetails = useCallback(async (container: Container) => {
         setDetailsLoading(true);
         setDetailsError(null);
-        
+
         try {
             const [stats, groups] = await Promise.allSettled([
                 apiClient.getContainerStats(container.id),
@@ -185,10 +187,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
             const statsData = stats.status === 'fulfilled' ? stats.value : null;
             const groupsData = groups.status === 'fulfilled' ? groups.value : [];
-            
+
             const groupStatsMap: Record<string, GroupStats> = {};
             const fileGroupsMap: Record<string, string[]> = {};
-            
+
             for (const group of groupsData) {
                 try {
                     const groupStats = await apiClient.getGroupStats(group.id);
@@ -240,7 +242,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     }, [autoRefresh, selectedContainer, loadContainerDetails]);
 
     const toggleDrawer = () => setDrawerOpen(!drawerOpen);
-    
+
     const toggleUserExpand = (userId: string) => {
         setExpandedUsers(prev => {
             const newSet = new Set(prev);
@@ -272,24 +274,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         if (action === 'refresh') refetchContainers();
     };
 
-    const handleFileClick = async (file: ApiFile) => {
-        if (file.mime_type.startsWith('text/') || 
-            file.mime_type.includes('json') || 
-            file.mime_type.includes('javascript') ||
-            file.mime_type.includes('python')) {
-            
-            setFileContentLoading(true);
-            try {
-                const content = await apiClient.getFileContent(selectedContainer!.id, file.name);
-                setFileContent(content.content || '');
-            } catch (error) {
-                console.error('Failed to load file content:', error);
-                setFileContent('');
-            } finally {
-                setFileContentLoading(false);
-            }
-        }
+    const handleFileClick = (file: ApiFile) => {
         setViewingFile(file);
+        setFileViewerOpen(true);
     };
 
     const handleDownloadFile = async (file: ApiFile) => {
@@ -310,7 +297,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     const handleDeleteFile = async (file: ApiFile) => {
         if (!window.confirm(`Удалить файл "${file.name}"?`)) return;
-        
+
         try {
             await apiClient.deleteFile(file.name, selectedContainer!.id);
             refetchFiles();
@@ -364,13 +351,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     const filteredFiles = useMemo(() => {
         return files.filter(file => {
-            const matchesSearch = !fileSearchQuery || 
+            const matchesSearch = !fileSearchQuery ||
                 file.name.toLowerCase().includes(fileSearchQuery.toLowerCase()) ||
                 file.path.toLowerCase().includes(fileSearchQuery.toLowerCase());
-            
+
             const fileGroups = containerDetails?.fileGroups?.[file.name] || [];
             const matchesGroup = selectedFileGroup === 'all' || fileGroups.includes(selectedFileGroup);
-            
+
             return matchesSearch && matchesGroup;
         });
     }, [files, fileSearchQuery, selectedFileGroup, containerDetails?.fileGroups]);
@@ -463,18 +450,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                             {u.containers.length > 0 && (
                                                 <Tooltip title={`${u.containers.length} контейнеров`}>
-                                                    <Chip 
-                                                        label={u.containers.length} 
-                                                        size="small" 
-                                                        sx={{ 
-                                                            height: 20, 
-                                                            minWidth: 20, 
-                                                            p: 0, 
+                                                    <Chip
+                                                        label={u.containers.length}
+                                                        size="small"
+                                                        sx={{
+                                                            height: 20,
+                                                            minWidth: 20,
+                                                            p: 0,
                                                             bgcolor: 'primary.main/20',
                                                             color: 'primary.light',
                                                             fontWeight: 600,
                                                             fontSize: '0.65rem'
-                                                        }} 
+                                                        }}
                                                     />
                                                 </Tooltip>
                                             )}
@@ -548,12 +535,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 2, md: 3 }, mb: 4 }}>
                     {[
                         { title: 'Всего контейнеров', value: totalContainers, sub: `${runningContainers} запущено`, icon: <StorageIcon />, color: 'primary', progress: totalContainers > 0 ? (runningContainers / totalContainers) * 100 : 0 },
-                        { title: 'Общее хранилище', value: `${(totalStorage / 1024 / 1024).toFixed(1)} GB`, sub: 'выделено', icon: <MemoryIcon />, color: 'info', progress: Math.min(100, (totalStorage / (1024*1024*100)) * 100) },
-                        { title: 'Общая память', value: `${(totalMemory / 1024 / 1024).toFixed(1)} GB`, sub: 'аллоцировано', icon: <SpeedIcon />, color: 'warning', progress: Math.min(100, (totalMemory / (1024*1024*64)) * 100) },
+                        { title: 'Общее хранилище', value: `${(totalStorage / 1024 / 1024).toFixed(1)} GB`, sub: 'выделено', icon: <MemoryIcon />, color: 'info', progress: Math.min(100, (totalStorage / (1024 * 1024 * 100)) * 100) },
+                        { title: 'Общая память', value: `${(totalMemory / 1024 / 1024).toFixed(1)} GB`, sub: 'аллоцировано', icon: <SpeedIcon />, color: 'warning', progress: Math.min(100, (totalMemory / (1024 * 1024 * 64)) * 100) },
                         { title: 'Активные пользователи', value: activeUsers, sub: `из ${users.length} всего`, icon: <PeopleIcon />, color: 'success', progress: users.length > 0 ? (activeUsers / users.length) * 100 : 0 },
                     ].map((stat, index) => (
-                        <Box key={index} sx={{ 
-                            flex: '1 1 calc(25% - 12px)', 
+                        <Box key={index} sx={{
+                            flex: '1 1 calc(25% - 12px)',
                             minWidth: { xs: '100%', sm: 'calc(50% - 12px)', lg: 'calc(25% - 12px)' },
                             maxWidth: { lg: 'calc(25% - 12px)' }
                         }}>
@@ -585,8 +572,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 2, md: 3 } }}>
                     {containers.map((container) => (
-                        <Box key={container.id} sx={{ 
-                            flex: '1 1 calc(33.333% - 16px)', 
+                        <Box key={container.id} sx={{
+                            flex: '1 1 calc(33.333% - 16px)',
                             minWidth: { xs: '100%', sm: 'calc(50% - 12px)', md: 'calc(33.333% - 16px)', xl: 'calc(25% - 18px)' },
                             maxWidth: { xl: 'calc(25% - 18px)' }
                         }}>
@@ -662,8 +649,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                                     <ResponsiveContainer width="100%" height="100%">
                                                         <AreaChart data={containerDetails?.history || []}>
                                                             <defs>
-                                                                <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={chartColors.cpu} stopOpacity={0.3}/><stop offset="95%" stopColor={chartColors.cpu} stopOpacity={0}/></linearGradient>
-                                                                <linearGradient id="memGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={chartColors.memory} stopOpacity={0.3}/><stop offset="95%" stopColor={chartColors.memory} stopOpacity={0}/></linearGradient>
+                                                                <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={chartColors.cpu} stopOpacity={0.3} /><stop offset="95%" stopColor={chartColors.cpu} stopOpacity={0} /></linearGradient>
+                                                                <linearGradient id="memGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={chartColors.memory} stopOpacity={0.3} /><stop offset="95%" stopColor={chartColors.memory} stopOpacity={0} /></linearGradient>
                                                             </defs>
                                                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                                                             <XAxis dataKey="time" stroke="rgba(255,255,255,0.5)" fontSize={10} />
@@ -686,7 +673,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                                                             <XAxis dataKey="time" stroke="rgba(255,255,255,0.5)" fontSize={10} />
                                                             <YAxis yAxisId="left" stroke={chartColors.gpu} fontSize={10} tickFormatter={(v) => `${v}%`} />
-                                                            <YAxis yAxisId="right" orientation="right" stroke={chartColors.storage} fontSize={10} tickFormatter={(v) => `${(v/1024).toFixed(0)}GB`} />
+                                                            <YAxis yAxisId="right" orientation="right" stroke={chartColors.storage} fontSize={10} tickFormatter={(v) => `${(v / 1024).toFixed(0)}GB`} />
                                                             <RechartsTooltip contentStyle={{ background: 'rgba(18, 22, 40, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }} />
                                                             <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
                                                             <Line yAxisId="left" type="monotone" dataKey="gpu" name="GPU %" stroke={chartColors.gpu} strokeWidth={2} dot={false} />
@@ -741,249 +728,98 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                 <Box>
                                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3, alignItems: 'center' }}>
                                         <Box sx={{ flexGrow: 1, minWidth: 200 }}>
-                                            <TextField
-                                                size="small"
-                                                placeholder="Поиск файлов..."
-                                                value={fileSearchQuery}
+                                            <TextField size="small" placeholder="Поиск файлов..." value={fileSearchQuery}
                                                 onChange={(e) => setFileSearchQuery(e.target.value)}
                                                 InputProps={{
                                                     startAdornment: <SearchIcon fontSize="small" sx={{ color: 'text.secondary', mr: 1 }} />,
                                                     sx: { bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 2 }
                                                 }}
-                                                sx={{ '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } } }}
-                                            />
+                                                sx={{ '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } } }} />
                                         </Box>
-                                        
                                         <FormControl size="small" sx={{ minWidth: 150, bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 2 }}>
-                                            <Select
-                                                value={selectedFileGroup}
-                                                onChange={(e) => setSelectedFileGroup(e.target.value)}
-                                                displayEmpty
-                                                sx={{ 
-                                                    color: 'text.primary', 
-                                                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' },
-                                                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' }
-                                                }}
-                                            >
+                                            <Select value={selectedFileGroup} onChange={(e) => setSelectedFileGroup(e.target.value)} displayEmpty
+                                                sx={{ color: 'text.primary', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' } }}>
                                                 <MenuItem value="all">Все группы</MenuItem>
                                                 {containerDetails?.groups?.map(group => (
                                                     <MenuItem key={group.id} value={group.id}>
                                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                            <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: group.color }} />
-                                                            {group.id}
+                                                            <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: group.color }} />{group.id}
                                                         </Box>
                                                     </MenuItem>
                                                 ))}
                                             </Select>
                                         </FormControl>
-                                        
                                         <Tooltip title="Обновить список">
-                                            <IconButton 
-                                                onClick={() => refetchFiles()} 
-                                                disabled={filesLoading}
-                                                size="small"
-                                                sx={{ bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}
-                                            >
+                                            <IconButton onClick={() => refetchFiles()} disabled={filesLoading} size="small"
+                                                sx={{ bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}>
                                                 {filesLoading ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
                                             </IconButton>
                                         </Tooltip>
-                                        
-                                        <Chip 
-                                            label={`${filteredFiles.length} файлов`} 
-                                            size="small" 
-                                            sx={{ bgcolor: 'primary.main/20', color: 'primary.light' }} 
-                                        />
+                                        <Chip label={`${filteredFiles.length} файлов`} size="small" sx={{ bgcolor: 'primary.main/20', color: 'primary.light' }} />
                                     </Box>
 
                                     {filesLoading ? (
-                                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-                                            <CircularProgress />
-                                        </Box>
+                                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
                                     ) : filteredFiles.length === 0 ? (
                                         <Paper elevation={0} sx={{ p: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)', textAlign: 'center' }}>
                                             <FolderIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.5, mb: 2 }} />
-                                            <Typography color="text.secondary">
-                                                {fileSearchQuery || selectedFileGroup !== 'all' ? 'Файлы не найдены по заданным фильтрам' : 'В контейнере нет файлов'}
-                                            </Typography>
-                                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                                                Загрузите файлы через API или интерфейс пользователя
-                                            </Typography>
+                                            <Typography color="text.secondary">{fileSearchQuery || selectedFileGroup !== 'all' ? 'Файлы не найдены' : 'В контейнере нет файлов'}</Typography>
                                         </Paper>
                                     ) : (
                                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 500, overflow: 'auto', pr: 1 }}>
                                             {filteredFiles.map((file) => {
                                                 const fileGroups = containerDetails?.fileGroups?.[file.name] || [];
-                                                const groupColors = containerDetails?.groups?.filter(g => fileGroups.includes(g.id)).map(g => g.color) || [];
-                                                
                                                 return (
-                                                    <Paper
-                                                        key={file.name}
-                                                        elevation={0}
-                                                        sx={{
-                                                            p: 2,
-                                                            borderRadius: 2,
-                                                            bgcolor: 'rgba(255,255,255,0.03)',
-                                                            border: '1px solid rgba(255,255,255,0.08)',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            cursor: 'pointer',
-                                                            transition: 'all 0.2s',
-                                                            '&:hover': {
-                                                                bgcolor: 'rgba(255,255,255,0.06)',
-                                                                borderColor: 'rgba(103, 126, 234, 0.3)',
-                                                                transform: 'translateX(2px)'
-                                                            }
-                                                        }}
-                                                        onClick={() => handleFileClick(file)}
-                                                    >
+                                                    <Paper key={file.name} elevation={0} sx={{
+                                                        p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)',
+                                                        border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                        cursor: 'pointer', transition: 'all 0.2s', '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(103, 126, 234, 0.3)' }
+                                                    }}
+                                                        onClick={() => handleFileClick(file)}>
                                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1 }}>
-                                                            <Box sx={{ 
-                                                                width: 40, height: 40, borderRadius: 2, 
-                                                                bgcolor: getFileColor(file.mime_type),
-                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                                color: 'white', fontWeight: 600, fontSize: '0.75rem'
+                                                            <Box sx={{
+                                                                width: 40, height: 40, borderRadius: 2, bgcolor: getFileColor(file.mime_type),
+                                                                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600, fontSize: '0.75rem'
                                                             }}>
                                                                 {getFileIcon(file.mime_type)}
                                                             </Box>
-                                                            
                                                             <Box sx={{ minWidth: 0, flex: 1 }}>
-                                                                <Typography variant="body2" fontWeight={500} noWrap>
-                                                                    {file.name}
-                                                                </Typography>
+                                                                <Typography variant="body2" fontWeight={500} noWrap>{file.name}</Typography>
                                                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 0.5 }}>
-                                                                    <Typography variant="caption" color="text.secondary">
-                                                                        {formatBytes(file.size)}
-                                                                    </Typography>
-                                                                    <Typography variant="caption" color="text.secondary">
-                                                                        {file.mime_type}
-                                                                    </Typography>
-                                                                    <Typography variant="caption" color="text.secondary">
-                                                                        {new Date(file.created_at).toLocaleDateString('ru-RU')}
-                                                                    </Typography>
+                                                                    <Typography variant="caption" color="text.secondary">{formatBytes(file.size)}</Typography>
+                                                                    <Typography variant="caption" color="text.secondary">{file.mime_type}</Typography>
+                                                                    <Typography variant="caption" color="text.secondary">{new Date(file.created_at).toLocaleDateString('ru-RU')}</Typography>
                                                                 </Box>
                                                             </Box>
                                                         </Box>
-                                                        
                                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
                                                             {fileGroups.slice(0, 3).map(groupId => {
                                                                 const group = containerDetails?.groups?.find(g => g.id === groupId);
-                                                                return group ? (
-                                                                    <Tooltip key={groupId} title={group.id}>
-                                                                        <Box sx={{ 
-                                                                            width: 14, height: 14, borderRadius: '50%', 
-                                                                            bgcolor: group.color, border: '2px solid rgba(0,0,0,0.3)'
-                                                                        }} />
-                                                                    </Tooltip>
-                                                                ) : null;
+                                                                return group ? <Tooltip key={groupId} title={group.id}><Box sx={{ width: 14, height: 14, borderRadius: '50%', bgcolor: group.color, border: '2px solid rgba(0,0,0,0.3)' }} /></Tooltip> : null;
                                                             })}
-                                                            {fileGroups.length > 3 && (
-                                                                <Typography variant="caption" color="text.secondary">+{fileGroups.length - 3}</Typography>
-                                                            )}
+                                                            {fileGroups.length > 3 && <Typography variant="caption" color="text.secondary">+{fileGroups.length - 3}</Typography>}
                                                         </Box>
-                                                        
-                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 2 }}>
-                                                            <Tooltip title="Скачать">
-                                                                <IconButton 
-                                                                    size="small" 
-                                                                    onClick={(e) => { e.stopPropagation(); handleDownloadFile(file); }}
-                                                                    sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
-                                                                >
-                                                                    <DownloadIcon fontSize="small" />
-                                                                </IconButton>
-                                                            </Tooltip>
-                                                            <Tooltip title="Удалить">
-                                                                <IconButton 
-                                                                    size="small"
-                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteFile(file); }}
-                                                                    sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
-                                                                >
-                                                                    <DeleteIcon fontSize="small" />
-                                                                </IconButton>
-                                                            </Tooltip>
-                                                        </Box>
+                                                        <Tooltip title="Просмотр">
+                                                            <IconButton size="small" sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}>
+                                                                <DescriptionIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
                                                     </Paper>
                                                 );
                                             })}
                                         </Box>
                                     )}
 
-                                    <Dialog
-                                        open={!!viewingFile}
-                                        onClose={() => { setViewingFile(null); setFileContent(''); }}
-                                        maxWidth="md"
-                                        fullWidth
-                                        PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', borderRadius: 3 } }}
-                                    >
-                                        {viewingFile && (
-                                            <>
-                                                <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                                        <Box sx={{ 
-                                                            width: 36, height: 36, borderRadius: 2, 
-                                                            bgcolor: getFileColor(viewingFile.mime_type),
-                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                            color: 'white', fontWeight: 600, fontSize: '0.7rem'
-                                                        }}>
-                                                            {getFileIcon(viewingFile.mime_type)}
-                                                        </Box>
-                                                        <Box>
-                                                            <Typography variant="h6" fontWeight={600}>{viewingFile.name}</Typography>
-                                                            <Typography variant="caption" color="text.secondary">
-                                                                {formatBytes(viewingFile.size)} • {viewingFile.mime_type}
-                                                            </Typography>
-                                                        </Box>
-                                                    </Box>
-                                                    <IconButton onClick={() => { setViewingFile(null); setFileContent(''); }} size="small">
-                                                        <CloseIcon />
-                                                    </IconButton>
-                                                </DialogTitle>
-                                                
-                                                <DialogContent sx={{ pt: 2 }}>
-                                                    {fileContentLoading ? (
-                                                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                                                            <CircularProgress />
-                                                        </Box>
-                                                    ) : fileContent ? (
-                                                        <Paper 
-                                                            elevation={0} 
-                                                            sx={{ 
-                                                                p: 2, 
-                                                                borderRadius: 2, 
-                                                                bgcolor: 'rgba(0,0,0,0.2)', 
-                                                                fontFamily: 'monospace',
-                                                                fontSize: '0.85rem',
-                                                                maxHeight: 400,
-                                                                overflow: 'auto',
-                                                                whiteSpace: 'pre-wrap',
-                                                                wordBreak: 'break-word'
-                                                            }}
-                                                        >
-                                                            {fileContent}
-                                                        </Paper>
-                                                    ) : (
-                                                        <Alert severity="info">
-                                                            Содержимое файла не может быть отображено (бинарный или неподдерживаемый формат)
-                                                        </Alert>
-                                                    )}
-                                                </DialogContent>
-                                                
-                                                <DialogActions sx={{ px: 3, pb: 2 }}>
-                                                    <Button onClick={() => { setViewingFile(null); setFileContent(''); }} variant="outlined" color="inherit">
-                                                        Закрыть
-                                                    </Button>
-                                                    <Box sx={{ flexGrow: 1 }} />
-                                                    <Button 
-                                                        variant="contained" 
-                                                        startIcon={<DownloadIcon />}
-                                                        onClick={() => handleDownloadFile(viewingFile)}
-                                                    >
-                                                        Скачать
-                                                    </Button>
-                                                </DialogActions>
-                                            </>
-                                        )}
-                                    </Dialog>
+                                    {/* Viewer для файла */}
+                                    <AdminFileViewer
+                                        open={fileViewerOpen}
+                                        onClose={() => { setFileViewerOpen(false); setViewingFile(null); }}
+                                        file={viewingFile}
+                                        containerId={selectedContainer.id}
+                                        allFiles={files}
+                                        onFileChange={(newFile) => setViewingFile(newFile)}
+                                        searchQuery={fileSearchQuery}
+                                    />
                                 </Box>
                             )}
 
