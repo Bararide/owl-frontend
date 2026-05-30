@@ -112,6 +112,7 @@ export interface OcrProcessRequest {
 
 export interface User {
   id: string;
+  tg_id: string;
   name: string;
   email: string;
   avatar?: string;

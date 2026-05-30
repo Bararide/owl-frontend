@@ -97,7 +97,7 @@ interface EnrichedUser {
     name: string;
     email: string;
     role: string;
-    tg_id?: string;
+    tg_id: string;
     is_active: boolean;
     containers: Container[];
     totalStorage: number;
@@ -124,18 +124,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const { data: usersList = [], isLoading: usersLoading } = useAllUsers();
 
     const users = useMemo((): EnrichedUser[] => {
-        return usersList.map(u => ({
-            id: u.id,
-            name: u.name,
-            email: u.email,
-            role: u.role,
-            tg_id: (u as any).tg_id,
-            is_active: (u as any).is_active ?? true,
-            containers: containers.filter(c => c.user_id === u.id),
-            totalStorage: containers.filter(c => c.user_id === u.id).reduce((sum, c) => sum + (c.storage_quota || 0), 0),
-            totalMemory: containers.filter(c => c.user_id === u.id).reduce((sum, c) => sum + (c.memory_limit || 0), 0),
-            runningContainers: containers.filter(c => c.user_id === u.id && c.status === 'running').length,
-        }));
+        return usersList.map(u => {
+            const userIdForMatch = u.tg_id || u.id;
+            
+            const userContainers = containers.filter(c => c.user_id === userIdForMatch);
+            
+            return {
+                id: u.id,
+                name: u.name,
+                email: u.email,
+                role: u.role,
+                tg_id: u.tg_id,
+                is_active: (u as any).is_active ?? true,
+                containers: userContainers,
+                totalStorage: userContainers.reduce((sum, c) => sum + (c.storage_quota || 0), 0),
+                totalMemory: userContainers.reduce((sum, c) => sum + (c.memory_limit || 0), 0),
+                runningContainers: userContainers.filter(c => c.status === 'running').length,
+            };
+        });
     }, [usersList, containers]);
 
     const loadContainerDetails = useCallback(async (container: Container) => {

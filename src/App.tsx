@@ -43,6 +43,7 @@ const mockUser: User = {
   name: 'Undefined',
   email: 'Undefined',
   role: 'user',
+  tg_id: 'Undefined'
 };
 
 const AppContent: React.FC = () => {
@@ -116,7 +117,8 @@ const AppContent: React.FC = () => {
         id: userData.id,
         name: userData.name,
         email: userData.email,
-        role: userData.role
+        role: userData.role,
+        tg_id: userData.tg_id
       };
 
       setUser(finalUser);
