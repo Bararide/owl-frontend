@@ -144,6 +144,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         });
     }, [usersList, containers]);
 
+    useEffect(() => {
+        if (users.length > 0 && containers.length > 0) {
+            const usersWithContainers = new Set<string>();
+            users.forEach(u => {
+                const userIdForMatch = u.tg_id || u.id;
+                const hasContainers = containers.some(c => String(c.user_id) === String(userIdForMatch));
+                if (hasContainers) {
+                    usersWithContainers.add(u.id);
+                }
+            });
+            if (usersWithContainers.size > 0) {
+                setExpandedUsers(usersWithContainers);
+            }
+        }
+    }, [users, containers]);
+
     const loadContainerDetails = useCallback(async (container: Container) => {
         setDetailsLoading(true);
         setDetailsError(null);
