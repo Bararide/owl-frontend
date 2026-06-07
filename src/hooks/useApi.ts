@@ -9,6 +9,9 @@ import {
   SearchRequest,
   User,
   ContainerStatus,
+  UserGroup,
+  GroupMember,
+  ContainerAccess,
 } from "../api/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -30,6 +33,218 @@ export const useAllUsers = () => {
   return useQuery({
     queryKey: ["all-users"],
     queryFn: () => apiClient.getAllUsers(),
+  });
+};
+
+export const useUpdateUserRole = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
+      apiClient.updateUserRole(userId, role),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["all-users"] });
+    },
+  });
+};
+
+export const useUpdateUserStatus = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ userId, isActive }: { userId: string; isActive: boolean }) =>
+      apiClient.updateUserStatus(userId, isActive),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["all-users"] });
+    },
+  });
+};
+
+export const useUserGroups = () => {
+  return useQuery({
+    queryKey: ["user-groups"],
+    queryFn: () => apiClient.getUserGroups(),
+  });
+};
+
+export const useCreateUserGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      name,
+      description,
+      color,
+    }: {
+      name: string;
+      description?: string;
+      color?: string;
+    }) => apiClient.createUserGroup(name, description, color),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-groups"] });
+    },
+  });
+};
+
+export const useDeleteUserGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (groupId: string) => apiClient.deleteUserGroup(groupId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-groups"] });
+    },
+  });
+};
+
+export const useUpdateUserGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      groupId,
+      data,
+    }: {
+      groupId: string;
+      data: { name?: string; description?: string; color?: string };
+    }) => apiClient.updateUserGroup(groupId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-groups"] });
+    },
+  });
+};
+
+export const useGroupMembers = (groupId: string | undefined) => {
+  return useQuery({
+    queryKey: ["group-members", groupId],
+    queryFn: () => apiClient.getGroupMembers(groupId!),
+    enabled: !!groupId,
+  });
+};
+
+export const useAddUserToGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      groupId,
+      userId,
+      role,
+    }: {
+      groupId: string;
+      userId: string;
+      role?: string;
+    }) => apiClient.addUserToGroup(groupId, userId, role),
+    onSuccess: (_, { groupId }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["group-members", groupId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["user-groups"] });
+    },
+  });
+};
+
+export const useRemoveUserFromGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      groupId,
+      userId,
+    }: {
+      groupId: string;
+      userId: string;
+    }) => apiClient.removeUserFromGroup(groupId, userId),
+    onSuccess: (_, { groupId }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["group-members", groupId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["user-groups"] });
+    },
+  });
+};
+
+export const useUpdateMemberRole = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      groupId,
+      userId,
+      role,
+    }: {
+      groupId: string;
+      userId: string;
+      role: string;
+    }) => apiClient.updateMemberRole(groupId, userId, role),
+    onSuccess: (_, { groupId }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["group-members", groupId],
+      });
+    },
+  });
+};
+
+export const useContainerAccesses = (containerId: string | undefined) => {
+  return useQuery({
+    queryKey: ["container-accesses", containerId],
+    queryFn: () => apiClient.getContainerAccesses(containerId!),
+    enabled: !!containerId,
+  });
+};
+
+export const useGrantContainerAccess = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      containerId,
+      groupId,
+      permission,
+    }: {
+      containerId: string;
+      groupId: string;
+      permission?: string;
+    }) => apiClient.grantContainerAccess(containerId, groupId, permission),
+    onSuccess: (_, { containerId }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["container-accesses", containerId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["user-groups"] });
+    },
+  });
+};
+
+export const useRevokeContainerAccess = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      containerId,
+      groupId,
+    }: {
+      containerId: string;
+      groupId: string;
+    }) => apiClient.revokeContainerAccess(containerId, groupId),
+    onSuccess: (_, { containerId }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["container-accesses", containerId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["user-groups"] });
+    },
+  });
+};
+
+export const useCreateContainerAsAdmin = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: CreateContainerRequest) =>
+      apiClient.createContainerAsAdmin(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["all-containers"] });
+      queryClient.invalidateQueries({ queryKey: ["containers"] });
+    },
   });
 };
 

@@ -49,6 +49,7 @@ export interface CreateContainerRequest {
   type_label: LabelOption;
   commands: string[];
   privileged: boolean;
+  user_id?: string;
 }
 
 export interface SearchRequest {
@@ -117,6 +118,8 @@ export interface User {
   email: string;
   avatar?: string;
   role: string;
+  is_active?: boolean;
+  permissions?: string[];
 }
 
 export interface SemanticGraphEdge {
@@ -173,10 +176,12 @@ export interface RecommendationEvent {
 
 export interface Group {
   id: string;
-  container_id: string;
+  container_id?: string;
   description: string | null;
   created_at: string;
   color: string;
+  user_count?: number;
+  container_count?: number;
 }
 
 export interface GroupStats {
@@ -193,6 +198,38 @@ export interface GroupStats {
     size: number;
     created_at: string;
   }>;
+}
+
+export interface UserGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  color: string;
+  members: Array<{
+    user_id: string;
+    user_name: string;
+    role: string;
+  }>;
+  containers: Array<{
+    container_id: string;
+    permission: string;
+  }>;
+}
+
+export interface GroupMember {
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  role: string;
+  joined_at: string;
+}
+
+export interface ContainerAccess {
+  container_id: string;
+  group_id: string;
+  permission: string;
+  container_name?: string;
 }
 
 export interface FileGroupRelation {
@@ -416,6 +453,142 @@ class ApiClient {
     const response = await this.client.get<{ data: User[] }>("/admin/users", {
       headers: this.getAuthHeaders(),
     });
+    return response.data.data;
+  }
+
+  async updateUserRole(userId: string, role: string): Promise<User> {
+    const response = await this.client.patch<{ data: User }>(
+      `/admin/users/${userId}/role`,
+      { role },
+      { headers: this.getAuthHeaders() },
+    );
+    return response.data.data;
+  }
+
+  async updateUserStatus(userId: string, isActive: boolean): Promise<User> {
+    const response = await this.client.patch<{ data: User }>(
+      `/admin/users/${userId}/status`,
+      { is_active: isActive },
+      { headers: this.getAuthHeaders() },
+    );
+    return response.data.data;
+  }
+
+  async getUserGroups(): Promise<UserGroup[]> {
+    const response = await this.client.get<{ data: UserGroup[] }>(
+      "/admin/groups",
+      { headers: this.getAuthHeaders() },
+    );
+    return response.data.data;
+  }
+
+  async createUserGroup(
+    name: string,
+    description?: string,
+    color?: string,
+  ): Promise<UserGroup> {
+    const response = await this.client.post<{ data: UserGroup }>(
+      "/admin/groups",
+      { name, description: description || "", color: color || "#ff9800" },
+      { headers: this.getAuthHeaders() },
+    );
+    return response.data.data;
+  }
+
+  async deleteUserGroup(groupId: string): Promise<void> {
+    await this.client.delete(`/admin/groups/${groupId}`, {
+      headers: this.getAuthHeaders(),
+    });
+  }
+
+  async updateUserGroup(
+    groupId: string,
+    data: { name?: string; description?: string; color?: string },
+  ): Promise<UserGroup> {
+    const response = await this.client.patch<{ data: UserGroup }>(
+      `/admin/groups/${groupId}`,
+      data,
+      { headers: this.getAuthHeaders() },
+    );
+    return response.data.data;
+  }
+
+  async getGroupMembers(groupId: string): Promise<GroupMember[]> {
+    const response = await this.client.get<{ data: GroupMember[] }>(
+      `/admin/groups/${groupId}/members`,
+      { headers: this.getAuthHeaders() },
+    );
+    return response.data.data;
+  }
+
+  async addUserToGroup(
+    groupId: string,
+    userId: string,
+    role: string = "member",
+  ): Promise<void> {
+    await this.client.post(
+      `/admin/groups/${groupId}/members`,
+      { user_id: userId, role },
+      { headers: this.getAuthHeaders() },
+    );
+  }
+
+  async removeUserFromGroup(groupId: string, userId: string): Promise<void> {
+    await this.client.delete(`/admin/groups/${groupId}/members/${userId}`, {
+      headers: this.getAuthHeaders(),
+    });
+  }
+
+  async updateMemberRole(
+    groupId: string,
+    userId: string,
+    role: string,
+  ): Promise<void> {
+    await this.client.patch(
+      `/admin/groups/${groupId}/members/${userId}`,
+      { role },
+      { headers: this.getAuthHeaders() },
+    );
+  }
+
+  async getContainerAccesses(containerId: string): Promise<ContainerAccess[]> {
+    const response = await this.client.get<{ data: ContainerAccess[] }>(
+      `/admin/containers/${containerId}/access`,
+      { headers: this.getAuthHeaders() },
+    );
+    return response.data.data;
+  }
+
+  async grantContainerAccess(
+    containerId: string,
+    groupId: string,
+    permission: string = "read_write",
+  ): Promise<void> {
+    await this.client.post(
+      `/admin/containers/${containerId}/access`,
+      { group_id: groupId, permission },
+      { headers: this.getAuthHeaders() },
+    );
+  }
+
+  async revokeContainerAccess(
+    containerId: string,
+    groupId: string,
+  ): Promise<void> {
+    await this.client.delete(
+      `/admin/containers/${containerId}/access/${groupId}`,
+      { headers: this.getAuthHeaders() },
+    );
+  }
+
+  async createContainerAsAdmin(
+    data: CreateContainerRequest,
+  ): Promise<Container> {
+    const response = await this.client.post<{ data: Container }>(
+      "/admin/containers",
+      data,
+      { headers: this.getAuthHeaders() },
+    );
     return response.data.data;
   }
 

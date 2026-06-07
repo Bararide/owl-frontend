@@ -33,6 +33,14 @@ import {
     FormControl,
     Select,
     MenuItem,
+    InputLabel,
+    Checkbox,
+    FormControlLabel,
+    FormHelperText,
+    Snackbar,
+    Accordion,
+    AccordionSummary,
+    AccordionDetails,
 } from '@mui/material';
 import {
     People as PeopleIcon,
@@ -56,6 +64,14 @@ import {
     Description as DescriptionIcon,
     Download as DownloadIcon,
     Delete as DeleteIcon,
+    Add as AddIcon,
+    Edit as EditIcon,
+    Security as SecurityIcon,
+    Lock as LockIcon,
+    PersonAdd as PersonAddIcon,
+    PersonRemove as PersonRemoveIcon,
+    CloudUpload as CloudUploadIcon,
+    ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import {
     LineChart,
@@ -70,10 +86,38 @@ import {
     Legend,
 } from 'recharts';
 
-import { useAllContainersForAdmin, useAllUsers, useFiles } from '../../hooks/useApi';
+import {
+    useAllContainersForAdmin,
+    useAllUsers,
+    useFiles,
+    useUpdateUserRole,
+    useUpdateUserStatus,
+    useUserGroups,
+    useCreateUserGroup,
+    useDeleteUserGroup,
+    useUpdateUserGroup,
+    useGroupMembers,
+    useAddUserToGroup,
+    useRemoveUserFromGroup,
+    useUpdateMemberRole,
+    useContainerAccesses,
+    useGrantContainerAccess,
+    useRevokeContainerAccess,
+    useCreateContainerAsAdmin,
+} from '../../hooks/useApi';
 import { ContainerCard } from '../../components/containers/ContainerCard';
 import { apiClient } from '../../api/client';
-import type { User, Container, Group, GroupStats, ApiFile } from '../../api/client';
+import type {
+    User,
+    Container,
+    Group,
+    GroupStats,
+    ApiFile,
+    UserGroup,
+    GroupMember,
+    ContainerAccess,
+    CreateContainerRequest,
+} from '../../api/client';
 import { AdminFileViewer } from '../../components/files/AdminFileViewer';
 
 interface AdminDashboardProps {
@@ -114,6 +158,14 @@ interface EnrichedUser {
     runningContainers: number;
 }
 
+const AVAILABLE_ROLES = ['user', 'moderator', 'admin', 'super_admin'];
+const AVAILABLE_PERMISSIONS = ['read', 'read_write', 'admin'];
+const GROUP_COLORS = [
+    '#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5',
+    '#2196f3', '#03a9f4', '#00bcd4', '#009688', '#4caf50',
+    '#8bc34a', '#cddc39', '#ffeb3b', '#ffc107', '#ff9800', '#ff5722',
+];
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -135,9 +187,62 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const [viewingFile, setViewingFile] = useState<ApiFile | null>(null);
     const [fileViewerOpen, setFileViewerOpen] = useState(false);
 
+    const [adminActiveTab, setAdminActiveTab] = useState(0);
+
+    const [roleEditDialogOpen, setRoleEditDialogOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState<EnrichedUser | null>(null);
+    const [newRole, setNewRole] = useState<string>('user');
+
+    const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+    const [editingGroup, setEditingGroup] = useState<UserGroup | null>(null);
+    const [newGroupName, setNewGroupName] = useState('');
+    const [newGroupDescription, setNewGroupDescription] = useState('');
+    const [newGroupColor, setNewGroupColor] = useState(GROUP_COLORS[0]);
+
+    const [membersDialogOpen, setMembersDialogOpen] = useState(false);
+    const [selectedGroup, setSelectedGroup] = useState<UserGroup | null>(null);
+    const [addMemberUserId, setAddMemberUserId] = useState<string>('');
+    const [addMemberRole, setAddMemberRole] = useState<string>('member');
+
+    const [accessDialogOpen, setAccessDialogOpen] = useState(false);
+    const [accessGroupId, setAccessGroupId] = useState<string>('');
+    const [accessPermission, setAccessPermission] = useState<string>('read_write');
+
+    const [createContainerDialogOpen, setCreateContainerDialogOpen] = useState(false);
+    const [newContainerUserId, setNewContainerUserId] = useState<string>('');
+    const [newContainerId, setNewContainerId] = useState('');
+    const [newContainerMemory, setNewContainerMemory] = useState(512);
+    const [newContainerStorage, setNewContainerStorage] = useState(1024);
+    const [newContainerFileLimit, setNewContainerFileLimit] = useState(1000);
+    const [newContainerPrivileged, setNewContainerPrivileged] = useState(false);
+    const [newContainerCommands, setNewContainerCommands] = useState('');
+
+    const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({
+        open: false,
+        message: '',
+        severity: 'info',
+    });
+
     const { data: containers = [], isLoading: containersLoading, refetch: refetchContainers } = useAllContainersForAdmin();
-    const { data: usersList = [], isLoading: usersLoading } = useAllUsers();
+    const { data: usersList = [], isLoading: usersLoading, refetch: refetchUsers } = useAllUsers();
     const { data: files = [], isLoading: filesLoading, refetch: refetchFiles } = useFiles(selectedContainer?.id);
+
+    const { data: userGroups = [], isLoading: groupsLoading, refetch: refetchUserGroups } = useUserGroups();
+
+    const updateRoleMutation = useUpdateUserRole();
+    const updateStatusMutation = useUpdateUserStatus();
+    const createGroupMutation = useCreateUserGroup();
+    const deleteGroupMutation = useDeleteUserGroup();
+    const updateGroupMutation = useUpdateUserGroup();
+    const addMemberMutation = useAddUserToGroup();
+    const removeMemberMutation = useRemoveUserFromGroup();
+    const updateMemberRoleMutation = useUpdateMemberRole();
+    const grantAccessMutation = useGrantContainerAccess();
+    const revokeAccessMutation = useRevokeContainerAccess();
+    const createContainerAsAdminMutation = useCreateContainerAsAdmin();
+
+    const { data: selectedGroupMembers = [] } = useGroupMembers(selectedGroup?.id);
+    const { data: containerAccesses = [] } = useContainerAccesses(selectedContainer?.id);
 
     const users = useMemo((): EnrichedUser[] => {
         return usersList.map(u => {
@@ -241,6 +346,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         return () => clearInterval(interval);
     }, [autoRefresh, selectedContainer, loadContainerDetails]);
 
+    const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+        setSnackbar({ open: true, message, severity });
+    };
+
     const toggleDrawer = () => setDrawerOpen(!drawerOpen);
 
     const toggleUserExpand = (userId: string) => {
@@ -270,8 +379,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     };
 
     const handleContainerAction = async (action: string, container: Container) => {
-        console.log('Action:', action, container);
         if (action === 'refresh') refetchContainers();
+        if (action === 'delete') {
+            try {
+                await apiClient.deleteContainer(container.id);
+                refetchContainers();
+                showSnackbar('Контейнер удалён', 'success');
+                handleCloseDetails();
+            } catch (error) {
+                showSnackbar('Ошибка при удалении контейнера', 'error');
+            }
+        }
+        if (action === 'stop') {
+            try {
+                await apiClient.stopContainer(container.id);
+                refetchContainers();
+                showSnackbar('Контейнер остановлен', 'success');
+            } catch (error) {
+                showSnackbar('Ошибка при остановке контейнера', 'error');
+            }
+        }
+        if (action === 'restart') {
+            try {
+                await apiClient.restartContainer(container.id);
+                refetchContainers();
+                showSnackbar('Контейнер перезапущен', 'success');
+            } catch (error) {
+                showSnackbar('Ошибка при перезапуске контейнера', 'error');
+            }
+        }
     };
 
     const handleFileClick = (file: ApiFile) => {
@@ -304,8 +440,204 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             if (containerDetails) {
                 loadContainerDetails(selectedContainer!);
             }
+            showSnackbar('Файл удалён', 'success');
         } catch (error) {
-            console.error('Delete failed:', error);
+            showSnackbar('Ошибка при удалении файла', 'error');
+        }
+    };
+
+    const handleOpenRoleEditDialog = (u: EnrichedUser) => {
+        setEditingUser(u);
+        setNewRole(u.role);
+        setRoleEditDialogOpen(true);
+    };
+
+    const handleSaveRole = async () => {
+        if (!editingUser) return;
+        try {
+            await updateRoleMutation.mutateAsync({ userId: editingUser.id, role: newRole });
+            showSnackbar(`Роль пользователя ${editingUser.name} изменена на ${newRole}`, 'success');
+            setRoleEditDialogOpen(false);
+        } catch (error) {
+            showSnackbar('Ошибка при обновлении роли', 'error');
+        }
+    };
+
+    const handleToggleUserStatus = async (u: EnrichedUser) => {
+        const newStatus = !u.is_active;
+        try {
+            await updateStatusMutation.mutateAsync({ userId: u.id, isActive: newStatus });
+            showSnackbar(`Пользователь ${u.name} ${newStatus ? 'активирован' : 'деактивирован'}`, 'success');
+        } catch (error) {
+            showSnackbar('Ошибка при изменении статуса', 'error');
+        }
+    };
+
+    const handleOpenCreateGroupDialog = () => {
+        setEditingGroup(null);
+        setNewGroupName('');
+        setNewGroupDescription('');
+        setNewGroupColor(GROUP_COLORS[0]);
+        setGroupDialogOpen(true);
+    };
+
+    const handleOpenEditGroupDialog = (group: UserGroup) => {
+        setEditingGroup(group);
+        setNewGroupName(group.id);
+        setNewGroupDescription(group.description || '');
+        setNewGroupColor(group.color || GROUP_COLORS[0]);
+        setGroupDialogOpen(true);
+    };
+
+    const handleSaveGroup = async () => {
+        if (!newGroupName.trim()) {
+            showSnackbar('Введите название группы', 'warning');
+            return;
+        }
+        try {
+            if (editingGroup) {
+                await updateGroupMutation.mutateAsync({
+                    groupId: editingGroup.id,
+                    data: { name: newGroupName, description: newGroupDescription, color: newGroupColor },
+                });
+                showSnackbar('Группа обновлена', 'success');
+            } else {
+                await createGroupMutation.mutateAsync({
+                    name: newGroupName,
+                    description: newGroupDescription,
+                    color: newGroupColor,
+                });
+                showSnackbar('Группа создана', 'success');
+            }
+            setGroupDialogOpen(false);
+            refetchUserGroups();
+        } catch (error) {
+            showSnackbar('Ошибка при сохранении группы', 'error');
+        }
+    };
+
+    const handleDeleteGroup = async (groupId: string) => {
+        if (!window.confirm('Удалить группу? Это действие необратимо.')) return;
+        try {
+            await deleteGroupMutation.mutateAsync(groupId);
+            showSnackbar('Группа удалена', 'success');
+            refetchUserGroups();
+        } catch (error) {
+            showSnackbar('Ошибка при удалении группы', 'error');
+        }
+    };
+
+    const handleOpenMembersDialog = (group: UserGroup) => {
+        setSelectedGroup(group);
+        setAddMemberUserId('');
+        setAddMemberRole('member');
+        setMembersDialogOpen(true);
+    };
+
+    const handleAddMember = async () => {
+        if (!selectedGroup || !addMemberUserId) return;
+        try {
+            await addMemberMutation.mutateAsync({
+                groupId: selectedGroup.id,
+                userId: addMemberUserId,
+                role: addMemberRole,
+            });
+            showSnackbar('Пользователь добавлен в группу', 'success');
+            setAddMemberUserId('');
+        } catch (error) {
+            showSnackbar('Ошибка при добавлении пользователя', 'error');
+        }
+    };
+
+    const handleRemoveMember = async (userId: string) => {
+        if (!selectedGroup) return;
+        if (!window.confirm('Удалить пользователя из группы?')) return;
+        try {
+            await removeMemberMutation.mutateAsync({ groupId: selectedGroup.id, userId });
+            showSnackbar('Пользователь удалён из группы', 'success');
+        } catch (error) {
+            showSnackbar('Ошибка при удалении пользователя', 'error');
+        }
+    };
+
+    const handleChangeMemberRole = async (userId: string, role: string) => {
+        if (!selectedGroup) return;
+        try {
+            await updateMemberRoleMutation.mutateAsync({ groupId: selectedGroup.id, userId, role });
+            showSnackbar('Роль участника обновлена', 'success');
+        } catch (error) {
+            showSnackbar('Ошибка при обновлении роли', 'error');
+        }
+    };
+
+    const handleOpenAccessDialog = () => {
+        setAccessGroupId('');
+        setAccessPermission('read_write');
+        setAccessDialogOpen(true);
+    };
+
+    const handleGrantAccess = async () => {
+        if (!selectedContainer || !accessGroupId) return;
+        try {
+            await grantAccessMutation.mutateAsync({
+                containerId: selectedContainer.id,
+                groupId: accessGroupId,
+                permission: accessPermission,
+            });
+            showSnackbar('Доступ предоставлен', 'success');
+            setAccessDialogOpen(false);
+        } catch (error) {
+            showSnackbar('Ошибка при предоставлении доступа', 'error');
+        }
+    };
+
+    const handleRevokeAccess = async (groupId: string) => {
+        if (!selectedContainer) return;
+        if (!window.confirm('Отозвать доступ?')) return;
+        try {
+            await revokeAccessMutation.mutateAsync({ containerId: selectedContainer.id, groupId });
+            showSnackbar('Доступ отозван', 'success');
+        } catch (error) {
+            showSnackbar('Ошибка при отзыве доступа', 'error');
+        }
+    };
+
+    const handleOpenCreateContainerDialog = (userId?: string) => {
+        setNewContainerUserId(userId || (users.length > 0 ? users[0].id : ''));
+        setNewContainerId('');
+        setNewContainerMemory(512);
+        setNewContainerStorage(1024);
+        setNewContainerFileLimit(1000);
+        setNewContainerPrivileged(false);
+        setNewContainerCommands('');
+        setCreateContainerDialogOpen(true);
+    };
+
+    const handleCreateContainerAsAdmin = async () => {
+        if (!newContainerUserId || !newContainerId.trim()) {
+            showSnackbar('Заполните обязательные поля', 'warning');
+            return;
+        }
+        try {
+            const requestData: CreateContainerRequest = {
+                container_id: newContainerId.trim(),
+                user_id: newContainerUserId,
+                memory_limit: newContainerMemory * 1024 * 1024,
+                storage_quota: newContainerStorage * 1024 * 1024,
+                file_limit: newContainerFileLimit,
+                env_label: { key: 'default', value: 'Default' },
+                type_label: { key: 'standard', value: 'Standard' },
+                commands: newContainerCommands.split('\n').filter(c => c.trim()),
+                privileged: newContainerPrivileged,
+            };
+            await createContainerAsAdminMutation.mutateAsync(requestData);
+            showSnackbar('Контейнер создан', 'success');
+            setCreateContainerDialogOpen(false);
+            refetchContainers();
+            refetchUsers();
+        } catch (error: any) {
+            const message = error?.response?.data?.detail || 'Ошибка при создании контейнера';
+            showSnackbar(message, 'error');
         }
     };
 
@@ -404,7 +736,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                         <Box>
                             <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 600 }}>
                                 <PeopleIcon fontSize="small" sx={{ color: 'primary.main' }} />
-                                Пользователи
+                                Администрирование
                             </Typography>
                             <Chip label={users.length} size="small" sx={{ mt: 0.5, bgcolor: 'primary.main/20', color: 'primary.light', fontWeight: 500 }} />
                         </Box>
@@ -414,8 +746,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                     </IconButton>
                 </Box>
 
+                {drawerOpen && (
+                    <Box sx={{ p: 2, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                        <Tabs value={adminActiveTab} onChange={(_, v) => setAdminActiveTab(v)} variant="fullWidth" sx={{
+                            '& .MuiTab-root': { textTransform: 'none', fontSize: '0.75rem', minHeight: 36 },
+                            '& .MuiTabs-indicator': { bgcolor: 'primary.main' },
+                        }}>
+                            <Tab label="Пользователи" />
+                            <Tab label="Группы" />
+                        </Tabs>
+                    </Box>
+                )}
+
                 <List sx={{ flex: 1, overflow: 'auto', py: 1 }}>
-                    {users.map((u) => (
+                    {adminActiveTab === 0 && users.map((u) => (
                         <React.Fragment key={u.id}>
                             <ListItemButton
                                 selected={selectedUserId === u.id}
@@ -447,24 +791,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                                 {u.runningContainers > 0 && <Chip label={`${u.runningContainers} актив.`} size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'success.main/20', color: 'success.light' }} />}
                                             </Box>
                                         </Box>
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                            {u.containers.length > 0 && (
-                                                <Tooltip title={`${u.containers.length} контейнеров`}>
-                                                    <Chip
-                                                        label={u.containers.length}
-                                                        size="small"
-                                                        sx={{
-                                                            height: 20,
-                                                            minWidth: 20,
-                                                            p: 0,
-                                                            bgcolor: 'primary.main/20',
-                                                            color: 'primary.light',
-                                                            fontWeight: 600,
-                                                            fontSize: '0.65rem'
-                                                        }}
-                                                    />
-                                                </Tooltip>
-                                            )}
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                            <Tooltip title="Изменить роль">
+                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpenRoleEditDialog(u); }} sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}>
+                                                    <SecurityIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title={u.is_active ? 'Деактивировать' : 'Активировать'}>
+                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleToggleUserStatus(u); }} sx={{ color: u.is_active ? 'success.main' : 'error.main' }}>
+                                                    {u.is_active ? <PersonRemoveIcon fontSize="small" /> : <PersonAddIcon fontSize="small" />}
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title={`Создать контейнер для ${u.name}`}>
+                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpenCreateContainerDialog(u.id); }} sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}>
+                                                    <AddIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
                                             {expandedUsers.has(u.id) ? <ExpandLess sx={{ color: 'text.secondary' }} /> : <ExpandMore sx={{ color: 'text.secondary' }} />}
                                         </Box>
                                     </Box>
@@ -473,7 +815,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
                             <Collapse in={expandedUsers.has(u.id) && drawerOpen} timeout="auto" unmountOnExit>
                                 <Box sx={{ pl: 7, pr: 2, py: 1 }}>
-                                    <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block', fontWeight: 500 }}>Контейнеры ({u.containers?.length || 0})</Typography>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>Контейнеры ({u.containers?.length || 0})</Typography>
+                                        <Tooltip title="Создать контейнер">
+                                            <IconButton size="small" onClick={() => handleOpenCreateContainerDialog(u.id)} sx={{ color: 'primary.main' }}>
+                                                <AddIcon fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                    </Box>
                                     {u.containers?.map((container) => (
                                         <Paper key={container.id} elevation={0} sx={{ p: 1.5, mb: 1, background: 'rgba(255,255,255,0.03)', borderRadius: 2, cursor: 'pointer', border: '1px solid transparent', transition: 'all 0.2s', '&:hover': { background: 'rgba(255,255,255,0.08)', borderColor: 'rgba(103, 126, 234, 0.3)' } }} onClick={() => handleContainerSelect(container)}>
                                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -499,6 +848,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                             </Collapse>
                         </React.Fragment>
                     ))}
+
+                    {adminActiveTab === 1 && (
+                        <Box sx={{ px: 1.5 }}>
+                            <Button
+                                variant="contained"
+                                startIcon={<AddIcon />}
+                                onClick={handleOpenCreateGroupDialog}
+                                fullWidth
+                                sx={{ mb: 2, textTransform: 'none' }}
+                            >
+                                Создать группу
+                            </Button>
+
+                            {groupsLoading ? (
+                                <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} /></Box>
+                            ) : userGroups.length === 0 ? (
+                                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
+                                    Группы не созданы
+                                </Typography>
+                            ) : (
+                                userGroups.map(group => (
+                                    <Paper key={group.id} elevation={0} sx={{ p: 2, mb: 1.5, background: 'rgba(255,255,255,0.03)', borderRadius: 2, border: `2px solid ${group.color || '#ff9800'}40` }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                            <Box sx={{ width: 14, height: 14, borderRadius: '50%', bgcolor: group.color || '#ff9800' }} />
+                                            <Typography variant="subtitle2" fontWeight={600} sx={{ flex: 1 }}>{group.id}</Typography>
+                                            <IconButton size="small" onClick={() => handleOpenEditGroupDialog(group)}><EditIcon fontSize="small" /></IconButton>
+                                            <IconButton size="small" onClick={() => handleDeleteGroup(group.id)}><DeleteIcon fontSize="small" /></IconButton>
+                                        </Box>
+                                        {group.description && (
+                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>{group.description}</Typography>
+                                        )}
+                                        <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
+                                            <Chip label={`${group.members?.length || 0} польз.`} size="small" sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'primary.main/20' }} />
+                                            <Chip label={`${group.containers?.length || 0} конт.`} size="small" sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'success.main/20' }} />
+                                        </Box>
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            fullWidth
+                                            startIcon={<GroupIcon />}
+                                            onClick={() => handleOpenMembersDialog(group)}
+                                            sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                                        >
+                                            Участники
+                                        </Button>
+                                    </Paper>
+                                ))
+                            )}
+                        </Box>
+                    )}
                 </List>
 
                 <Box sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.08)', bgcolor: 'rgba(0,0,0,0.1)' }}>
@@ -553,8 +952,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                         <Typography variant="body2" color="text.secondary">Управление и мониторинг контейнеров всех пользователей</Typography>
                     </Box>
                     <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button
+                            variant="contained"
+                            startIcon={<AddIcon />}
+                            onClick={() => handleOpenCreateContainerDialog()}
+                            sx={{ textTransform: 'none' }}
+                        >
+                            Создать контейнер
+                        </Button>
                         <Chip label={totalContainers} size="medium" sx={{ fontWeight: 500, bgcolor: 'primary.main/20', color: 'primary.light' }} />
-                        <Tooltip title="Обновить данные"><IconButton onClick={() => refetchContainers()} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}><RefreshIcon fontSize="small" /></IconButton></Tooltip>
+                        <Tooltip title="Обновить данные"><IconButton onClick={() => { refetchContainers(); refetchUsers(); refetchUserGroups(); }} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}><RefreshIcon fontSize="small" /></IconButton></Tooltip>
                     </Box>
                 </Box>
 
@@ -574,7 +981,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                     <Box sx={{ textAlign: 'center', py: 10 }}>
                         <Box sx={{ width: 80, height: 80, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 3 }}><StorageIcon sx={{ fontSize: 40, color: 'text.secondary' }} /></Box>
                         <Typography variant="h6" fontWeight={500} color="text.primary" gutterBottom>Контейнеры не найдены</Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400, mx: 'auto' }}>Создайте первый контейнер или дождитесь, пока пользователи добавят свои</Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400, mx: 'auto', mb: 2 }}>Создайте первый контейнер или дождитесь, пока пользователи добавят свои</Typography>
+                        <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenCreateContainerDialog()}>Создать контейнер</Button>
                     </Box>
                 )}
             </Box>
@@ -605,6 +1013,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                 <Tab icon={<TimelineIcon fontSize="small" />} iconPosition="start" label="Мониторинг" />
                                 <Tab icon={<GroupIcon fontSize="small" />} iconPosition="start" label={`Группы (${containerDetails?.groups?.length || 0})`} />
                                 <Tab icon={<FolderIcon fontSize="small" />} iconPosition="start" label="Файлы" />
+                                <Tab icon={<LockIcon fontSize="small" />} iconPosition="start" label={`Доступы (${containerAccesses.length})`} />
                                 <Tab icon={<InfoIcon fontSize="small" />} iconPosition="start" label="Информация" />
                             </Tabs>
 
@@ -798,7 +1207,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                         </Box>
                                     )}
 
-                                    {/* Viewer для файла */}
                                     <AdminFileViewer
                                         open={fileViewerOpen}
                                         onClose={() => { setFileViewerOpen(false); setViewingFile(null); }}
@@ -812,6 +1220,64 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                             )}
 
                             {activeTab === 3 && (
+                                <Box>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+                                        <Typography variant="h6" fontWeight={600}>Управление доступами</Typography>
+                                        <Button
+                                            variant="contained"
+                                            startIcon={<AddIcon />}
+                                            onClick={handleOpenAccessDialog}
+                                            sx={{ textTransform: 'none' }}
+                                        >
+                                            Предоставить доступ
+                                        </Button>
+                                    </Box>
+
+                                    {containerAccesses.length === 0 ? (
+                                        <Paper elevation={0} sx={{ p: 4, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                                            <LockIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.5, mb: 2 }} />
+                                            <Typography color="text.secondary">Нет групп с доступом к этому контейнеру</Typography>
+                                        </Paper>
+                                    ) : (
+                                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                                            {containerAccesses.map(access => {
+                                                const group = userGroups.find(g => g.id === access.group_id);
+                                                return (
+                                                    <Paper key={access.group_id} elevation={0} sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)', border: `2px solid ${group?.color || '#ff9800'}40` }}>
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                            <Box sx={{ width: 16, height: 16, borderRadius: '50%', bgcolor: group?.color || '#ff9800' }} />
+                                                            <Box sx={{ flex: 1 }}>
+                                                                <Typography variant="subtitle2" fontWeight={600}>{access.group_id}</Typography>
+                                                                {group?.description && (
+                                                                    <Typography variant="caption" color="text.secondary">{group.description}</Typography>
+                                                                )}
+                                                            </Box>
+                                                            <Chip label={access.permission} size="small" color={access.permission === 'admin' ? 'error' : access.permission === 'read_write' ? 'success' : 'info'} sx={{ fontSize: '0.7rem' }} />
+                                                            <Tooltip title="Отозвать доступ">
+                                                                <IconButton size="small" onClick={() => handleRevokeAccess(access.group_id)} sx={{ color: 'error.main' }}>
+                                                                    <DeleteIcon fontSize="small" />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        </Box>
+                                                        {group && group.members && group.members.length > 0 && (
+                                                            <Box sx={{ mt: 1.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                                                {group.members.slice(0, 5).map(m => (
+                                                                    <Chip key={m.user_id} label={m.user_name} size="small" sx={{ height: 22, fontSize: '0.7rem' }} />
+                                                                ))}
+                                                                {group.members.length > 5 && (
+                                                                    <Chip label={`+${group.members.length - 5}`} size="small" sx={{ height: 22, fontSize: '0.7rem' }} />
+                                                                )}
+                                                            </Box>
+                                                        )}
+                                                    </Paper>
+                                                );
+                                            })}
+                                        </Box>
+                                    )}
+                                </Box>
+                            )}
+
+                            {activeTab === 4 && (
                                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                                     <Box sx={{ flex: '1 1 calc(50% - 12px)', minWidth: { xs: '100%', md: 'calc(50% - 12px)' } }}>
                                         <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -867,6 +1333,400 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                     </>
                 )}
             </Dialog>
+
+            <Dialog open={roleEditDialogOpen} onClose={() => setRoleEditDialogOpen(false)} PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, minWidth: 400 } }}>
+                <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <SecurityIcon color="primary" />
+                        <Typography variant="h6" fontWeight={600}>Изменить роль</Typography>
+                    </Box>
+                </DialogTitle>
+                <DialogContent sx={{ pt: 3 }}>
+                    {editingUser && (
+                        <Box>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                Пользователь: <strong>{editingUser.name}</strong> ({editingUser.email})
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                Текущая роль: <Chip label={editingUser.role} size="small" sx={{ fontWeight: 500 }} />
+                            </Typography>
+                            <FormControl fullWidth sx={{ mt: 2 }}>
+                                <InputLabel>Новая роль</InputLabel>
+                                <Select value={newRole} onChange={(e) => setNewRole(e.target.value)} label="Новая роль">
+                                    {AVAILABLE_ROLES.map(role => (
+                                        <MenuItem key={role} value={role}>{role}</MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.08)', p: 2 }}>
+                    <Button onClick={() => setRoleEditDialogOpen(false)} color="inherit">Отмена</Button>
+                    <Button onClick={handleSaveRole} variant="contained" disabled={updateRoleMutation.isPending}>
+                        {updateRoleMutation.isPending ? <CircularProgress size={20} /> : 'Сохранить'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={groupDialogOpen} onClose={() => setGroupDialogOpen(false)} PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, minWidth: 400 } }}>
+                <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <GroupIcon color="primary" />
+                        <Typography variant="h6" fontWeight={600}>
+                            {editingGroup ? 'Редактировать группу' : 'Создать группу'}
+                        </Typography>
+                    </Box>
+                </DialogTitle>
+                <DialogContent sx={{ pt: 3 }}>
+                    <Stack spacing={2.5}>
+                        <TextField
+                            label="Название группы"
+                            value={newGroupName}
+                            onChange={(e) => setNewGroupName(e.target.value)}
+                            fullWidth
+                            disabled={!!editingGroup}
+                            helperText={editingGroup ? 'Название группы изменить нельзя' : 'Уникальный идентификатор группы'}
+                        />
+                        <TextField
+                            label="Описание"
+                            value={newGroupDescription}
+                            onChange={(e) => setNewGroupDescription(e.target.value)}
+                            fullWidth
+                            multiline
+                            rows={2}
+                        />
+                        <Box>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Цвет группы</Typography>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                {GROUP_COLORS.map(color => (
+                                    <Box
+                                        key={color}
+                                        onClick={() => setNewGroupColor(color)}
+                                        sx={{
+                                            width: 32,
+                                            height: 32,
+                                            borderRadius: 1,
+                                            bgcolor: color,
+                                            cursor: 'pointer',
+                                            border: newGroupColor === color ? '3px solid white' : '3px solid transparent',
+                                            transition: 'all 0.2s',
+                                            '&:hover': { transform: 'scale(1.1)' },
+                                        }}
+                                    />
+                                ))}
+                            </Box>
+                        </Box>
+                    </Stack>
+                </DialogContent>
+                <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.08)', p: 2 }}>
+                    <Button onClick={() => setGroupDialogOpen(false)} color="inherit">Отмена</Button>
+                    <Button
+                        onClick={handleSaveGroup}
+                        variant="contained"
+                        disabled={createGroupMutation.isPending || updateGroupMutation.isPending || !newGroupName.trim()}
+                    >
+                        {(createGroupMutation.isPending || updateGroupMutation.isPending) ? <CircularProgress size={20} /> : (editingGroup ? 'Сохранить' : 'Создать')}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={membersDialogOpen} onClose={() => setMembersDialogOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3 } }}>
+                <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <GroupIcon color="primary" />
+                        <Box>
+                            <Typography variant="h6" fontWeight={600}>Участники группы</Typography>
+                            {selectedGroup && (
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                                    <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: selectedGroup.color }} />
+                                    <Typography variant="body2" color="text.secondary">{selectedGroup.id}</Typography>
+                                </Box>
+                            )}
+                        </Box>
+                    </Box>
+                </DialogTitle>
+                <DialogContent sx={{ pt: 3 }}>
+                    <Paper elevation={0} sx={{ p: 2, mb: 3, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 2 }}>
+                        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>Добавить участника</Typography>
+                        <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-end' }}>
+                            <FormControl fullWidth>
+                                <InputLabel>Пользователь</InputLabel>
+                                <Select
+                                    value={addMemberUserId}
+                                    onChange={(e) => setAddMemberUserId(e.target.value)}
+                                    label="Пользователь"
+                                >
+                                    <MenuItem value="">
+                                        <em>Выберите пользователя</em>
+                                    </MenuItem>
+                                    {users.map(u => {
+                                        const isMember = selectedGroupMembers.some(m => m.user_id === u.id);
+                                        return (
+                                            <MenuItem key={u.id} value={u.id} disabled={isMember}>
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                    <Avatar sx={{ width: 24, height: 24, fontSize: '0.75rem', bgcolor: 'primary.main' }}>
+                                                        {u.name?.[0]?.toUpperCase()}
+                                                    </Avatar>
+                                                    <Typography variant="body2">{u.name}</Typography>
+                                                    {isMember && <Chip label="уже участник" size="small" sx={{ height: 18, fontSize: '0.65rem' }} />}
+                                                </Box>
+                                            </MenuItem>
+                                        );
+                                    })}
+                                </Select>
+                            </FormControl>
+                            <FormControl sx={{ minWidth: 150 }}>
+                                <InputLabel>Роль</InputLabel>
+                                <Select
+                                    value={addMemberRole}
+                                    onChange={(e) => setAddMemberRole(e.target.value)}
+                                    label="Роль"
+                                >
+                                    <MenuItem value="member">Участник</MenuItem>
+                                    <MenuItem value="moderator">Модератор</MenuItem>
+                                    <MenuItem value="admin">Администратор</MenuItem>
+                                </Select>
+                            </FormControl>
+                            <Button
+                                variant="contained"
+                                onClick={handleAddMember}
+                                disabled={!addMemberUserId || addMemberMutation.isPending}
+                                sx={{ textTransform: 'none', height: 56 }}
+                            >
+                                {addMemberMutation.isPending ? <CircularProgress size={20} /> : 'Добавить'}
+                            </Button>
+                        </Box>
+                    </Paper>
+
+                    <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+                        Текущие участники ({selectedGroupMembers.length})
+                    </Typography>
+
+                    {selectedGroupMembers.length === 0 ? (
+                        <Paper elevation={0} sx={{ p: 4, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                            <PeopleIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.5, mb: 2 }} />
+                            <Typography color="text.secondary">В группе пока нет участников</Typography>
+                        </Paper>
+                    ) : (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 400, overflow: 'auto' }}>
+                            {selectedGroupMembers.map(member => (
+                                <Paper key={member.user_id} elevation={0} sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                        <Avatar sx={{ width: 36, height: 36, bgcolor: 'primary.main' }}>
+                                            {member.user_name?.[0]?.toUpperCase()}
+                                        </Avatar>
+                                        <Box sx={{ flex: 1 }}>
+                                            <Typography variant="body2" fontWeight={600}>{member.user_name}</Typography>
+                                            <Typography variant="caption" color="text.secondary">{member.user_email}</Typography>
+                                        </Box>
+                                        <FormControl size="small" sx={{ minWidth: 130 }}>
+                                            <Select
+                                                value={member.role}
+                                                onChange={(e) => handleChangeMemberRole(member.user_id, e.target.value)}
+                                                disabled={updateMemberRoleMutation.isPending}
+                                                sx={{ fontSize: '0.8rem' }}
+                                            >
+                                                <MenuItem value="member">Участник</MenuItem>
+                                                <MenuItem value="moderator">Модератор</MenuItem>
+                                                <MenuItem value="admin">Администратор</MenuItem>
+                                            </Select>
+                                        </FormControl>
+                                        <Tooltip title="Удалить из группы">
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => handleRemoveMember(member.user_id)}
+                                                disabled={removeMemberMutation.isPending}
+                                                sx={{ color: 'error.main' }}
+                                            >
+                                                <DeleteIcon fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                    </Box>
+                                </Paper>
+                            ))}
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.08)', p: 2 }}>
+                    <Button onClick={() => setMembersDialogOpen(false)} color="inherit">Закрыть</Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={accessDialogOpen} onClose={() => setAccessDialogOpen(false)} PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, minWidth: 400 } }}>
+                <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <LockIcon color="primary" />
+                        <Typography variant="h6" fontWeight={600}>Предоставить доступ</Typography>
+                    </Box>
+                </DialogTitle>
+                <DialogContent sx={{ pt: 3 }}>
+                    <Stack spacing={2.5}>
+                        <FormControl fullWidth>
+                            <InputLabel>Группа</InputLabel>
+                            <Select
+                                value={accessGroupId}
+                                onChange={(e) => setAccessGroupId(e.target.value)}
+                                label="Группа"
+                            >
+                                <MenuItem value="">
+                                    <em>Выберите группу</em>
+                                </MenuItem>
+                                {userGroups.map(g => {
+                                    const hasAccess = containerAccesses.some(a => a.group_id === g.id);
+                                    return (
+                                        <MenuItem key={g.id} value={g.id} disabled={hasAccess}>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: g.color }} />
+                                                <Typography variant="body2">{g.id}</Typography>
+                                                {hasAccess && <Chip label="есть доступ" size="small" sx={{ height: 18, fontSize: '0.65rem', ml: 1 }} />}
+                                            </Box>
+                                        </MenuItem>
+                                    );
+                                })}
+                            </Select>
+                        </FormControl>
+                        <FormControl fullWidth>
+                            <InputLabel>Уровень доступа</InputLabel>
+                            <Select
+                                value={accessPermission}
+                                onChange={(e) => setAccessPermission(e.target.value)}
+                                label="Уровень доступа"
+                            >
+                                {AVAILABLE_PERMISSIONS.map(perm => (
+                                    <MenuItem key={perm} value={perm}>{perm}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                    </Stack>
+                </DialogContent>
+                <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.08)', p: 2 }}>
+                    <Button onClick={() => setAccessDialogOpen(false)} color="inherit">Отмена</Button>
+                    <Button
+                        onClick={handleGrantAccess}
+                        variant="contained"
+                        disabled={!accessGroupId || grantAccessMutation.isPending}
+                    >
+                        {grantAccessMutation.isPending ? <CircularProgress size={20} /> : 'Предоставить'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={createContainerDialogOpen} onClose={() => setCreateContainerDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3 } }}>
+                <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CloudUploadIcon color="primary" />
+                        <Typography variant="h6" fontWeight={600}>Создать контейнер</Typography>
+                    </Box>
+                </DialogTitle>
+                <DialogContent sx={{ pt: 3 }}>
+                    <Stack spacing={2.5}>
+                        <FormControl fullWidth>
+                            <InputLabel>Владелец</InputLabel>
+                            <Select
+                                value={newContainerUserId}
+                                onChange={(e) => setNewContainerUserId(e.target.value)}
+                                label="Владелец"
+                            >
+                                {users.map(u => (
+                                    <MenuItem key={u.id} value={u.id}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <Avatar sx={{ width: 24, height: 24, fontSize: '0.75rem', bgcolor: 'primary.main' }}>
+                                                {u.name?.[0]?.toUpperCase()}
+                                            </Avatar>
+                                            <Typography variant="body2">{u.name}</Typography>
+                                            <Typography variant="caption" color="text.secondary">({u.email})</Typography>
+                                        </Box>
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+
+                        <TextField
+                            label="ID контейнера"
+                            value={newContainerId}
+                            onChange={(e) => setNewContainerId(e.target.value)}
+                            fullWidth
+                            required
+                            helperText="Уникальный идентификатор контейнера (латиница, цифры, дефисы)"
+                        />
+
+                        <Box sx={{ display: 'flex', gap: 2 }}>
+                            <TextField
+                                label="Память (MB)"
+                                type="number"
+                                value={newContainerMemory}
+                                onChange={(e) => setNewContainerMemory(parseInt(e.target.value) || 0)}
+                                fullWidth
+                                inputProps={{ min: 128, max: 65536 }}
+                            />
+                            <TextField
+                                label="Хранилище (MB)"
+                                type="number"
+                                value={newContainerStorage}
+                                onChange={(e) => setNewContainerStorage(parseInt(e.target.value) || 0)}
+                                fullWidth
+                                inputProps={{ min: 128, max: 1048576 }}
+                            />
+                        </Box>
+
+                        <TextField
+                            label="Лимит файлов"
+                            type="number"
+                            value={newContainerFileLimit}
+                            onChange={(e) => setNewContainerFileLimit(parseInt(e.target.value) || 0)}
+                            fullWidth
+                            inputProps={{ min: 0, max: 1000000 }}
+                        />
+
+                        <TextField
+                            label="Команды (каждая с новой строки)"
+                            value={newContainerCommands}
+                            onChange={(e) => setNewContainerCommands(e.target.value)}
+                            fullWidth
+                            multiline
+                            rows={3}
+                            helperText="Опционально: команды, доступные в контейнере"
+                        />
+
+                        <FormControlLabel
+                            control={
+                                <Checkbox
+                                    checked={newContainerPrivileged}
+                                    onChange={(e) => setNewContainerPrivileged(e.target.checked)}
+                                    color="error"
+                                />
+                            }
+                            label="Privileged mode (расширенные права)"
+                        />
+                    </Stack>
+                </DialogContent>
+                <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.08)', p: 2 }}>
+                    <Button onClick={() => setCreateContainerDialogOpen(false)} color="inherit">Отмена</Button>
+                    <Button
+                        onClick={handleCreateContainerAsAdmin}
+                        variant="contained"
+                        disabled={createContainerAsAdminMutation.isPending || !newContainerUserId || !newContainerId.trim()}
+                    >
+                        {createContainerAsAdminMutation.isPending ? <CircularProgress size={20} /> : 'Создать'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Snackbar
+                open={snackbar.open}
+                autoHideDuration={4000}
+                onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            >
+                <Alert
+                    onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+                    severity={snackbar.severity}
+                    sx={{ width: '100%' }}
+                >
+                    {snackbar.message}
+                </Alert>
+            </Snackbar>
         </Box>
     );
 };
