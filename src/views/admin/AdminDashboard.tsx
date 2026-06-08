@@ -1,14 +1,12 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     Box,
     Typography,
     Drawer,
     List,
-    ListItemText,
     ListItemAvatar,
     Avatar,
     Chip,
-    Divider,
     IconButton,
     Collapse,
     Paper,
@@ -36,11 +34,13 @@ import {
     InputLabel,
     Checkbox,
     FormControlLabel,
-    FormHelperText,
     Snackbar,
-    Accordion,
-    AccordionSummary,
-    AccordionDetails,
+    Badge,
+    Skeleton,
+    ToggleButton,
+    ToggleButtonGroup,
+    Menu,
+    InputAdornment,
 } from '@mui/material';
 import {
     People as PeopleIcon,
@@ -62,7 +62,6 @@ import {
     Info as InfoIcon,
     Search as SearchIcon,
     Description as DescriptionIcon,
-    Download as DownloadIcon,
     Delete as DeleteIcon,
     Add as AddIcon,
     Edit as EditIcon,
@@ -71,7 +70,15 @@ import {
     PersonAdd as PersonAddIcon,
     PersonRemove as PersonRemoveIcon,
     CloudUpload as CloudUploadIcon,
-    ExpandMore as ExpandMoreIcon,
+    MoreVert as MoreVertIcon,
+    CheckCircle as CheckCircleIcon,
+    Error as ErrorIcon,
+    Warning as WarningIcon,
+    KeyboardArrowDown as KeyboardArrowDownIcon,
+    KeyboardArrowUp as KeyboardArrowUpIcon,
+    Deselect as DeselectIcon,
+    ViewList as ViewListIcon,
+    ViewModule as ViewModuleIcon,
 } from '@mui/icons-material';
 import {
     LineChart,
@@ -114,8 +121,6 @@ import type {
     GroupStats,
     ApiFile,
     UserGroup,
-    GroupMember,
-    ContainerAccess,
     CreateContainerRequest,
 } from '../../api/client';
 import { AdminFileViewer } from '../../components/files/AdminFileViewer';
@@ -166,6 +171,13 @@ const GROUP_COLORS = [
     '#8bc34a', '#cddc39', '#ffeb3b', '#ffc107', '#ff9800', '#ff5722',
 ];
 
+const ROLE_COLORS: Record<string, string> = {
+    user: '#2196f3',
+    moderator: '#ff9800',
+    admin: '#f44336',
+    super_admin: '#9c27b0',
+};
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -183,11 +195,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     const [fileSearchQuery, setFileSearchQuery] = useState('');
     const [selectedFileGroup, setSelectedFileGroup] = useState<string>('all');
-    const [fileContent, setFileContent] = useState<string>('');
     const [viewingFile, setViewingFile] = useState<ApiFile | null>(null);
     const [fileViewerOpen, setFileViewerOpen] = useState(false);
 
     const [adminActiveTab, setAdminActiveTab] = useState(0);
+
+    const [userSearchQuery, setUserSearchQuery] = useState('');
+    const [userFilterRole, setUserFilterRole] = useState<string>('all');
+    const [userFilterStatus, setUserFilterStatus] = useState<string>('all');
+    const [userSortBy, setUserSortBy] = useState<string>('name');
+    const [userSortOrder, setUserSortOrder] = useState<'asc' | 'desc'>('asc');
+
+    const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+    const [bulkActionMenuAnchor, setBulkActionMenuAnchor] = useState<null | HTMLElement>(null);
 
     const [roleEditDialogOpen, setRoleEditDialogOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<EnrichedUser | null>(null);
@@ -217,11 +237,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const [newContainerPrivileged, setNewContainerPrivileged] = useState(false);
     const [newContainerCommands, setNewContainerCommands] = useState('');
 
+    const [confirmDialog, setConfirmDialog] = useState<{
+        open: boolean;
+        title: string;
+        message: string;
+        onConfirm: () => void;
+        severity?: 'error' | 'warning' | 'info';
+    }>({
+        open: false,
+        title: '',
+        message: '',
+        onConfirm: () => {},
+        severity: 'warning',
+    });
+
     const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({
         open: false,
         message: '',
         severity: 'info',
     });
+
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     const { data: containers = [], isLoading: containersLoading, refetch: refetchContainers } = useAllContainersForAdmin();
     const { data: usersList = [], isLoading: usersLoading, refetch: refetchUsers } = useAllUsers();
@@ -264,6 +302,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         });
     }, [usersList, containers]);
 
+    const filteredUsers = useMemo(() => {
+        let result = users;
+
+        if (userSearchQuery) {
+            const query = userSearchQuery.toLowerCase();
+            result = result.filter(u =>
+                u.name.toLowerCase().includes(query) ||
+                u.email.toLowerCase().includes(query) ||
+                u.id.toLowerCase().includes(query)
+            );
+        }
+
+        if (userFilterRole !== 'all') {
+            result = result.filter(u => u.role === userFilterRole);
+        }
+
+        if (userFilterStatus !== 'all') {
+            result = result.filter(u =>
+                userFilterStatus === 'active' ? u.is_active : !u.is_active
+            );
+        }
+
+        result = [...result].sort((a, b) => {
+            let comparison = 0;
+            if (userSortBy === 'name') {
+                comparison = a.name.localeCompare(b.name);
+            } else if (userSortBy === 'email') {
+                comparison = a.email.localeCompare(b.email);
+            } else if (userSortBy === 'role') {
+                comparison = a.role.localeCompare(b.role);
+            } else if (userSortBy === 'containers') {
+                comparison = a.containers.length - b.containers.length;
+            }
+            return userSortOrder === 'asc' ? comparison : -comparison;
+        });
+
+        return result;
+    }, [users, userSearchQuery, userFilterRole, userFilterStatus, userSortBy, userSortOrder]);
+
     useEffect(() => {
         if (users.length > 0 && containers.length > 0) {
             const usersWithContainers = new Set<string>();
@@ -279,6 +356,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             }
         }
     }, [users, containers]);
+
+    useEffect(() => {
+        const handleKeyPress = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (selectedContainer) handleCloseDetails();
+                if (roleEditDialogOpen) setRoleEditDialogOpen(false);
+                if (groupDialogOpen) setGroupDialogOpen(false);
+                if (membersDialogOpen) setMembersDialogOpen(false);
+                if (accessDialogOpen) setAccessDialogOpen(false);
+                if (createContainerDialogOpen) setCreateContainerDialogOpen(false);
+                if (confirmDialog.open) setConfirmDialog(prev => ({ ...prev, open: false }));
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyPress);
+        return () => window.removeEventListener('keydown', handleKeyPress);
+    }, [selectedContainer, roleEditDialogOpen, groupDialogOpen, membersDialogOpen, accessDialogOpen, createContainerDialogOpen, confirmDialog.open]);
 
     const loadContainerDetails = useCallback(async (container: Container) => {
         setDetailsLoading(true);
@@ -350,6 +448,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         setSnackbar({ open: true, message, severity });
     };
 
+    const showConfirm = (title: string, message: string, onConfirm: () => void, severity: 'error' | 'warning' | 'info' = 'warning') => {
+        setConfirmDialog({ open: true, title, message, onConfirm, severity });
+    };
+
     const toggleDrawer = () => setDrawerOpen(!drawerOpen);
 
     const toggleUserExpand = (userId: string) => {
@@ -371,7 +473,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         setContainerDetails(null);
         setDetailsError(null);
         setViewingFile(null);
-        setFileContent('');
     };
 
     const handleRefreshDetails = () => {
@@ -381,32 +482,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const handleContainerAction = async (action: string, container: Container) => {
         if (action === 'refresh') refetchContainers();
         if (action === 'delete') {
-            try {
-                await apiClient.deleteContainer(container.id);
-                refetchContainers();
-                showSnackbar('Контейнер удалён', 'success');
-                handleCloseDetails();
-            } catch (error) {
-                showSnackbar('Ошибка при удалении контейнера', 'error');
-            }
+            showConfirm(
+                'Удалить контейнер?',
+                `Вы уверены, что хотите удалить контейнер "${container.id}"? Это действие необратимо.`,
+                async () => {
+                    try {
+                        await apiClient.deleteContainer(container.id);
+                        refetchContainers();
+                        showSnackbar('Контейнер удалён', 'success');
+                        handleCloseDetails();
+                    } catch (error) {
+                        showSnackbar('Ошибка при удалении контейнера', 'error');
+                    }
+                },
+                'error'
+            );
         }
         if (action === 'stop') {
-            try {
-                await apiClient.stopContainer(container.id);
-                refetchContainers();
-                showSnackbar('Контейнер остановлен', 'success');
-            } catch (error) {
-                showSnackbar('Ошибка при остановке контейнера', 'error');
-            }
+            showConfirm(
+                'Остановить контейнер?',
+                `Вы уверены, что хотите остановить контейнер "${container.id}"?`,
+                async () => {
+                    try {
+                        await apiClient.stopContainer(container.id);
+                        refetchContainers();
+                        showSnackbar('Контейнер остановлен', 'success');
+                    } catch (error) {
+                        showSnackbar('Ошибка при остановке контейнера', 'error');
+                    }
+                },
+                'warning'
+            );
         }
         if (action === 'restart') {
-            try {
-                await apiClient.restartContainer(container.id);
-                refetchContainers();
-                showSnackbar('Контейнер перезапущен', 'success');
-            } catch (error) {
-                showSnackbar('Ошибка при перезапуске контейнера', 'error');
-            }
+            showConfirm(
+                'Перезапустить контейнер?',
+                `Вы уверены, что хотите перезапустить контейнер "${container.id}"?`,
+                async () => {
+                    try {
+                        await apiClient.restartContainer(container.id);
+                        refetchContainers();
+                        showSnackbar('Контейнер перезапущен', 'success');
+                    } catch (error) {
+                        showSnackbar('Ошибка при перезапуске контейнера', 'error');
+                    }
+                },
+                'info'
+            );
         }
     };
 
@@ -415,35 +537,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         setFileViewerOpen(true);
     };
 
-    const handleDownloadFile = async (file: ApiFile) => {
-        try {
-            const blob = await apiClient.downloadFile(file.name, selectedContainer!.id);
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = file.name;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-        } catch (error) {
-            console.error('Download failed:', error);
-        }
-    };
-
     const handleDeleteFile = async (file: ApiFile) => {
-        if (!window.confirm(`Удалить файл "${file.name}"?`)) return;
-
-        try {
-            await apiClient.deleteFile(file.name, selectedContainer!.id);
-            refetchFiles();
-            if (containerDetails) {
-                loadContainerDetails(selectedContainer!);
-            }
-            showSnackbar('Файл удалён', 'success');
-        } catch (error) {
-            showSnackbar('Ошибка при удалении файла', 'error');
-        }
+        showConfirm(
+            'Удалить файл?',
+            `Вы уверены, что хотите удалить файл "${file.name}"?`,
+            async () => {
+                try {
+                    await apiClient.deleteFile(file.name, selectedContainer!.id);
+                    refetchFiles();
+                    if (containerDetails) {
+                        loadContainerDetails(selectedContainer!);
+                    }
+                    showSnackbar('Файл удалён', 'success');
+                } catch (error) {
+                    showSnackbar('Ошибка при удалении файла', 'error');
+                }
+            },
+            'error'
+        );
     };
 
     const handleOpenRoleEditDialog = (u: EnrichedUser) => {
@@ -465,12 +576,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     const handleToggleUserStatus = async (u: EnrichedUser) => {
         const newStatus = !u.is_active;
-        try {
-            await updateStatusMutation.mutateAsync({ userId: u.id, isActive: newStatus });
-            showSnackbar(`Пользователь ${u.name} ${newStatus ? 'активирован' : 'деактивирован'}`, 'success');
-        } catch (error) {
-            showSnackbar('Ошибка при изменении статуса', 'error');
-        }
+        const action = newStatus ? 'активировать' : 'деактивировать';
+        showConfirm(
+            `${newStatus ? 'Активировать' : 'Деактивировать'} пользователя?`,
+            `Вы уверены, что хотите ${action} пользователя "${u.name}"?`,
+            async () => {
+                try {
+                    await updateStatusMutation.mutateAsync({ userId: u.id, isActive: newStatus });
+                    showSnackbar(`Пользователь ${u.name} ${newStatus ? 'активирован' : 'деактивирован'}`, 'success');
+                } catch (error) {
+                    showSnackbar('Ошибка при изменении статуса', 'error');
+                }
+            },
+            newStatus ? 'info' : 'warning'
+        );
     };
 
     const handleOpenCreateGroupDialog = () => {
@@ -517,14 +636,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     };
 
     const handleDeleteGroup = async (groupId: string) => {
-        if (!window.confirm('Удалить группу? Это действие необратимо.')) return;
-        try {
-            await deleteGroupMutation.mutateAsync(groupId);
-            showSnackbar('Группа удалена', 'success');
-            refetchUserGroups();
-        } catch (error) {
-            showSnackbar('Ошибка при удалении группы', 'error');
-        }
+        showConfirm(
+            'Удалить группу?',
+            'Это действие необратимо. Все участники будут удалены из группы, а доступы к контейнерам отозваны.',
+            async () => {
+                try {
+                    await deleteGroupMutation.mutateAsync(groupId);
+                    showSnackbar('Группа удалена', 'success');
+                    refetchUserGroups();
+                } catch (error) {
+                    showSnackbar('Ошибка при удалении группы', 'error');
+                }
+            },
+            'error'
+        );
     };
 
     const handleOpenMembersDialog = (group: UserGroup) => {
@@ -551,13 +676,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     const handleRemoveMember = async (userId: string) => {
         if (!selectedGroup) return;
-        if (!window.confirm('Удалить пользователя из группы?')) return;
-        try {
-            await removeMemberMutation.mutateAsync({ groupId: selectedGroup.id, userId });
-            showSnackbar('Пользователь удалён из группы', 'success');
-        } catch (error) {
-            showSnackbar('Ошибка при удалении пользователя', 'error');
-        }
+        showConfirm(
+            'Удалить пользователя из группы?',
+            'Пользователь потеряет доступ к контейнерам этой группы.',
+            async () => {
+                try {
+                    await removeMemberMutation.mutateAsync({ groupId: selectedGroup.id, userId });
+                    showSnackbar('Пользователь удалён из группы', 'success');
+                } catch (error) {
+                    showSnackbar('Ошибка при удалении пользователя', 'error');
+                }
+            },
+            'warning'
+        );
     };
 
     const handleChangeMemberRole = async (userId: string, role: string) => {
@@ -593,13 +724,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     const handleRevokeAccess = async (groupId: string) => {
         if (!selectedContainer) return;
-        if (!window.confirm('Отозвать доступ?')) return;
-        try {
-            await revokeAccessMutation.mutateAsync({ containerId: selectedContainer.id, groupId });
-            showSnackbar('Доступ отозван', 'success');
-        } catch (error) {
-            showSnackbar('Ошибка при отзыве доступа', 'error');
-        }
+        showConfirm(
+            'Отозвать доступ?',
+            'Группа потеряет доступ к этому контейнеру.',
+            async () => {
+                try {
+                    await revokeAccessMutation.mutateAsync({ containerId: selectedContainer.id, groupId });
+                    showSnackbar('Доступ отозван', 'success');
+                } catch (error) {
+                    showSnackbar('Ошибка при отзыве доступа', 'error');
+                }
+            },
+            'warning'
+        );
     };
 
     const handleOpenCreateContainerDialog = (userId?: string) => {
@@ -638,6 +775,63 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         } catch (error: any) {
             const message = error?.response?.data?.detail || 'Ошибка при создании контейнера';
             showSnackbar(message, 'error');
+        }
+    };
+
+    const handleSelectUser = (userId: string) => {
+        setSelectedUsers(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(userId)) {
+                newSet.delete(userId);
+            } else {
+                newSet.add(userId);
+            }
+            return newSet;
+        });
+    };
+
+    const handleBulkAction = async (action: string) => {
+        setBulkActionMenuAnchor(null);
+        if (selectedUsers.size === 0) {
+            showSnackbar('Выберите пользователей', 'warning');
+            return;
+        }
+
+        if (action === 'activate') {
+            showConfirm(
+                'Активировать пользователей?',
+                `Вы уверены, что хотите активировать ${selectedUsers.size} пользователей?`,
+                async () => {
+                    try {
+                        for (const userId of selectedUsers) {
+                            await updateStatusMutation.mutateAsync({ userId, isActive: true });
+                        }
+                        showSnackbar(`${selectedUsers.size} пользователей активировано`, 'success');
+                        setSelectedUsers(new Set());
+                    } catch (error) {
+                        showSnackbar('Ошибка при активации', 'error');
+                    }
+                },
+                'info'
+            );
+        }
+        if (action === 'deactivate') {
+            showConfirm(
+                'Деактивировать пользователей?',
+                `Вы уверены, что хотите деактивировать ${selectedUsers.size} пользователей?`,
+                async () => {
+                    try {
+                        for (const userId of selectedUsers) {
+                            await updateStatusMutation.mutateAsync({ userId, isActive: false });
+                        }
+                        showSnackbar(`${selectedUsers.size} пользователей деактивировано`, 'success');
+                        setSelectedUsers(new Set());
+                    } catch (error) {
+                        showSnackbar('Ошибка при деактивации', 'error');
+                    }
+                },
+                'warning'
+            );
         }
     };
 
@@ -696,10 +890,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     if (usersLoading || containersLoading) {
         return (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: 'background.default' }}>
-                <Box sx={{ textAlign: 'center' }}>
-                    <CircularProgress size={60} sx={{ mb: 2 }} />
-                    <Typography color="text.secondary">Загрузка панели администратора...</Typography>
+            <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: 'background.default' }}>
+                <Box sx={{ width: 360, borderRight: '1px solid rgba(255,255,255,0.08)' }}>
+                    <Box sx={{ p: 2 }}>
+                        <Skeleton variant="text" width={200} height={40} sx={{ bgcolor: 'rgba(255,255,255,0.05)' }} />
+                        <Skeleton variant="rounded" height={30} sx={{ mt: 1, bgcolor: 'rgba(255,255,255,0.05)' }} />
+                    </Box>
+                    <Box sx={{ p: 2 }}>
+                        <Skeleton variant="rounded" height={36} sx={{ mb: 2, bgcolor: 'rgba(255,255,255,0.05)' }} />
+                    </Box>
+                    {[1, 2, 3, 4, 5].map(i => (
+                        <Box key={i} sx={{ px: 1.5, py: 1 }}>
+                            <Skeleton variant="rounded" height={70} sx={{ bgcolor: 'rgba(255,255,255,0.05)' }} />
+                        </Box>
+                    ))}
+                </Box>
+                <Box sx={{ flex: 1, p: 3 }}>
+                    <Box sx={{ display: 'flex', gap: 3, mb: 4 }}>
+                        {[1, 2, 3, 4].map(i => (
+                            <Skeleton key={i} variant="rounded" width="25%" height={140} sx={{ bgcolor: 'rgba(255,255,255,0.05)' }} />
+                        ))}
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+                        <Box>
+                            <Skeleton variant="text" width={300} height={40} sx={{ bgcolor: 'rgba(255,255,255,0.05)' }} />
+                            <Skeleton variant="text" width={400} height={24} sx={{ bgcolor: 'rgba(255,255,255,0.05)' }} />
+                        </Box>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                        {[1, 2, 3, 4, 5, 6].map(i => (
+                            <Skeleton key={i} variant="rounded" width="calc(33.333% - 16px)" height={200} sx={{ bgcolor: 'rgba(255,255,255,0.05)' }} />
+                        ))}
+                    </Box>
                 </Box>
             </Box>
         );
@@ -758,8 +980,123 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                     </Box>
                 )}
 
+                {drawerOpen && adminActiveTab === 0 && (
+                    <Box sx={{ p: 2, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                        <TextField
+                            inputRef={searchInputRef}
+                            size="small"
+                            fullWidth
+                            placeholder="Поиск пользователей... (Ctrl+K)"
+                            value={userSearchQuery}
+                            onChange={(e) => setUserSearchQuery(e.target.value)}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                                    </InputAdornment>
+                                ),
+                                endAdornment: userSearchQuery && (
+                                    <InputAdornment position="end">
+                                        <IconButton size="small" onClick={() => setUserSearchQuery('')}>
+                                            <CloseIcon fontSize="small" />
+                                        </IconButton>
+                                    </InputAdornment>
+                                ),
+                                sx: { bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 2 }
+                            }}
+                            sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } } }}
+                        />
+                        <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                            <FormControl size="small" sx={{ flex: 1 }}>
+                                <Select
+                                    value={userFilterRole}
+                                    onChange={(e) => setUserFilterRole(e.target.value)}
+                                    displayEmpty
+                                    sx={{ fontSize: '0.75rem', bgcolor: 'rgba(255,255,255,0.05)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' } }}
+                                >
+                                    <MenuItem value="all">Все роли</MenuItem>
+                                    {AVAILABLE_ROLES.map(role => (
+                                        <MenuItem key={role} value={role}>{role}</MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                            <FormControl size="small" sx={{ flex: 1 }}>
+                                <Select
+                                    value={userFilterStatus}
+                                    onChange={(e) => setUserFilterStatus(e.target.value)}
+                                    displayEmpty
+                                    sx={{ fontSize: '0.75rem', bgcolor: 'rgba(255,255,255,0.05)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' } }}
+                                >
+                                    <MenuItem value="all">Все</MenuItem>
+                                    <MenuItem value="active">Активные</MenuItem>
+                                    <MenuItem value="inactive">Неактивные</MenuItem>
+                                </Select>
+                            </FormControl>
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                            <FormControl size="small" sx={{ flex: 1 }}>
+                                <Select
+                                    value={userSortBy}
+                                    onChange={(e) => setUserSortBy(e.target.value)}
+                                    sx={{ fontSize: '0.75rem', bgcolor: 'rgba(255,255,255,0.05)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' } }}
+                                >
+                                    <MenuItem value="name">По имени</MenuItem>
+                                    <MenuItem value="email">По email</MenuItem>
+                                    <MenuItem value="role">По роли</MenuItem>
+                                    <MenuItem value="containers">По контейнерам</MenuItem>
+                                </Select>
+                            </FormControl>
+                            <IconButton
+                                size="small"
+                                onClick={() => setUserSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                                sx={{ bgcolor: 'rgba(255,255,255,0.05)' }}
+                            >
+                                {userSortOrder === 'asc' ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
+                            </IconButton>
+                        </Box>
+                    </Box>
+                )}
+
+                {selectedUsers.size > 0 && drawerOpen && adminActiveTab === 0 && (
+                    <Box sx={{ px: 2, py: 1.5, bgcolor: 'primary.main/10', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Typography variant="caption" color="primary.light" fontWeight={600}>
+                            Выбрано: {selectedUsers.size}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                            <Tooltip title="Массовые действия">
+                                <IconButton
+                                    size="small"
+                                    onClick={(e) => setBulkActionMenuAnchor(e.currentTarget)}
+                                    sx={{ color: 'primary.light' }}
+                                >
+                                    <MoreVertIcon fontSize="small" />
+                                </IconButton>
+                            </Tooltip>
+                            <Menu
+                                anchorEl={bulkActionMenuAnchor}
+                                open={Boolean(bulkActionMenuAnchor)}
+                                onClose={() => setBulkActionMenuAnchor(null)}
+                            >
+                                <MenuItem onClick={() => handleBulkAction('activate')}>
+                                    <CheckCircleIcon fontSize="small" sx={{ mr: 1, color: 'success.main' }} />
+                                    Активировать
+                                </MenuItem>
+                                <MenuItem onClick={() => handleBulkAction('deactivate')}>
+                                    <ErrorIcon fontSize="small" sx={{ mr: 1, color: 'warning.main' }} />
+                                    Деактивировать
+                                </MenuItem>
+                            </Menu>
+                            <Tooltip title="Снять выделение">
+                                <IconButton size="small" onClick={() => setSelectedUsers(new Set())} sx={{ color: 'text.secondary' }}>
+                                    <DeselectIcon fontSize="small" />
+                                </IconButton>
+                            </Tooltip>
+                        </Box>
+                    </Box>
+                )}
+
                 <List sx={{ flex: 1, overflow: 'auto', py: 1 }}>
-                    {adminActiveTab === 0 && users.map((u) => (
+                    {adminActiveTab === 0 && filteredUsers.map((u) => (
                         <React.Fragment key={u.id}>
                             <ListItemButton
                                 selected={selectedUserId === u.id}
@@ -768,13 +1105,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                     borderRadius: 2, mx: 1.5, my: 0.5, minHeight: 56,
                                     '&.Mui-selected': { backgroundColor: 'rgba(103, 126, 234, 0.2)', borderLeft: '3px solid', borderLeftColor: 'primary.main' },
                                     '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' },
+                                    position: 'relative',
                                 }}
                             >
+                                <Checkbox
+                                    checked={selectedUsers.has(u.id)}
+                                    onChange={(e) => {
+                                        e.stopPropagation();
+                                        handleSelectUser(u.id);
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    size="small"
+                                    sx={{ mr: 1, p: 0 }}
+                                />
                                 <ListItemAvatar>
                                     <Tooltip title={`${u.role}${u.is_active ? '' : ' (неактивен)'}`}>
-                                        <Avatar sx={{ bgcolor: u.role === 'super_admin' ? 'error.main' : u.role === 'admin' ? 'warning.main' : 'primary.main', width: 36, height: 36, fontSize: '0.9rem' }}>
-                                            {u.name?.[0]?.toUpperCase() || 'U'}
-                                        </Avatar>
+                                        <Badge
+                                            overlap="circular"
+                                            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                                            variant="dot"
+                                            color={u.is_active ? 'success' : 'error'}
+                                            invisible={!u.is_active}
+                                        >
+                                            <Avatar sx={{
+                                                bgcolor: ROLE_COLORS[u.role] || 'primary.main',
+                                                width: 36,
+                                                height: 36,
+                                                fontSize: '0.9rem',
+                                            }}>
+                                                {u.name?.[0]?.toUpperCase() || 'U'}
+                                            </Avatar>
+                                        </Badge>
                                     </Tooltip>
                                 </ListItemAvatar>
                                 {drawerOpen && (
@@ -824,18 +1185,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                         </Tooltip>
                                     </Box>
                                     {u.containers?.map((container) => (
-                                        <Paper key={container.id} elevation={0} sx={{ p: 1.5, mb: 1, background: 'rgba(255,255,255,0.03)', borderRadius: 2, cursor: 'pointer', border: '1px solid transparent', transition: 'all 0.2s', '&:hover': { background: 'rgba(255,255,255,0.08)', borderColor: 'rgba(103, 126, 234, 0.3)' } }} onClick={() => handleContainerSelect(container)}>
+                                        <Paper
+                                            key={container.id}
+                                            elevation={0}
+                                            sx={{
+                                                p: 1.5,
+                                                mb: 1,
+                                                background: 'rgba(255,255,255,0.03)',
+                                                borderRadius: 2,
+                                                cursor: 'pointer',
+                                                border: '1px solid transparent',
+                                                transition: 'all 0.2s',
+                                                '&:hover': {
+                                                    background: 'rgba(255,255,255,0.08)',
+                                                    borderColor: 'rgba(103, 126, 234, 0.3)',
+                                                    transform: 'translateX(4px)'
+                                                }
+                                            }}
+                                            onClick={() => handleContainerSelect(container)}
+                                        >
                                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                                 <Box sx={{ minWidth: 0 }}>
                                                     <Typography variant="body2" fontWeight="600" noWrap sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                                         <StorageIcon fontSize="small" sx={{ color: 'primary.main', opacity: 0.8 }} />{container.id}
                                                     </Typography>
                                                     <Box sx={{ display: 'flex', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
-                                                        <Chip label={container.status} size="small" color={container.status === 'running' ? 'success' : container.status === 'error' ? 'error' : 'warning'} sx={{ height: 20, fontSize: '0.65rem', fontWeight: 500 }} />
+                                                        <Chip
+                                                            label={container.status}
+                                                            size="small"
+                                                            color={container.status === 'running' ? 'success' : container.status === 'error' ? 'error' : 'warning'}
+                                                            sx={{ height: 20, fontSize: '0.65rem', fontWeight: 500 }}
+                                                        />
                                                         <Chip label={container.env_label?.value || '—'} size="small" sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.1)' }} />
                                                     </Box>
                                                 </Box>
-                                                <Tooltip title="Открыть детали"><IconButton size="small" sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}><InfoIcon fontSize="small" /></IconButton></Tooltip>
+                                                <Tooltip title="Открыть детали">
+                                                    <IconButton size="small" sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}>
+                                                        <InfoIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
                                             </Box>
                                             <Box sx={{ display: 'flex', gap: 2, mt: 1, fontSize: '0.7rem', color: 'text.secondary' }}>
                                                 <Box>CPU: {container.cpu_usage?.toFixed(1) || 0}%</Box>
@@ -843,11 +1231,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                             </Box>
                                         </Paper>
                                     ))}
-                                    {u.containers?.length === 0 && <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>Нет активных контейнеров</Typography>}
+                                    {u.containers?.length === 0 && (
+                                        <Box sx={{ textAlign: 'center', py: 2 }}>
+                                            <StorageIcon sx={{ fontSize: 32, color: 'text.secondary', opacity: 0.3, mb: 1 }} />
+                                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block' }}>
+                                                Нет активных контейнеров
+                                            </Typography>
+                                        </Box>
+                                    )}
                                 </Box>
                             </Collapse>
                         </React.Fragment>
                     ))}
+
+                    {adminActiveTab === 0 && filteredUsers.length === 0 && (
+                        <Box sx={{ textAlign: 'center', py: 6, px: 2 }}>
+                            <SearchIcon sx={{ fontSize: 64, color: 'text.secondary', opacity: 0.3, mb: 2 }} />
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                Пользователи не найдены
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                                Попробуйте изменить параметры поиска или фильтры
+                            </Typography>
+                            {(userSearchQuery || userFilterRole !== 'all' || userFilterStatus !== 'all') && (
+                                <Button
+                                    size="small"
+                                    onClick={() => {
+                                        setUserSearchQuery('');
+                                        setUserFilterRole('all');
+                                        setUserFilterStatus('all');
+                                    }}
+                                    sx={{ mt: 2 }}
+                                >
+                                    Сбросить фильтры
+                                </Button>
+                            )}
+                        </Box>
+                    )}
 
                     {adminActiveTab === 1 && (
                         <Box sx={{ px: 1.5 }}>
@@ -864,20 +1284,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                             {groupsLoading ? (
                                 <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} /></Box>
                             ) : userGroups.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
-                                    Группы не созданы
-                                </Typography>
+                                <Box sx={{ textAlign: 'center', py: 6 }}>
+                                    <GroupIcon sx={{ fontSize: 64, color: 'text.secondary', opacity: 0.3, mb: 2 }} />
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                        Группы не созданы
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Создайте первую группу для организации пользователей
+                                    </Typography>
+                                </Box>
                             ) : (
-                                userGroups.map(group => (
-                                    <Paper key={group.id} elevation={0} sx={{ p: 2, mb: 1.5, background: 'rgba(255,255,255,0.03)', borderRadius: 2, border: `2px solid ${group.color || '#ff9800'}40` }}>
+                                userGroups.map((group) => (
+                                    <Paper
+                                        key={group.id}
+                                        elevation={0}
+                                        sx={{
+                                            p: 2,
+                                            mb: 1.5,
+                                            background: 'rgba(255,255,255,0.03)',
+                                            borderRadius: 2,
+                                            border: `2px solid ${group.color || '#ff9800'}40`,
+                                            transition: 'all 0.2s',
+                                            '&:hover': {
+                                                borderColor: `${group.color || '#ff9800'}80`,
+                                                transform: 'translateY(-2px)',
+                                                boxShadow: `0 4px 12px ${group.color || '#ff9800'}20`
+                                            }
+                                        }}
+                                    >
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                                             <Box sx={{ width: 14, height: 14, borderRadius: '50%', bgcolor: group.color || '#ff9800' }} />
                                             <Typography variant="subtitle2" fontWeight={600} sx={{ flex: 1 }}>{group.id}</Typography>
-                                            <IconButton size="small" onClick={() => handleOpenEditGroupDialog(group)}><EditIcon fontSize="small" /></IconButton>
-                                            <IconButton size="small" onClick={() => handleDeleteGroup(group.id)}><DeleteIcon fontSize="small" /></IconButton>
+                                            <IconButton size="small" onClick={() => handleOpenEditGroupDialog(group)}>
+                                                <EditIcon fontSize="small" />
+                                            </IconButton>
+                                            <IconButton size="small" onClick={() => handleDeleteGroup(group.id)}>
+                                                <DeleteIcon fontSize="small" />
+                                            </IconButton>
                                         </Box>
                                         {group.description && (
-                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>{group.description}</Typography>
+                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                                                {group.description}
+                                            </Typography>
                                         )}
                                         <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
                                             <Chip label={`${group.members?.length || 0} польз.`} size="small" sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'primary.main/20' }} />
@@ -931,27 +1379,73 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                             minWidth: { xs: '100%', sm: 'calc(50% - 12px)', lg: 'calc(25% - 12px)' },
                             maxWidth: { lg: 'calc(25% - 12px)' }
                         }}>
-                            <Card sx={{ bgcolor: 'rgba(18, 22, 40, 0.6)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3, height: '100%', transition: 'transform 0.2s, box-shadow 0.2s', '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 8px 25px rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.15)' } }}>
+                            <Card sx={{
+                                bgcolor: 'rgba(18, 22, 40, 0.6)',
+                                backdropFilter: 'blur(10px)',
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                borderRadius: 3,
+                                height: '100%',
+                                transition: 'all 0.3s',
+                                '&:hover': {
+                                    transform: 'translateY(-4px)',
+                                    boxShadow: `0 12px 32px ${theme.palette[stat.color as keyof typeof theme.palette].toString}30`,
+                                    borderColor: `${theme.palette[stat.color as keyof typeof theme.palette].toString}50`
+                                }
+                            }}>
                                 <CardContent sx={{ p: 2.5 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
                                         <Typography variant="body2" color="text.secondary" fontWeight={500}>{stat.title}</Typography>
-                                        <Box sx={{ p: 1, borderRadius: 2, bgcolor: `${stat.color}.main/15`, color: `${stat.color}.main` }}>{React.cloneElement(stat.icon as React.ReactElement)}</Box>
+                                        <Box sx={{
+                                            p: 1,
+                                            borderRadius: 2,
+                                            bgcolor: `${stat.color}.main/15`,
+                                            color: `${stat.color}.main`
+                                        }}>
+                                            {React.cloneElement(stat.icon as React.ReactElement)}
+                                        </Box>
                                     </Box>
                                     <Typography variant="h3" fontWeight="700" sx={{ lineHeight: 1.2 }}>{stat.value}</Typography>
                                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>{stat.sub}</Typography>
-                                    <LinearProgress variant="determinate" value={stat.progress} sx={{ mt: 1.5, height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.1)', '& .MuiLinearProgress-bar': { borderRadius: 2, bgcolor: `${stat.color}.main` } }} />
+                                    <LinearProgress
+                                        variant="determinate"
+                                        value={stat.progress}
+                                        sx={{
+                                            mt: 1.5,
+                                            height: 4,
+                                            borderRadius: 2,
+                                            bgcolor: 'rgba(255,255,255,0.1)',
+                                            '& .MuiLinearProgress-bar': {
+                                                borderRadius: 2,
+                                                bgcolor: `${stat.color}.main`
+                                            }
+                                        }}
+                                    />
                                 </CardContent>
                             </Card>
                         </Box>
                     ))}
                 </Box>
 
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 2 }}>
                     <Box>
                         <Typography variant="h5" fontWeight={600}>Все контейнеры</Typography>
                         <Typography variant="body2" color="text.secondary">Управление и мониторинг контейнеров всех пользователей</Typography>
                     </Box>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <ToggleButtonGroup
+                            value={viewMode}
+                            exclusive
+                            onChange={(_, newMode) => newMode && setViewMode(newMode)}
+                            size="small"
+                            sx={{ bgcolor: 'rgba(255,255,255,0.05)' }}
+                        >
+                            <ToggleButton value="grid" sx={{ p: 0.5 }}>
+                                <ViewModuleIcon fontSize="small" />
+                            </ToggleButton>
+                            <ToggleButton value="list" sx={{ p: 0.5 }}>
+                                <ViewListIcon fontSize="small" />
+                            </ToggleButton>
+                        </ToggleButtonGroup>
                         <Button
                             variant="contained"
                             startIcon={<AddIcon />}
@@ -961,16 +1455,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                             Создать контейнер
                         </Button>
                         <Chip label={totalContainers} size="medium" sx={{ fontWeight: 500, bgcolor: 'primary.main/20', color: 'primary.light' }} />
-                        <Tooltip title="Обновить данные"><IconButton onClick={() => { refetchContainers(); refetchUsers(); refetchUserGroups(); }} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}><RefreshIcon fontSize="small" /></IconButton></Tooltip>
+                        <Tooltip title="Обновить данные">
+                            <IconButton
+                                onClick={() => { refetchContainers(); refetchUsers(); refetchUserGroups(); }}
+                                size="small"
+                                sx={{
+                                    bgcolor: 'rgba(255,255,255,0.08)',
+                                    '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' }
+                                }}
+                            >
+                                <RefreshIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
                     </Box>
                 </Box>
 
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 2, md: 3 } }}>
+                <Box sx={{
+                    display: 'flex',
+                    flexWrap: viewMode === 'grid' ? 'wrap' : 'nowrap',
+                    flexDirection: viewMode === 'list' ? 'column' : 'row',
+                    gap: { xs: 2, md: 3 }
+                }}>
                     {containers.map((container) => (
                         <Box key={container.id} sx={{
-                            flex: '1 1 calc(33.333% - 16px)',
-                            minWidth: { xs: '100%', sm: 'calc(50% - 12px)', md: 'calc(33.333% - 16px)', xl: 'calc(25% - 18px)' },
-                            maxWidth: { xl: 'calc(25% - 18px)' }
+                            flex: viewMode === 'grid' ? {
+                                xs: '1 1 100%',
+                                sm: '1 1 calc(50% - 12px)',
+                                md: '1 1 calc(33.333% - 16px)',
+                                xl: '1 1 calc(25% - 18px)'
+                            } : '0 0 auto',
+                            minWidth: viewMode === 'grid' ? {
+                                xs: '100%',
+                                sm: 'calc(50% - 12px)',
+                                md: 'calc(33.333% - 16px)',
+                                xl: 'calc(25% - 18px)'
+                            } : '100%',
+                            maxWidth: viewMode === 'grid' ? {
+                                xl: 'calc(25% - 18px)'
+                            } : '100%'
                         }}>
                             <ContainerCard container={container} onSelect={handleContainerSelect} onAction={handleContainerAction} />
                         </Box>
@@ -979,37 +1501,117 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
                 {containers.length === 0 && (
                     <Box sx={{ textAlign: 'center', py: 10 }}>
-                        <Box sx={{ width: 80, height: 80, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 3 }}><StorageIcon sx={{ fontSize: 40, color: 'text.secondary' }} /></Box>
-                        <Typography variant="h6" fontWeight={500} color="text.primary" gutterBottom>Контейнеры не найдены</Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400, mx: 'auto', mb: 2 }}>Создайте первый контейнер или дождитесь, пока пользователи добавят свои</Typography>
-                        <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenCreateContainerDialog()}>Создать контейнер</Button>
+                        <Box sx={{
+                            width: 100,
+                            height: 100,
+                            borderRadius: '50%',
+                            bgcolor: 'rgba(255,255,255,0.05)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            mx: 'auto',
+                            mb: 3,
+                        }}>
+                            <StorageIcon sx={{ fontSize: 50, color: 'text.secondary' }} />
+                        </Box>
+                        <Typography variant="h6" fontWeight={500} color="text.primary" gutterBottom>
+                            Контейнеры не найдены
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400, mx: 'auto', mb: 2 }}>
+                            Создайте первый контейнер или дождитесь, пока пользователи добавят свои
+                        </Typography>
+                        <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenCreateContainerDialog()}>
+                            Создать контейнер
+                        </Button>
                     </Box>
                 )}
             </Box>
 
-            <Dialog open={!!selectedContainer} onClose={handleCloseDetails} maxWidth="lg" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, m: { xs: 1, md: 2 } } }}>
+            <Dialog
+                open={!!selectedContainer}
+                onClose={handleCloseDetails}
+                maxWidth="lg"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        bgcolor: 'rgba(18, 22, 40, 0.98)',
+                        backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 3,
+                        m: { xs: 1, md: 2 }
+                    }
+                }}
+            >
                 {selectedContainer && (
                     <>
                         <DialogTitle sx={{ pb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: selectedContainer.status === 'running' ? 'success.main/20' : 'warning.main/20', color: selectedContainer.status === 'running' ? 'success.main' : 'warning.main' }}><StorageIcon /></Box>
+                                <Box sx={{
+                                    p: 1.5,
+                                    borderRadius: 2,
+                                    bgcolor: selectedContainer.status === 'running' ? 'success.main/20' : 'warning.main/20',
+                                    color: selectedContainer.status === 'running' ? 'success.main' : 'warning.main'
+                                }}>
+                                    <StorageIcon />
+                                </Box>
                                 <Box>
                                     <Typography variant="h6" fontWeight={600}>{selectedContainer.id}</Typography>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                                        <Chip label={selectedContainer.status} size="small" color={selectedContainer.status === 'running' ? 'success' : selectedContainer.status === 'error' ? 'error' : 'warning'} sx={{ height: 22, fontSize: '0.7rem', fontWeight: 500 }} />
-                                        <Typography variant="caption" color="text.secondary">Создан: {new Date(selectedContainer.created_at).toLocaleDateString('ru-RU')}</Typography>
+                                        <Chip
+                                            label={selectedContainer.status}
+                                            size="small"
+                                            color={selectedContainer.status === 'running' ? 'success' : selectedContainer.status === 'error' ? 'error' : 'warning'}
+                                            sx={{ height: 22, fontSize: '0.7rem', fontWeight: 500 }}
+                                        />
+                                        <Typography variant="caption" color="text.secondary">
+                                            Создан: {new Date(selectedContainer.created_at).toLocaleDateString('ru-RU')}
+                                        </Typography>
                                     </Box>
                                 </Box>
                             </Box>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Tooltip title={autoRefresh ? 'Автообновление включено' : 'Автообновление выключено'}><IconButton onClick={() => setAutoRefresh(!autoRefresh)} size="small" sx={{ color: autoRefresh ? 'success.main' : 'text.secondary', bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}><RefreshIcon fontSize="small" /></IconButton></Tooltip>
-                                <Tooltip title="Обновить"><IconButton onClick={handleRefreshDetails} disabled={detailsLoading} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}>{detailsLoading ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}</IconButton></Tooltip>
-                                <IconButton onClick={handleCloseDetails} size="small" sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}><CloseIcon /></IconButton>
+                                <Tooltip title={autoRefresh ? 'Автообновление включено' : 'Автообновление выключено'}>
+                                    <IconButton
+                                        onClick={() => setAutoRefresh(!autoRefresh)}
+                                        size="small"
+                                        sx={{
+                                            color: autoRefresh ? 'success.main' : 'text.secondary',
+                                            bgcolor: 'rgba(255,255,255,0.08)',
+                                            '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' }
+                                        }}
+                                    >
+                                        <RefreshIcon fontSize="small" />
+                                    </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Обновить">
+                                    <IconButton
+                                        onClick={handleRefreshDetails}
+                                        disabled={detailsLoading}
+                                        size="small"
+                                        sx={{ bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}
+                                    >
+                                        {detailsLoading ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+                                    </IconButton>
+                                </Tooltip>
+                                <IconButton onClick={handleCloseDetails} size="small" sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}>
+                                    <CloseIcon />
+                                </IconButton>
                             </Box>
                         </DialogTitle>
 
                         <DialogContent sx={{ pt: 3 }}>
-                            <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} variant="scrollable" scrollButtons="auto" sx={{ mb: 3, borderBottom: '1px solid rgba(255,255,255,0.08)', '& .MuiTab-root': { textTransform: 'none', fontWeight: 500, minHeight: 40 }, '& .Mui-selected': { color: 'primary.main !important' } }}>
+                            <Tabs
+                                value={activeTab}
+                                onChange={(_, v) => setActiveTab(v)}
+                                variant="scrollable"
+                                scrollButtons="auto"
+                                sx={{
+                                    mb: 3,
+                                    borderBottom: '1px solid rgba(255,255,255,0.08)',
+                                    '& .MuiTab-root': { textTransform: 'none', fontWeight: 500, minHeight: 40 },
+                                    '& .Mui-selected': { color: 'primary.main !important' }
+                                }}
+                            >
                                 <Tab icon={<TimelineIcon fontSize="small" />} iconPosition="start" label="Мониторинг" />
                                 <Tab icon={<GroupIcon fontSize="small" />} iconPosition="start" label={`Группы (${containerDetails?.groups?.length || 0})`} />
                                 <Tab icon={<FolderIcon fontSize="small" />} iconPosition="start" label="Файлы" />
@@ -1029,9 +1631,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                             { label: 'GPU', value: containerDetails?.stats?.gpu_usage ?? 0, unit: '%', color: chartColors.gpu, icon: <GpuIcon fontSize="small" /> },
                                         ].map((metric, idx) => (
                                             <Box key={idx} sx={{ flex: '1 1 calc(25% - 12px)', minWidth: { xs: 'calc(50% - 8px)', sm: 'calc(25% - 12px)' } }}>
-                                                <Paper elevation={0} sx={{ p: 2, borderRadius: 2.5, background: 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)', border: '1px solid rgba(255,255,255,0.08)', textAlign: 'center' }}>
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 1, color: metric.color }}>{metric.icon}<Typography variant="caption" fontWeight={500}>{metric.label}</Typography></Box>
-                                                    <Typography variant="h4" fontWeight={700}>{metric.format ? metric.format(metric.value) : formatPercent(metric.value)}</Typography>
+                                                <Paper
+                                                    elevation={0}
+                                                    sx={{
+                                                        p: 2,
+                                                        borderRadius: 2.5,
+                                                        background: 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
+                                                        border: '1px solid rgba(255,255,255,0.08)',
+                                                        textAlign: 'center',
+                                                        transition: 'all 0.3s',
+                                                        '&:hover': {
+                                                            transform: 'translateY(-4px)',
+                                                            boxShadow: `0 8px 24px ${metric.color}30`,
+                                                            borderColor: `${metric.color}50`
+                                                        }
+                                                    }}
+                                                >
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 1, color: metric.color }}>
+                                                        {metric.icon}
+                                                        <Typography variant="caption" fontWeight={500}>{metric.label}</Typography>
+                                                    </Box>
+                                                    <Typography variant="h4" fontWeight={700}>
+                                                        {metric.format ? metric.format(metric.value) : formatPercent(metric.value)}
+                                                    </Typography>
                                                     <Typography variant="caption" color="text.secondary">{metric.unit}</Typography>
                                                 </Paper>
                                             </Box>
@@ -1041,13 +1663,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                                         <Box sx={{ flex: '1 1 calc(50% - 12px)', minWidth: { xs: '100%', lg: 'calc(50% - 12px)' } }}>
                                             <Paper elevation={0} sx={{ p: 2, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                                                <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}><CpuIcon fontSize="small" sx={{ color: chartColors.cpu }} />Загрузка CPU и памяти</Typography>
+                                                <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                    <CpuIcon fontSize="small" sx={{ color: chartColors.cpu }} />
+                                                    Загрузка CPU и памяти
+                                                </Typography>
                                                 <Box sx={{ height: 250 }}>
                                                     <ResponsiveContainer width="100%" height="100%">
                                                         <AreaChart data={containerDetails?.history || []}>
                                                             <defs>
-                                                                <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={chartColors.cpu} stopOpacity={0.3} /><stop offset="95%" stopColor={chartColors.cpu} stopOpacity={0} /></linearGradient>
-                                                                <linearGradient id="memGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={chartColors.memory} stopOpacity={0.3} /><stop offset="95%" stopColor={chartColors.memory} stopOpacity={0} /></linearGradient>
+                                                                <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
+                                                                    <stop offset="5%" stopColor={chartColors.cpu} stopOpacity={0.3} />
+                                                                    <stop offset="95%" stopColor={chartColors.cpu} stopOpacity={0} />
+                                                                </linearGradient>
+                                                                <linearGradient id="memGradient" x1="0" y1="0" x2="0" y2="1">
+                                                                    <stop offset="5%" stopColor={chartColors.memory} stopOpacity={0.3} />
+                                                                    <stop offset="95%" stopColor={chartColors.memory} stopOpacity={0} />
+                                                                </linearGradient>
                                                             </defs>
                                                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                                                             <XAxis dataKey="time" stroke="rgba(255,255,255,0.5)" fontSize={10} />
@@ -1063,7 +1694,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                         </Box>
                                         <Box sx={{ flex: '1 1 calc(50% - 12px)', minWidth: { xs: '100%', lg: 'calc(50% - 12px)' } }}>
                                             <Paper elevation={0} sx={{ p: 2, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                                                <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}><GpuIcon fontSize="small" sx={{ color: chartColors.gpu }} />GPU и хранилище</Typography>
+                                                <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                    <GpuIcon fontSize="small" sx={{ color: chartColors.gpu }} />
+                                                    GPU и хранилище
+                                                </Typography>
                                                 <Box sx={{ height: 250 }}>
                                                     <ResponsiveContainer width="100%" height="100%">
                                                         <LineChart data={containerDetails?.history || []}>
@@ -1092,7 +1726,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                                 const stats = containerDetails.groupStats[group.id];
                                                 return (
                                                     <Box key={group.id} sx={{ flex: '1 1 calc(50% - 8px)', minWidth: { xs: '100%', md: 'calc(50% - 8px)' } }}>
-                                                        <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, background: 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)', border: `2px solid ${group.color || '#ff9800'}40`, '&:hover': { borderColor: `${group.color || '#ff9800'}80` } }}>
+                                                        <Paper
+                                                            elevation={0}
+                                                            sx={{
+                                                                p: 2.5,
+                                                                borderRadius: 3,
+                                                                background: 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
+                                                                border: `2px solid ${group.color || '#ff9800'}40`,
+                                                                transition: 'all 0.3s',
+                                                                '&:hover': {
+                                                                    borderColor: `${group.color || '#ff9800'}80`,
+                                                                    transform: 'translateY(-2px)',
+                                                                    boxShadow: `0 8px 24px ${group.color || '#ff9800'}20`
+                                                                }
+                                                            }}
+                                                        >
                                                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                                                                 <Box>
                                                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -1104,11 +1752,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                                                 <Chip label={`${stats?.total_files || 0} файлов`} size="small" sx={{ height: 24, fontSize: '0.7rem', bgcolor: 'rgba(255,255,255,0.1)' }} />
                                                             </Box>
                                                             <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                                                                <Box><Typography variant="caption" color="text.secondary">Размер</Typography><Typography variant="body2" fontWeight={500}>{formatBytes(stats?.total_size || 0)}</Typography></Box>
-                                                                <Box><Typography variant="caption" color="text.secondary">Средний файл</Typography><Typography variant="body2" fontWeight={500}>{formatBytes(stats?.average_file_size || 0)}</Typography></Box>
+                                                                <Box>
+                                                                    <Typography variant="caption" color="text.secondary">Размер</Typography>
+                                                                    <Typography variant="body2" fontWeight={500}>{formatBytes(stats?.total_size || 0)}</Typography>
+                                                                </Box>
+                                                                <Box>
+                                                                    <Typography variant="caption" color="text.secondary">Средний файл</Typography>
+                                                                    <Typography variant="body2" fontWeight={500}>{formatBytes(stats?.average_file_size || 0)}</Typography>
+                                                                </Box>
                                                             </Box>
                                                             {stats?.files && stats.files.length > 0 && (
-                                                                <Box sx={{ height: 80 }}><ResponsiveContainer width="100%" height="100%"><AreaChart data={stats.files.slice(0, 10).map((f, i) => ({ name: i, size: f.size }))}><Area type="monotone" dataKey="size" stroke={group.color || '#ff9800'} fill={`${group.color || '#ff9800'}30`} strokeWidth={2} /></AreaChart></ResponsiveContainer></Box>
+                                                                <Box sx={{ height: 80 }}>
+                                                                    <ResponsiveContainer width="100%" height="100%">
+                                                                        <AreaChart data={stats.files.slice(0, 10).map((f, i) => ({ name: i, size: f.size }))}>
+                                                                            <Area type="monotone" dataKey="size" stroke={group.color || '#ff9800'} fill={`${group.color || '#ff9800'}30`} strokeWidth={2} />
+                                                                        </AreaChart>
+                                                                    </ResponsiveContainer>
+                                                                </Box>
                                                             )}
                                                         </Paper>
                                                     </Box>
@@ -1116,7 +1776,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                             })}
                                         </Box>
                                     ) : (
-                                        <Box sx={{ textAlign: 'center', py: 6 }}><GroupIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.5, mb: 2 }} /><Typography color="text.secondary">Группы не созданы</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Создайте группы для организации файлов в этом контейнере</Typography></Box>
+                                        <Box sx={{ textAlign: 'center', py: 6 }}>
+                                            <GroupIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.5, mb: 2 }} />
+                                            <Typography color="text.secondary">Группы не созданы</Typography>
+                                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                                Создайте группы для организации файлов в этом контейнере
+                                            </Typography>
+                                        </Box>
                                     )}
                                 </Box>
                             )}
@@ -1125,30 +1791,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                 <Box>
                                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3, alignItems: 'center' }}>
                                         <Box sx={{ flexGrow: 1, minWidth: 200 }}>
-                                            <TextField size="small" placeholder="Поиск файлов..." value={fileSearchQuery}
+                                            <TextField
+                                                size="small"
+                                                placeholder="Поиск файлов..."
+                                                value={fileSearchQuery}
                                                 onChange={(e) => setFileSearchQuery(e.target.value)}
                                                 InputProps={{
                                                     startAdornment: <SearchIcon fontSize="small" sx={{ color: 'text.secondary', mr: 1 }} />,
                                                     sx: { bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 2 }
                                                 }}
-                                                sx={{ '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } } }} />
+                                                sx={{ '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } } }}
+                                            />
                                         </Box>
                                         <FormControl size="small" sx={{ minWidth: 150, bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 2 }}>
-                                            <Select value={selectedFileGroup} onChange={(e) => setSelectedFileGroup(e.target.value)} displayEmpty
-                                                sx={{ color: 'text.primary', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' } }}>
+                                            <Select
+                                                value={selectedFileGroup}
+                                                onChange={(e) => setSelectedFileGroup(e.target.value)}
+                                                displayEmpty
+                                                sx={{ color: 'text.primary', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' } }}
+                                            >
                                                 <MenuItem value="all">Все группы</MenuItem>
                                                 {containerDetails?.groups?.map(group => (
                                                     <MenuItem key={group.id} value={group.id}>
                                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                            <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: group.color }} />{group.id}
+                                                            <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: group.color }} />
+                                                            {group.id}
                                                         </Box>
                                                     </MenuItem>
                                                 ))}
                                             </Select>
                                         </FormControl>
                                         <Tooltip title="Обновить список">
-                                            <IconButton onClick={() => refetchFiles()} disabled={filesLoading} size="small"
-                                                sx={{ bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}>
+                                            <IconButton
+                                                onClick={() => refetchFiles()}
+                                                disabled={filesLoading}
+                                                size="small"
+                                                sx={{ bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}
+                                            >
                                                 {filesLoading ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
                                             </IconButton>
                                         </Tooltip>
@@ -1158,25 +1837,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                     {filesLoading ? (
                                         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
                                     ) : filteredFiles.length === 0 ? (
-                                        <Paper elevation={0} sx={{ p: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)', textAlign: 'center' }}>
+                                        <Paper
+                                            elevation={0}
+                                            sx={{
+                                                p: 4,
+                                                borderRadius: 2,
+                                                bgcolor: 'rgba(255,255,255,0.03)',
+                                                border: '1px dashed rgba(255,255,255,0.1)',
+                                                textAlign: 'center'
+                                            }}
+                                        >
                                             <FolderIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.5, mb: 2 }} />
-                                            <Typography color="text.secondary">{fileSearchQuery || selectedFileGroup !== 'all' ? 'Файлы не найдены' : 'В контейнере нет файлов'}</Typography>
+                                            <Typography color="text.secondary">
+                                                {fileSearchQuery || selectedFileGroup !== 'all' ? 'Файлы не найдены' : 'В контейнере нет файлов'}
+                                            </Typography>
                                         </Paper>
                                     ) : (
                                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 500, overflow: 'auto', pr: 1 }}>
                                             {filteredFiles.map((file) => {
                                                 const fileGroups = containerDetails?.fileGroups?.[file.name] || [];
                                                 return (
-                                                    <Paper key={file.name} elevation={0} sx={{
-                                                        p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)',
-                                                        border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                        cursor: 'pointer', transition: 'all 0.2s', '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(103, 126, 234, 0.3)' }
-                                                    }}
-                                                        onClick={() => handleFileClick(file)}>
+                                                    <Paper
+                                                        key={file.name}
+                                                        elevation={0}
+                                                        sx={{
+                                                            p: 2,
+                                                            borderRadius: 2,
+                                                            bgcolor: 'rgba(255,255,255,0.03)',
+                                                            border: '1px solid rgba(255,255,255,0.08)',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.2s',
+                                                            '&:hover': {
+                                                                bgcolor: 'rgba(255,255,255,0.06)',
+                                                                borderColor: 'rgba(103, 126, 234, 0.3)',
+                                                                transform: 'translateX(4px)'
+                                                            }
+                                                        }}
+                                                        onClick={() => handleFileClick(file)}
+                                                    >
                                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1 }}>
                                                             <Box sx={{
-                                                                width: 40, height: 40, borderRadius: 2, bgcolor: getFileColor(file.mime_type),
-                                                                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600, fontSize: '0.75rem'
+                                                                width: 40,
+                                                                height: 40,
+                                                                borderRadius: 2,
+                                                                bgcolor: getFileColor(file.mime_type),
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                color: 'white',
+                                                                fontWeight: 600,
+                                                                fontSize: '0.75rem'
                                                             }}>
                                                                 {getFileIcon(file.mime_type)}
                                                             </Box>
@@ -1185,14 +1898,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 0.5 }}>
                                                                     <Typography variant="caption" color="text.secondary">{formatBytes(file.size)}</Typography>
                                                                     <Typography variant="caption" color="text.secondary">{file.mime_type}</Typography>
-                                                                    <Typography variant="caption" color="text.secondary">{new Date(file.created_at).toLocaleDateString('ru-RU')}</Typography>
+                                                                    <Typography variant="caption" color="text.secondary">
+                                                                        {new Date(file.created_at).toLocaleDateString('ru-RU')}
+                                                                    </Typography>
                                                                 </Box>
                                                             </Box>
                                                         </Box>
                                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
                                                             {fileGroups.slice(0, 3).map(groupId => {
                                                                 const group = containerDetails?.groups?.find(g => g.id === groupId);
-                                                                return group ? <Tooltip key={groupId} title={group.id}><Box sx={{ width: 14, height: 14, borderRadius: '50%', bgcolor: group.color, border: '2px solid rgba(0,0,0,0.3)' }} /></Tooltip> : null;
+                                                                return group ? (
+                                                                    <Tooltip key={groupId} title={group.id}>
+                                                                        <Box sx={{
+                                                                            width: 14,
+                                                                            height: 14,
+                                                                            borderRadius: '50%',
+                                                                            bgcolor: group.color,
+                                                                            border: '2px solid rgba(0,0,0,0.3)'
+                                                                        }} />
+                                                                    </Tooltip>
+                                                                ) : null;
                                                             })}
                                                             {fileGroups.length > 3 && <Typography variant="caption" color="text.secondary">+{fileGroups.length - 3}</Typography>}
                                                         </Box>
@@ -1234,16 +1959,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                     </Box>
 
                                     {containerAccesses.length === 0 ? (
-                                        <Paper elevation={0} sx={{ p: 4, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                                        <Paper
+                                            elevation={0}
+                                            sx={{
+                                                p: 4,
+                                                textAlign: 'center',
+                                                bgcolor: 'rgba(255,255,255,0.03)',
+                                                border: '1px dashed rgba(255,255,255,0.1)'
+                                            }}
+                                        >
                                             <LockIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.5, mb: 2 }} />
                                             <Typography color="text.secondary">Нет групп с доступом к этому контейнеру</Typography>
                                         </Paper>
                                     ) : (
                                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                                            {containerAccesses.map(access => {
+                                            {containerAccesses.map((access) => {
                                                 const group = userGroups.find(g => g.id === access.group_id);
                                                 return (
-                                                    <Paper key={access.group_id} elevation={0} sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)', border: `2px solid ${group?.color || '#ff9800'}40` }}>
+                                                    <Paper
+                                                        key={access.group_id}
+                                                        elevation={0}
+                                                        sx={{
+                                                            p: 2,
+                                                            borderRadius: 2,
+                                                            bgcolor: 'rgba(255,255,255,0.03)',
+                                                            border: `2px solid ${group?.color || '#ff9800'}40`,
+                                                            transition: 'all 0.2s',
+                                                            '&:hover': {
+                                                                borderColor: `${group?.color || '#ff9800'}80`,
+                                                                transform: 'translateX(4px)'
+                                                            }
+                                                        }}
+                                                    >
                                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                                             <Box sx={{ width: 16, height: 16, borderRadius: '50%', bgcolor: group?.color || '#ff9800' }} />
                                                             <Box sx={{ flex: 1 }}>
@@ -1252,9 +1999,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                                                     <Typography variant="caption" color="text.secondary">{group.description}</Typography>
                                                                 )}
                                                             </Box>
-                                                            <Chip label={access.permission} size="small" color={access.permission === 'admin' ? 'error' : access.permission === 'read_write' ? 'success' : 'info'} sx={{ fontSize: '0.7rem' }} />
+                                                            <Chip
+                                                                label={access.permission}
+                                                                size="small"
+                                                                color={access.permission === 'admin' ? 'error' : access.permission === 'read_write' ? 'success' : 'info'}
+                                                                sx={{ fontSize: '0.7rem' }}
+                                                            />
                                                             <Tooltip title="Отозвать доступ">
-                                                                <IconButton size="small" onClick={() => handleRevokeAccess(access.group_id)} sx={{ color: 'error.main' }}>
+                                                                <IconButton
+                                                                    size="small"
+                                                                    onClick={() => handleRevokeAccess(access.group_id)}
+                                                                    sx={{ color: 'error.main' }}
+                                                                >
                                                                     <DeleteIcon fontSize="small" />
                                                                 </IconButton>
                                                             </Tooltip>
@@ -1262,10 +2018,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                                         {group && group.members && group.members.length > 0 && (
                                                             <Box sx={{ mt: 1.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                                                                 {group.members.slice(0, 5).map(m => (
-                                                                    <Chip key={m.user_id} label={m.user_name} size="small" sx={{ height: 22, fontSize: '0.7rem' }} />
+                                                                    <Chip
+                                                                        key={m.user_id}
+                                                                        label={m.user_name}
+                                                                        size="small"
+                                                                        sx={{ height: 22, fontSize: '0.7rem' }}
+                                                                    />
                                                                 ))}
                                                                 {group.members.length > 5 && (
-                                                                    <Chip label={`+${group.members.length - 5}`} size="small" sx={{ height: 22, fontSize: '0.7rem' }} />
+                                                                    <Chip
+                                                                        label={`+${group.members.length - 5}`}
+                                                                        size="small"
+                                                                        sx={{ height: 22, fontSize: '0.7rem' }}
+                                                                    />
                                                                 )}
                                                             </Box>
                                                         )}
@@ -1283,11 +2048,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                         <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
                                             <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>📋 Конфигурация</Typography>
                                             <Stack spacing={1.5}>
-                                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2" color="text.secondary">ID контейнера</Typography><Typography variant="body2" fontWeight={500} sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{selectedContainer.id}</Typography></Box>
-                                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2" color="text.secondary">Пользователь</Typography><Typography variant="body2" fontWeight={500}>{users.find(u => u.id === selectedContainer.user_id)?.name || selectedContainer.user_id}</Typography></Box>
-                                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2" color="text.secondary">Окружение</Typography><Chip label={selectedContainer.env_label?.value || '—'} size="small" sx={{ height: 22, fontSize: '0.7rem' }} /></Box>
-                                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2" color="text.secondary">Тип</Typography><Chip label={selectedContainer.type_label?.value || '—'} size="small" variant="outlined" sx={{ height: 22, fontSize: '0.7rem', borderColor: 'rgba(255,255,255,0.2)' }} /></Box>
-                                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2" color="text.secondary">Создан</Typography><Typography variant="body2" fontWeight={500}>{new Date(selectedContainer.created_at).toLocaleString('ru-RU')}</Typography></Box>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <Typography variant="body2" color="text.secondary">ID контейнера</Typography>
+                                                    <Typography variant="body2" fontWeight={500} sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                                                        {selectedContainer.id}
+                                                    </Typography>
+                                                </Box>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <Typography variant="body2" color="text.secondary">Пользователь</Typography>
+                                                    <Typography variant="body2" fontWeight={500}>
+                                                        {users.find(u => u.id === selectedContainer.user_id)?.name || selectedContainer.user_id}
+                                                    </Typography>
+                                                </Box>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <Typography variant="body2" color="text.secondary">Окружение</Typography>
+                                                    <Chip label={selectedContainer.env_label?.value || '—'} size="small" sx={{ height: 22, fontSize: '0.7rem' }} />
+                                                </Box>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <Typography variant="body2" color="text.secondary">Тип</Typography>
+                                                    <Chip
+                                                        label={selectedContainer.type_label?.value || '—'}
+                                                        size="small"
+                                                        variant="outlined"
+                                                        sx={{ height: 22, fontSize: '0.7rem', borderColor: 'rgba(255,255,255,0.2)' }}
+                                                    />
+                                                </Box>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <Typography variant="body2" color="text.secondary">Создан</Typography>
+                                                    <Typography variant="body2" fontWeight={500}>
+                                                        {new Date(selectedContainer.created_at).toLocaleString('ru-RU')}
+                                                    </Typography>
+                                                </Box>
                                             </Stack>
                                         </Paper>
                                     </Box>
@@ -1301,8 +2092,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                                     { label: 'Лимит файлов', value: selectedContainer.file_limit?.toLocaleString() || '∞', progress: 0, color: 'primary' },
                                                 ].map((limit, idx) => (
                                                     <Box key={idx}>
-                                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}><Typography variant="body2" color="text.secondary">{limit.label}</Typography><Typography variant="body2" fontWeight={500}>{limit.value}</Typography></Box>
-                                                        <LinearProgress variant="determinate" value={Math.min(100, limit.progress)} sx={{ height: 6, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.1)', '& .MuiLinearProgress-bar': { borderRadius: 3, bgcolor: `${limit.color}.main` } }} />
+                                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                                            <Typography variant="body2" color="text.secondary">{limit.label}</Typography>
+                                                            <Typography variant="body2" fontWeight={500}>{limit.value}</Typography>
+                                                        </Box>
+                                                        <LinearProgress
+                                                            variant="determinate"
+                                                            value={Math.min(100, limit.progress)}
+                                                            sx={{
+                                                                height: 6,
+                                                                borderRadius: 3,
+                                                                bgcolor: 'rgba(255,255,255,0.1)',
+                                                                '& .MuiLinearProgress-bar': {
+                                                                    borderRadius: 3,
+                                                                    bgcolor: `${limit.color}.main`
+                                                                }
+                                                            }}
+                                                        />
                                                     </Box>
                                                 ))}
                                             </Stack>
@@ -1312,8 +2118,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                         <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
                                             <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>🔐 Права доступа</Typography>
                                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                                                <Chip icon={<StorageIcon fontSize="small" />} label={selectedContainer.privileged ? 'Privileged mode' : 'Standard mode'} color={selectedContainer.privileged ? 'error' : 'success'} size="small" sx={{ fontWeight: 500 }} />
-                                                {selectedContainer.commands?.map((cmd, idx) => (<Chip key={idx} label={`cmd: ${cmd}`} size="small" variant="outlined" sx={{ borderColor: 'rgba(255,255,255,0.2)', fontSize: '0.75rem' }} />))}
+                                                <Chip
+                                                    icon={<StorageIcon fontSize="small" />}
+                                                    label={selectedContainer.privileged ? 'Privileged mode' : 'Standard mode'}
+                                                    color={selectedContainer.privileged ? 'error' : 'success'}
+                                                    size="small"
+                                                    sx={{ fontWeight: 500 }}
+                                                />
+                                                {selectedContainer.commands?.map((cmd, idx) => (
+                                                    <Chip
+                                                        key={idx}
+                                                        label={`cmd: ${cmd}`}
+                                                        size="small"
+                                                        variant="outlined"
+                                                        sx={{ borderColor: 'rgba(255,255,255,0.2)', fontSize: '0.75rem' }}
+                                                    />
+                                                ))}
                                             </Box>
                                         </Paper>
                                     </Box>
@@ -1324,17 +2144,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                         <DialogActions sx={{ px: 3, pb: 3, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                             <Button onClick={handleCloseDetails} variant="outlined" color="inherit">Закрыть</Button>
                             <Box sx={{ flexGrow: 1 }} />
-                            {selectedContainer.status === 'running' && (<>
-                                <Button variant="outlined" color="warning" onClick={() => handleContainerAction('stop', selectedContainer)}>Остановить</Button>
-                                <Button variant="outlined" onClick={() => handleContainerAction('restart', selectedContainer)} sx={{ ml: 1 }}>Перезапустить</Button>
-                            </>)}
-                            <Button variant="contained" color="error" onClick={() => handleContainerAction('delete', selectedContainer)} sx={{ ml: 1 }}>Удалить</Button>
+                            {selectedContainer.status === 'running' && (
+                                <>
+                                    <Button variant="outlined" color="warning" onClick={() => handleContainerAction('stop', selectedContainer)}>
+                                        Остановить
+                                    </Button>
+                                    <Button variant="outlined" onClick={() => handleContainerAction('restart', selectedContainer)} sx={{ ml: 1 }}>
+                                        Перезапустить
+                                    </Button>
+                                </>
+                            )}
+                            <Button variant="contained" color="error" onClick={() => handleContainerAction('delete', selectedContainer)} sx={{ ml: 1 }}>
+                                Удалить
+                            </Button>
                         </DialogActions>
                     </>
                 )}
             </Dialog>
 
-            <Dialog open={roleEditDialogOpen} onClose={() => setRoleEditDialogOpen(false)} PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, minWidth: 400 } }}>
+            <Dialog
+                open={roleEditDialogOpen}
+                onClose={() => setRoleEditDialogOpen(false)}
+                PaperProps={{
+                    sx: {
+                        bgcolor: 'rgba(18, 22, 40, 0.98)',
+                        backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 3,
+                        minWidth: 400
+                    }
+                }}
+            >
                 <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <SecurityIcon color="primary" />
@@ -1369,7 +2209,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 </DialogActions>
             </Dialog>
 
-            <Dialog open={groupDialogOpen} onClose={() => setGroupDialogOpen(false)} PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, minWidth: 400 } }}>
+            <Dialog
+                open={groupDialogOpen}
+                onClose={() => setGroupDialogOpen(false)}
+                PaperProps={{
+                    sx: {
+                        bgcolor: 'rgba(18, 22, 40, 0.98)',
+                        backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 3,
+                        minWidth: 400
+                    }
+                }}
+            >
                 <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <GroupIcon color="primary" />
@@ -1431,7 +2283,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 </DialogActions>
             </Dialog>
 
-            <Dialog open={membersDialogOpen} onClose={() => setMembersDialogOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3 } }}>
+            <Dialog
+                open={membersDialogOpen}
+                onClose={() => setMembersDialogOpen(false)}
+                maxWidth="md"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        bgcolor: 'rgba(18, 22, 40, 0.98)',
+                        backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 3
+                    }
+                }}
+            >
                 <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <GroupIcon color="primary" />
@@ -1504,14 +2369,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                     </Typography>
 
                     {selectedGroupMembers.length === 0 ? (
-                        <Paper elevation={0} sx={{ p: 4, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                        <Paper
+                            elevation={0}
+                            sx={{
+                                p: 4,
+                                textAlign: 'center',
+                                bgcolor: 'rgba(255,255,255,0.03)',
+                                border: '1px dashed rgba(255,255,255,0.1)'
+                            }}
+                        >
                             <PeopleIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.5, mb: 2 }} />
                             <Typography color="text.secondary">В группе пока нет участников</Typography>
                         </Paper>
                     ) : (
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 400, overflow: 'auto' }}>
-                            {selectedGroupMembers.map(member => (
-                                <Paper key={member.user_id} elevation={0} sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                            {selectedGroupMembers.map((member) => (
+                                <Paper
+                                    key={member.user_id}
+                                    elevation={0}
+                                    sx={{
+                                        p: 2,
+                                        borderRadius: 2,
+                                        bgcolor: 'rgba(255,255,255,0.03)',
+                                        border: '1px solid rgba(255,255,255,0.08)',
+                                        transition: 'all 0.2s',
+                                        '&:hover': {
+                                            bgcolor: 'rgba(255,255,255,0.06)',
+                                            borderColor: 'rgba(103, 126, 234, 0.3)'
+                                        }
+                                    }}
+                                >
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                         <Avatar sx={{ width: 36, height: 36, bgcolor: 'primary.main' }}>
                                             {member.user_name?.[0]?.toUpperCase()}
@@ -1553,7 +2440,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 </DialogActions>
             </Dialog>
 
-            <Dialog open={accessDialogOpen} onClose={() => setAccessDialogOpen(false)} PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, minWidth: 400 } }}>
+            <Dialog
+                open={accessDialogOpen}
+                onClose={() => setAccessDialogOpen(false)}
+                PaperProps={{
+                    sx: {
+                        bgcolor: 'rgba(18, 22, 40, 0.98)',
+                        backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 3,
+                        minWidth: 400
+                    }
+                }}
+            >
                 <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <LockIcon color="primary" />
@@ -1612,7 +2511,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 </DialogActions>
             </Dialog>
 
-            <Dialog open={createContainerDialogOpen} onClose={() => setCreateContainerDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(18, 22, 40, 0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3 } }}>
+            <Dialog
+                open={createContainerDialogOpen}
+                onClose={() => setCreateContainerDialogOpen(false)}
+                maxWidth="sm"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        bgcolor: 'rgba(18, 22, 40, 0.98)',
+                        backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 3
+                    }
+                }}
+            >
                 <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <CloudUploadIcon color="primary" />
@@ -1713,6 +2625,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 </DialogActions>
             </Dialog>
 
+            <Dialog
+                open={confirmDialog.open}
+                onClose={() => setConfirmDialog(prev => ({ ...prev, open: false }))}
+                PaperProps={{
+                    sx: {
+                        bgcolor: 'rgba(18, 22, 40, 0.98)',
+                        backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 3,
+                        minWidth: 400
+                    }
+                }}
+            >
+                <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {confirmDialog.severity === 'error' && <ErrorIcon color="error" />}
+                    {confirmDialog.severity === 'warning' && <WarningIcon color="warning" />}
+                    {confirmDialog.severity === 'info' && <InfoIcon color="info" />}
+                    <Typography variant="h6" fontWeight={600}>{confirmDialog.title}</Typography>
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary">
+                        {confirmDialog.message}
+                    </Typography>
+                </DialogContent>
+                <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    <Button onClick={() => setConfirmDialog(prev => ({ ...prev, open: false }))} color="inherit">
+                        Отмена
+                    </Button>
+                    <Button
+                        onClick={() => {
+                            confirmDialog.onConfirm();
+                            setConfirmDialog(prev => ({ ...prev, open: false }));
+                        }}
+                        variant="contained"
+                        color={confirmDialog.severity === 'error' ? 'error' : confirmDialog.severity === 'warning' ? 'warning' : 'primary'}
+                    >
+                        Подтвердить
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
             <Snackbar
                 open={snackbar.open}
                 autoHideDuration={4000}
@@ -1723,6 +2676,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                     onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
                     severity={snackbar.severity}
                     sx={{ width: '100%' }}
+                    icon={
+                        snackbar.severity === 'success' && <CheckCircleIcon /> ||
+                        snackbar.severity === 'error' && <ErrorIcon /> ||
+                        snackbar.severity === 'warning' && <WarningIcon /> ||
+                        <InfoIcon />
+                    }
                 >
                     {snackbar.message}
                 </Alert>
