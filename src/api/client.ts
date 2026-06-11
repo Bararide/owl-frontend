@@ -953,6 +953,22 @@ class ApiClient {
     return response.data.data;
   }
 
+  async createMarkdownFile(
+    containerId: string,
+    fileName: string,
+    content: string,
+  ): Promise<ApiFile> {
+    const finalFileName = fileName.endsWith(".md")
+      ? fileName
+      : `${fileName}.md`;
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const file = new File([blob], finalFileName, {
+      type: "text/markdown;charset=utf-8",
+      lastModified: Date.now(),
+    });
+    return this.uploadFile(containerId, file);
+  }
+
   async removeMultipleFilesFromGroup(
     groupId: string,
     fileIds: string[],

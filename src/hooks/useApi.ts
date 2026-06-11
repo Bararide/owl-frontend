@@ -22,6 +22,30 @@ export const useContainers = () => {
   });
 };
 
+export const useCreateMarkdownFile = () => {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({
+            containerId,
+            fileName,
+            content,
+        }: {
+            containerId: string;
+            fileName: string;
+            content: string;
+        }) => apiClient.createMarkdownFile(containerId, fileName, content),
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({
+                queryKey: ["files", variables.containerId],
+            });
+            queryClient.invalidateQueries({
+                queryKey: ["semanticGraph", variables.containerId],
+            });
+        },
+    });
+};
+
 export const useAllContainersForAdmin = () => {
   return useQuery({
     queryKey: ["all-containers"],

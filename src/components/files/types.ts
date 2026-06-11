@@ -58,6 +58,8 @@ export interface SemanticGraphCanvasProps {
   onSearchQueryChange: (value: string) => void;
   onSearchSubmit: () => void;
   fileGroupsMap?: Map<string, { groupId: string; color: string }[]>;
+  containerId?: string;
+  onCreateFile?: (fileName: string, content: string) => Promise<void> | void;
 }
 
 export interface GroupManagementDialogProps {

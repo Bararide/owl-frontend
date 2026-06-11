@@ -28,11 +28,13 @@ import {
     CenterFocusStrong as CenterFocusStrongIcon,
     FolderSpecial as FolderSpecialIcon,
     History as HistoryIcon,
+    NoteAdd as NoteAddIcon,
 } from "@mui/icons-material";
 import type { ApiFile, SearchResultFile, RecommendationFile, SemanticGraphData } from "../../api/client";
 import { useWasmGraphLayout } from "./useWasmGraph";
 import { useWorkerRenderer } from "../../hooks/useWorkerRenderer";
 import { normalizeGraph, formatFileSize } from "./utils";
+import { CreateFileDialog } from "./../dialogs/CreateFileDialog";
 import type { GraphNode, GraphEdge, SemanticGraphCanvasProps } from "./types";
 
 export const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = React.memo(({
@@ -53,10 +55,11 @@ export const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = React.mem
     onSearchQueryChange,
     onSearchSubmit,
     fileGroupsMap = new Map(),
+    containerId,
+    onCreateFile,
 }) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
-    const animationRef = useRef<number | null>(null);
     const dragNodeIdRef = useRef<string | null>(null);
     const hoverNodeIdRef = useRef<string | null>(null);
     const panRef = useRef({ x: 0, y: 0 });
@@ -64,6 +67,8 @@ export const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = React.mem
     const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
     const WORLD_SIZE = 60000;
     const WORLD_CENTER = WORLD_SIZE / 2;
+
+    const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
     const {
         ready,
@@ -235,6 +240,14 @@ export const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = React.mem
 
     const isPanningRef = useRef(false);
     const lastMouseRef = useRef({ x: 0, y: 0 });
+
+    const handleOpenCreateDialog = useCallback(() => {
+        setCreateDialogOpen(true);
+    }, []);
+
+    const handleCloseCreateDialog = useCallback(() => {
+        setCreateDialogOpen(false);
+    }, []);
 
     return (
         <Box
@@ -445,6 +458,44 @@ export const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = React.mem
                             </IconButton>
                         </Tooltip>
                     </Paper>
+                    <Paper
+                        elevation={3}
+                        sx={{
+                            p: 0.5,
+                            borderRadius: "50%",
+                            width: 40,
+                            height: 40,
+                            background: "linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(34, 197, 94, 0.1) 100%)",
+                            backdropFilter: "blur(10px)",
+                            border: "1px solid rgba(34, 197, 94, 0.35)",
+                            pointerEvents: "auto",
+                            ml: 1,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                            "&:hover": {
+                                background: "linear-gradient(135deg, rgba(34, 197, 94, 0.35) 0%, rgba(34, 197, 94, 0.2) 100%)",
+                                border: "1px solid rgba(34, 197, 94, 0.55)",
+                                boxShadow: "0 0 20px rgba(34, 197, 94, 0.3)",
+                                transform: "scale(1.05)",
+                            },
+                        }}
+                    >
+                        <Tooltip title="Create Markdown">
+                            <IconButton
+                                size="small"
+                                sx={{
+                                    color: "#22c55e",
+                                    width: "100%",
+                                    height: "100%",
+                                }}
+                                onClick={handleOpenCreateDialog}
+                            >
+                                <NoteAddIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
+                    </Paper>
                     <Slide
                         direction="left"
                         in={searchPopupOpen}
@@ -464,14 +515,6 @@ export const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = React.mem
                                 display: "flex",
                                 alignItems: "center",
                                 gap: 1,
-                                animation: "slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                                "@keyframes slideIn": {
-                                    from: {
-                                        opacity: 0,
-                                        transform: "translateX(-20px) scale(0.95)",
-                                    },
-                                    to: { opacity: 1, transform: "translateX(0) scale(1)" },
-                                },
                             }}
                         >
                             <TextField
@@ -880,6 +923,16 @@ export const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = React.mem
                     )}
                 </Paper>
             )}
+
+            <CreateFileDialog
+                open={createDialogOpen}
+                onClose={handleCloseCreateDialog}
+                onCreate={async (fileName, content) => {
+                    if (onCreateFile) {
+                        await onCreateFile(fileName, content);
+                    }
+                }}
+            />
         </Box>
     );
 }, (prev, next) => {
@@ -890,5 +943,7 @@ export const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = React.mem
     if (prev.recommendations !== next.recommendations) return false;
     if (prev.useCurvedEdges !== next.useCurvedEdges) return false;
     if (prev.fileGroupsMap?.size !== next.fileGroupsMap?.size) return false;
+    if (prev.containerId !== next.containerId) return false;
+    if (prev.onCreateFile !== next.onCreateFile) return false;
     return true;
 });
