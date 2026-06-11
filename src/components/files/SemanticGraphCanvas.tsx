@@ -30,7 +30,9 @@ import {
     History as HistoryIcon,
     NoteAdd as NoteAddIcon,
 } from "@mui/icons-material";
+import { useQueryClient } from "@tanstack/react-query";
 import type { ApiFile, SearchResultFile, RecommendationFile, SemanticGraphData } from "../../api/client";
+import { apiClient } from "../../api/client";
 import { useWasmGraphLayout } from "./useWasmGraph";
 import { useWorkerRenderer } from "../../hooks/useWorkerRenderer";
 import { normalizeGraph, formatFileSize } from "./utils";
@@ -58,6 +60,7 @@ export const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = React.mem
     containerId,
     onCreateFile,
 }) => {
+    const queryClient = useQueryClient();
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
     const dragNodeIdRef = useRef<string | null>(null);
@@ -248,6 +251,21 @@ export const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = React.mem
     const handleCloseCreateDialog = useCallback(() => {
         setCreateDialogOpen(false);
     }, []);
+
+    const handleCreateFile = useCallback(async (fileName: string, content: string) => {
+        if (!containerId) {
+            if (onCreateFile) {
+                await onCreateFile(fileName, content);
+                return;
+            }
+            throw new Error("Container ID is not defined");
+        }
+        console.log("Creating file", { containerId, fileName, contentLength: content.length });
+        await apiClient.createMarkdownFile(containerId, fileName, content);
+        console.log("File created, invalidating queries");
+        queryClient.invalidateQueries({ queryKey: ["files", containerId] });
+        queryClient.invalidateQueries({ queryKey: ["semanticGraph", containerId] });
+    }, [containerId, queryClient, onCreateFile]);
 
     return (
         <Box
@@ -927,11 +945,7 @@ export const SemanticGraphCanvas: React.FC<SemanticGraphCanvasProps> = React.mem
             <CreateFileDialog
                 open={createDialogOpen}
                 onClose={handleCloseCreateDialog}
-                onCreate={async (fileName, content) => {
-                    if (onCreateFile) {
-                        await onCreateFile(fileName, content);
-                    }
-                }}
+                onCreate={handleCreateFile}
             />
         </Box>
     );

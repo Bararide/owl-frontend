@@ -462,6 +462,7 @@ export default function FilesView({ containerId }: { containerId: string }) {
             onSearchQueryChange={handleSearchChange}
             onSearchSubmit={handleSearchSubmit}
             fileGroupsMap={fileGroupsMap}
+            containerId={containerId}
           />
         )}
       </Box>
