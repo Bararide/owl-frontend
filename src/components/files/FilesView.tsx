@@ -103,10 +103,10 @@ export default function FilesView({ containerId }: { containerId: string }) {
         requestGroups();
         requestFileGroupsMap();
         requestRecommendations();
-        requestLogs(); // Запрашиваем логи
+        requestLogs();
         subscribeToGraphUpdates();
         subscribeToRecommendations();
-        subscribeToLogs(); // Подписываемся на логи
+        subscribeToLogs();
         refetchSearchHistory();
       }, 100);
       return () => clearTimeout(timer);
